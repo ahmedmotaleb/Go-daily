@@ -36,11 +36,13 @@ ignore = [
   "PLR0913",  # explicit keyword-heavy service functions are fine
   "PLR2004",  # magic numbers in tests/validation
   "N818",     # domain error names read better without an Error suffix
+  "PLR0911",  # early returns are clearer than nesting
+  "PLR0917",  # FastAPI handlers take many query parameters
   "RUF001", "RUF002", "RUF003",  # Arabic text is intentional
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106", "PLR0915"]
+"tests/**" = ["S101", "S105", "S106", "PLR0915", "PLC0415"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

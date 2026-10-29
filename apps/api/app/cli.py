@@ -15,7 +15,10 @@ from collections.abc import Callable
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.db import SessionLocal
+from app.core.errors import DomainError
+from app.services.users import bootstrap_super_admin
 
 Seeder = Callable[[Session], int]
 
@@ -34,10 +37,45 @@ def cmd_seed(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bootstrap_admin(_: argparse.Namespace) -> int:
+    """Create the first SUPER_ADMIN from BOOTSTRAP_ADMIN_* environment variables."""
+    settings = get_settings()
+    password = (
+        settings.bootstrap_admin_password.get_secret_value()
+        if settings.bootstrap_admin_password
+        else ""
+    )
+    if not settings.bootstrap_admin_phone or not password:
+        print(
+            "Set BOOTSTRAP_ADMIN_PHONE and BOOTSTRAP_ADMIN_PASSWORD (and optionally "
+            "BOOTSTRAP_ADMIN_NAME) in the environment.",
+            file=sys.stderr,
+        )
+        return 2
+    with SessionLocal() as db:
+        try:
+            user = bootstrap_super_admin(
+                db,
+                full_name=settings.bootstrap_admin_name,
+                phone=settings.bootstrap_admin_phone,
+                password=password,
+            )
+        except (DomainError, ValueError) as exc:
+            print(f"bootstrap-admin failed: {exc}", file=sys.stderr)
+            return 1
+    print(
+        f"Created SUPER_ADMIN {user.phone} ({user.id}). Remove the password from the environment."
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="app.cli", description="Go Daily operations CLI")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("seed", help="Insert reference data (idempotent)").set_defaults(func=cmd_seed)
+    sub.add_parser(
+        "bootstrap-admin", help="Create the first SUPER_ADMIN from BOOTSTRAP_ADMIN_* env vars"
+    ).set_defaults(func=cmd_bootstrap_admin)
     return parser
 
 

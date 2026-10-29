@@ -10,7 +10,7 @@ Phases follow the master task list ([`GO_DAILY_CLAUDE_MASTER_TASKS.md`](GO_DAILY
 | # | Phase | Status | Notes |
 | --- | --- | --- | --- |
 | 01 | Repository foundation | ✅ | Monorepo, API, admin web, Docker, CI, docs |
-| 02 | Authentication, users & RBAC | ⬜ | |
+| 02 | Authentication, users & RBAC | ✅ | Opaque sessions, Argon2id, lockout, RBAC, append-only audit, user management UI |
 | 03 | Fleet / vehicles | ⬜ | |
 | 04 | Drivers | ⬜ | |
 | 05 | Driver ↔ vehicle assignment history | ⬜ | |

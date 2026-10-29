@@ -17,6 +17,7 @@
     "@go-daily/config": "workspace:*",
     "@go-daily/shared": "workspace:*",
     "clsx": "^2.1.1",
+    "lucide-react": "^1.64.0",
     "next": "16.4.3",
     "react": "19.3.0",
     "react-dom": "19.3.0",

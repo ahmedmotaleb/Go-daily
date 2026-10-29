@@ -93,9 +93,47 @@ All server code uses `app.core.time.utcnow()`. Do not call `datetime.now()` with
   - Request APIs are async.
   - `cacheComponents` is intentionally **off**: every admin screen is authenticated and dynamic.
 
-## 5. Security model (summary)
+## 5. Security model
 
-Details are added as each phase lands. See Task 02 and Task 25.
+### Authentication (Task 02)
+
+- **Credentials:** phone number plus password. Phone numbers are normalised to the Egyptian mobile format `01XXXXXXXXX`; `+20`, `0020` and Arabic-Indic digits are accepted.
+- **Password storage:** Argon2id (`argon2-cffi`). Hashes are upgraded automatically at login when parameters change. Policy: 8–128 characters, not containing the phone number, not trivially repetitive.
+- **Sessions:** opaque random tokens (`gd_` plus 256 bits), not JWTs.
+  - Only the SHA-256 of the token is stored (`auth_sessions.token_hash`).
+  - The table is checked on every request, so logout, deactivation, role change and password reset take effect immediately.
+  - Absolute lifetime: `SESSION_TTL_HOURS_ADMIN` (default 12h) for web, `SESSION_TTL_HOURS_DRIVER` (default 30d) for the driver app.
+  - Web sessions also expire after `SESSION_IDLE_TIMEOUT_HOURS` of inactivity.
+  - `last_used_at` is written at most every 5 minutes.
+- **Client separation:** the admin web (`client: "web"`) accepts staff roles only. The driver app (`client: "mobile"`) accepts `DRIVER` accounts only.
+- **Brute force:** after `LOGIN_MAX_FAILED_ATTEMPTS` wrong passwords the account is locked for `LOGIN_LOCKOUT_MINUTES` and the API returns 429 `account_locked`. Unknown phones and wrong passwords return the same error and take similar time (the hash is verified against a dummy value).
+- **Inactive accounts:** login is rejected (`account_inactive`), and existing sessions are rejected on the next request.
+- **Admin web (BFF):** the token is kept in an `httpOnly`, `SameSite=Lax` cookie (`gd_session`), marked `Secure` when `SESSION_COOKIE_SECURE=true`. All API calls happen server-side (Server Components and Server Actions). `proxy.ts` only does an optimistic redirect when the cookie is missing. A 401 from the API sends the user to `/auth/clear`, which deletes the cookie. Server Actions have Next.js's built-in origin checks against CSRF.
+- **Bootstrap:** the first `SUPER_ADMIN` is created by `python -m app.cli bootstrap-admin` from `BOOTSTRAP_ADMIN_*` environment variables. The command refuses to run if one already exists. There are no default accounts or passwords.
+
+### Authorization (RBAC)
+
+Roles: `SUPER_ADMIN`, `ADMIN`, `OPERATIONS`, `ACCOUNTANT`, `DRIVER`.
+
+- Permissions are fine-grained strings (`vehicles:write`, `settlements:finalize`, …) defined in `app/core/permissions.py`. Roles map to permission sets there, and endpoints declare what they need with `require_permissions(...)`.
+- `OPERATIONS` runs the fleet: vehicles, drivers, assignments, shifts, routes, tracking, maintenance and operational exceptions. It has no financial write access.
+- `ACCOUNTANT` handles the financial ledgers, settlements and profitability. Fleet data is read-only.
+- `DRIVER` has **no** staff permissions. Drivers use dedicated `/api/v1/driver/*` endpoints that are always scoped to their own records.
+- National IDs need `drivers:read_sensitive`, which only admins hold.
+- User management rules:
+  - `ADMIN` manages `OPERATIONS`, `ACCOUNTANT` and `DRIVER` accounts. Only `SUPER_ADMIN` manages admin accounts.
+  - Users cannot change their own role or deactivate themselves.
+  - The last active `SUPER_ADMIN` cannot be demoted or deactivated.
+- The admin web hides navigation by permission for convenience only. The API is the enforcement point.
+
+### Audit trail
+
+- `audit_logs` is append-only. A PostgreSQL trigger rejects `UPDATE`, `DELETE` and `TRUNCATE`, and actor foreign keys do not cascade.
+- An audit row is written in the same transaction as the change it describes. It records actor, action, entity, a field-level diff, reason, IP, user agent and request ID.
+- Passwords, password hashes, tokens and national IDs are never written. For those fields only `{"changed": true}` is recorded.
+- Recorded authentication events: login success and failure (unknown phones are masked), lockout, logout, password change and reset, activation and deactivation, role changes.
+
+### Other controls
 
 - Authorization is enforced in the API on every endpoint. The frontend only hides navigation for convenience.
 - Credentials and tokens are never logged. The JSON log formatter also redacts known sensitive keys.

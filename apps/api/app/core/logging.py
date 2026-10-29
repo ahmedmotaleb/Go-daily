@@ -23,6 +23,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.core.request_context import RequestContext, reset_request_context, set_request_context
+
 request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "request_id", default=None
 )
@@ -108,6 +110,12 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         incoming = request.headers.get("x-request-id", "")
         rid = incoming if 0 < len(incoming) <= 64 and incoming.isprintable() else uuid.uuid4().hex
         token = request_id_var.set(rid)
+        ctx_token = set_request_context(
+            RequestContext(
+                ip_address=request.client.host if request.client else None,
+                user_agent=(request.headers.get("user-agent") or "")[:255] or None,
+            )
+        )
         start = time.perf_counter()
         status_code = 500
         try:
@@ -127,4 +135,5 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                     "duration_ms": duration_ms,
                 },
             )
+            reset_request_context(ctx_token)
             request_id_var.reset(token)

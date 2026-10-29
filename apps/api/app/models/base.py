@@ -5,9 +5,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import Any, ClassVar
 
 from sqlalchemy import DateTime, MetaData, Numeric, func, text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -50,4 +52,17 @@ class TimestampMixin:
     )
     updated_at: Mapped[datetime] = mapped_column(
         default=utcnow, server_default=func.now(), onupdate=utcnow, nullable=False
+    )
+
+
+def enum_column_type(enum_cls: type[StrEnum], name: str) -> SAEnum:
+    """VARCHAR + CHECK constraint (not a native PG enum, which is painful to migrate)."""
+    return SAEnum(
+        enum_cls,
+        name=name,
+        native_enum=False,
+        create_constraint=True,
+        length=32,
+        values_callable=lambda e: [m.value for m in e],
+        validate_strings=True,
     )

@@ -109,17 +109,17 @@ gradients and animation.
 Roles: - `SUPER_ADMIN` - `ADMIN` - `OPERATIONS` - `ACCOUNTANT` -
 `DRIVER`
 
-Implement: - \[ \] User model: UUID, full_name, phone, optional email,
-password_hash, role, is_active, timestamps. - \[ \] Unique phone where
-appropriate. - \[ \] Secure password hashing. - \[ \]
-Login/logout/current-user flow. - \[ \] Secure token/session strategy. -
-\[ \] Inactive-account rejection. - \[ \] Backend RBAC
-dependencies/policies. - \[ \] Protected admin routes. - \[ \] Secure
-bootstrap admin via environment/command. - \[ \] Audit
+Implement: - \[x\] User model: UUID, full_name, phone, optional email,
+password_hash, role, is_active, timestamps. - \[x\] Unique phone where
+appropriate. - \[x\] Secure password hashing. - \[x\]
+Login/logout/current-user flow. - \[x\] Secure token/session strategy. -
+\[x\] Inactive-account rejection. - \[x\] Backend RBAC
+dependencies/policies. - \[x\] Protected admin routes. - \[x\] Secure
+bootstrap admin via environment/command. - \[x\] Audit
 authentication-sensitive actions without logging credentials/tokens.
 
-Tests: - \[ \] successful login - \[ \] wrong password - \[ \] inactive
-user - \[ \] unauthorized request - \[ \] role restrictions
+Tests: - \[x\] successful login - \[x\] wrong password - \[x\] inactive
+user - \[x\] unauthorized request - \[x\] role restrictions
 
 ------------------------------------------------------------------------
 
