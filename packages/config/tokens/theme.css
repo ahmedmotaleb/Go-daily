@@ -1,0 +1,77 @@
+/*
+ * Go Daily design tokens for Tailwind CSS v4.
+ *
+ * Brand intent:
+ *   - dark forest green  -> primary surfaces, navigation
+ *   - bright lime green  -> actions, active state, live GPS indicators
+ *   - white surfaces on a light neutral dashboard background
+ *   - dark charcoal text
+ * Avoid purple/blue SaaS styling, glassmorphism, heavy gradients and animation.
+ *
+ * Keep in sync with tokens.ts.
+ */
+@theme {
+  --color-forest-50: #eef5f1;
+  --color-forest-100: #d5e8dd;
+  --color-forest-200: #a9d0bb;
+  --color-forest-300: #74b192;
+  --color-forest-400: #46906d;
+  --color-forest-500: #2a7352;
+  --color-forest-600: #1e5c41;
+  --color-forest-700: #174a35;
+  --color-forest-800: #123b2b;
+  --color-forest-900: #0d2e21;
+  --color-forest-950: #071c14;
+
+  --color-lime-50: #f7fde8;
+  --color-lime-100: #edfacb;
+  --color-lime-200: #dbf59c;
+  --color-lime-300: #c3ec62;
+  --color-lime-400: #a8df33;
+  --color-lime-500: #8bc61a;
+  --color-lime-600: #6b9e10;
+  --color-lime-700: #517811;
+  --color-lime-800: #425f14;
+  --color-lime-900: #385016;
+
+  --color-neutral-50: #f7f8f6;
+  --color-neutral-100: #f0f2ee;
+  --color-neutral-200: #e0e4dd;
+  --color-neutral-300: #c7ccc3;
+  --color-neutral-400: #9da498;
+  --color-neutral-500: #757c71;
+  --color-neutral-600: #585e55;
+  --color-neutral-700: #454a42;
+  --color-neutral-800: #30342e;
+  --color-neutral-900: #1f221e;
+  --color-neutral-950: #121411;
+
+  /* Semantic aliases */
+  --color-background: var(--color-neutral-100);
+  --color-surface: #ffffff;
+  --color-ink: var(--color-neutral-900);
+  --color-ink-muted: var(--color-neutral-600);
+  --color-line: var(--color-neutral-200);
+  --color-primary: var(--color-forest-800);
+  --color-primary-hover: var(--color-forest-700);
+  --color-accent: var(--color-lime-400);
+  --color-accent-hover: var(--color-lime-500);
+  --color-on-accent: var(--color-forest-950);
+  --color-gps: var(--color-lime-400);
+
+  --color-success: #1e5c41;
+  --color-success-soft: #e3f1e8;
+  --color-warning: #a15c07;
+  --color-warning-soft: #fdf1dc;
+  --color-danger: #b42318;
+  --color-danger-soft: #fde8e6;
+  --color-info: #155e63;
+  --color-info-soft: #e0f0f0;
+
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+
+  --shadow-card: 0 1px 2px rgb(18 20 17 / 0.06), 0 1px 1px rgb(18 20 17 / 0.04);
+
+  --font-sans: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, system-ui, sans-serif;
+}

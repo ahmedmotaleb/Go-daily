@@ -1,0 +1,30 @@
+@import "tailwindcss";
+@import "../../../../packages/config/tokens/theme.css";
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "kern";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Numbers, plates and codes stay left-to-right inside RTL text. */
+  .ltr-nums,
+  input[type="number"],
+  input[type="tel"],
+  input[type="email"] {
+    direction: ltr;
+    unicode-bidi: plaintext;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-lime-500);
+    outline-offset: 2px;
+  }
+}
