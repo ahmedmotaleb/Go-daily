@@ -377,10 +377,10 @@ quantity - unit - unit price - total - date/time - odometer -
 station/vendor - receipt attachment reference - GPS location when
 captured by authorized driver app - notes - creator - timestamps
 
-Implement: - \[ \] driver entry - \[ \] admin/accountant entry - \[ \]
-receipt upload architecture - \[ \] edit/correction workflow - \[ \]
-audit trail - \[ \] filters/reports - \[ \] validation - \[ \] CNG and
-gasoline can both be recorded for the same vehicle/day - \[ \] oil is
+Implement: - \[ \] driver entry - \[x\] admin/accountant entry - \[ \]
+receipt upload architecture - \[x\] edit/correction workflow - \[x\]
+audit trail - \[x\] filters/reports - \[x\] validation - \[x\] CNG and
+gasoline can both be recorded for the same vehicle/day - \[x\] oil is
 separate from fuel efficiency calculations
 
 Do not treat oil as gasoline.
@@ -419,8 +419,8 @@ outstanding amount
 
 Ride-hailing: - platform earnings and settlement as defined earlier
 
-Implement: - \[ \] revenue ledger - \[ \] cash vs electronic - \[ \]
-outstanding amounts - \[ \] correction/audit - \[ \]
+Implement: - \[x\] revenue ledger - \[x\] cash vs electronic - \[x\]
+outstanding amounts - \[x\] correction/audit - \[x\]
 vehicle/driver/date/operation reports
 
 Avoid double-counting the same revenue across operation and settlement

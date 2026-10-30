@@ -17,17 +17,17 @@ Phases follow the master task list ([`GO_DAILY_CLAUDE_MASTER_TASKS.md`](GO_DAILY
 | 06 | Operation types & route definitions | ✅ | Extensible types with behaviour kind; routes with ordered stops/geofence radius |
 | 07 | Shifts & operation sessions | ✅ | Lifecycle, single active shift, odometer rules, multiple sessions per shift |
 | 08 | Admin dashboard V1 | ✅ | Real KPIs and lists; map/alerts placeholders until GPS phase |
-| 09 | Android driver app foundation | 🟡 | Kotlin/Compose app in `apps/driver-android`: login, vehicle, today's shifts, start/end shift, current operation, permission onboarding, Keystore token, Arabic RTL. Pure logic in `core/` is unit-tested (53 tests). The `app/` module builds only in CI (the dev sandbox cannot reach Google Maven); not tested on a device yet. |
+| 09 | Android driver app foundation | 🟡 | Kotlin/Compose app in `apps/driver-android`: login, vehicle, today's shifts, start/end shift, current operation, permission onboarding, Keystore token, Arabic RTL. Pure logic in `core/` is unit-tested (53 tests). The `app/` module compiles and passes Android lint in CI (the dev sandbox cannot reach Google Maven); not tested on a device yet. |
 | 10 | Work-shift GPS tracking | 🟡 | Backend complete and tested (idempotent ingestion, shift-window privacy, quality flags, retention). App side: foreground location service, SQLite offline queue, idempotent batch sync, adaptive sampling, driver-visible status, device events. Sync/status/sampling logic unit-tested; device behaviour (background, reboot, OEM battery killers) not yet verified on phones. |
 | 11 | Live fleet map & route replay | ✅ | Provider-neutral map (Leaflet impl), live polling, replay, stops, gaps, GPS vs odometer distance |
 | 12 | Geofences & fixed-route loop detection | ✅ | Debounced engine, idempotent events, audited admin corrections |
 | 13 | School route operations | ✅ | Scheduled runs, GPS-evidenced completion, review/missed states, audited corrections |
-| 14 | Ride-hailing operations | 🟡 | API complete and tested. Manual statement entry (no scraping), approval generates revenue + custody receipts, reconciliation vs recorded shifts/time/distance. Admin web pending. |
-| 15 | Fuel / CNG / oil ledger | 🟡 | API complete and tested. Extensible types (CNG, gasoline, diesel, oil); oil kept out of fuel figures; driver-app and staff entry; review/correction/audit. Admin web pending. |
-| 16 | General expenses | 🟡 | API complete and tested. Configurable categories with P&L grouping; review/correction/audit; driver-paid costs reimbursed via the driver account. Admin web pending. |
-| 17 | Collections & revenue | 🟡 | API complete and tested. Single revenue ledger with receipts (cash/electronic, driver/company), outstanding amounts, contract periods. Admin web pending. |
-| 18 | Driver financial account & settlement | 🟡 | API complete and tested. Signed driver ledger (custody, advances, payments, adjustments), statements, settlements frozen at finalisation. Admin web pending. |
-| 19 | Vehicle profitability | 🟡 | API complete and tested. Per-vehicle P&L from approved records with explicit allocation rules and incomplete-data warnings. Admin web pending. |
+| 14 | Ride-hailing operations | 🟡 | Manual statement entry (no scraping); approval generates revenue + custody receipts; reconciliation vs recorded shifts, time and distance. API + admin web tested. Statement file upload waits on Task 24 (attachments). |
+| 15 | Fuel / CNG / oil ledger | 🟡 | Extensible types (CNG, gasoline, diesel, oil); oil kept out of fuel figures; staff entry, review, correction and audit in API + admin web; driver-app entry API done. Receipt upload waits on Task 24; driver-app fuel screen pending. |
+| 16 | General expenses | 🟡 | Configurable categories with P&L grouping; review/correction/audit; driver-paid costs reimbursed via the driver account. API + admin web tested. Receipt upload waits on Task 24. |
+| 17 | Collections & revenue | ✅ | Single revenue ledger with receipts (cash/electronic, driver/company), outstanding amounts, contract periods, filters and summaries by vehicle/driver/date/kind. API + admin web tested. |
+| 18 | Driver financial account & settlement | ✅ | Signed driver ledger (custody, reimbursements, advances, payments, reasoned adjustments), statements, settlements frozen at finalisation and non-overlapping. API + admin web tested. |
+| 19 | Vehicle profitability | ✅ | Per-vehicle P&L from approved records with stated allocation rules and incomplete-data warnings; maintenance from maintenance-group expenses until Task 21. API + admin web tested. |
 | 20 | Audit & exception detection engine | ⬜ | |
 | 21 | Maintenance | ⬜ | |
 | 22 | Notifications | ⬜ | |

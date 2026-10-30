@@ -14,7 +14,7 @@ nothing else.
 | Part | What it is | Verified where |
 |---|---|---|
 | `core/` | Pure Kotlin/JVM: API client, offline sync engine, tracking state machine, adaptive sampling, input parsing | **Unit-tested** (53 tests) locally and in CI (`./gradlew -p core test`) |
-| `app/` | Android app: Compose UI, foreground location service, SQLite queue, WorkManager sync, Keystore token storage | **CI only** (`:app:assembleDebug :app:lintDebug`) |
+| `app/` | Android app: Compose UI, foreground location service, SQLite queue, WorkManager sync, Keystore token storage | **Compiles and passes Android lint in CI** (`:app:assembleDebug :app:lintDebug`); no instrumented tests yet |
 | On-device behaviour | Background tracking, reboot recovery, OEM battery killers | **Not verified**: needs real phones (see "Device test plan") |
 
 The development sandbox used to write this app cannot reach Google's Maven

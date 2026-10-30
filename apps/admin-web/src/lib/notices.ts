@@ -22,6 +22,18 @@ export const NOTICES = {
   route_events_recomputed: "تمت إعادة احتساب أحداث المسار من نقاط GPS.",
   generated: "تم إنشاء الدورات المجدولة.",
   status_corrected: "تم تصحيح الحالة وتسجيل السبب.",
+  record_updated: "تم حفظ التعديلات.",
+  record_approve: "تم اعتماد السجل.",
+  record_reject: "تم رفض السجل وإعادته للتعديل.",
+  record_void: "تم إلغاء السجل وتسجيل السبب. يبقى محفوظًا في السجل.",
+  record_correct: "تم إنشاء السجل المصحح وإلغاء الأصلي. السجلان محفوظان.",
+  receipt_added: "تم تسجيل المبلغ المستلم.",
+  receipt_voided: "تم إلغاء المقبوض.",
+  ledger_added: "تمت إضافة القيد إلى حساب السائق.",
+  ledger_voided: "تم إلغاء القيد وتسجيل السبب.",
+  settlement_finalize: "تم اعتماد التسوية وترحيل المستحقات إلى حساب السائق.",
+  settlement_recalculate: "تمت إعادة حساب التسوية.",
+  settlement_void: "تم إلغاء التسوية وعكس قيد المستحقات.",
 } as const;
 
 export type NoticeCode = keyof typeof NOTICES;

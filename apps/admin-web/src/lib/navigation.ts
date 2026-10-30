@@ -10,6 +10,9 @@ export type NavIcon =
   | "shifts"
   | "map"
   | "collections"
+  | "rides"
+  | "wallet"
+  | "profit"
   | "expenses"
   | "fuel"
   | "maintenance"
@@ -37,19 +40,36 @@ export const NAV_ITEMS: NavItem[] = [
     permission: "operations:read",
   },
   { href: "/shifts", label: "الورديات", icon: "shifts", permission: "shifts:read" },
+  { href: "/finance/fuel", label: "الوقود والزيوت", icon: "fuel", permission: "fuel:read" },
   {
-    href: "/collections",
-    label: "التحصيلات",
-    icon: "collections",
-    permission: "revenue:read",
-    soon: true,
-  },
-  {
-    href: "/expenses",
+    href: "/finance/expenses",
     label: "المصروفات",
     icon: "expenses",
     permission: "expenses:read",
-    soon: true,
+  },
+  {
+    href: "/finance/revenue",
+    label: "الإيرادات والتحصيل",
+    icon: "collections",
+    permission: "revenue:read",
+  },
+  {
+    href: "/finance/ride-hailing",
+    label: "النقل الذكي",
+    icon: "rides",
+    permission: "revenue:read",
+  },
+  {
+    href: "/finance/settlements",
+    label: "تسويات السائقين",
+    icon: "wallet",
+    permission: "settlements:read",
+  },
+  {
+    href: "/finance/profitability",
+    label: "ربحية المركبات",
+    icon: "profit",
+    permission: "profitability:read",
   },
   {
     href: "/maintenance",
@@ -68,11 +88,10 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { href: "/users", label: "المستخدمون", icon: "users", permission: "users:read" },
   {
-    href: "/settings",
-    label: "الإعدادات",
+    href: "/finance/settings",
+    label: "إعدادات المالية",
     icon: "settings",
     permission: "settings:manage",
-    soon: true,
   },
 ];
 

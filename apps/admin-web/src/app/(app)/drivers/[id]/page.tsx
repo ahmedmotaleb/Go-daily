@@ -11,6 +11,7 @@ import { TextField } from "@/components/forms/fields";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { api } from "@/lib/api";
@@ -80,7 +81,16 @@ export default async function DriverDetailPage({
         title={driver.full_name}
         breadcrumb={<Link href="/drivers">السائقون</Link>}
         description={`هاتف: ${driver.phone}`}
-        actions={<EmploymentBadge status={driver.employment_status} />}
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
+            {can(me, "settlements:read") ? (
+              <ButtonLink href={`/drivers/${driver.id}/account`} variant="secondary">
+                كشف حساب السائق
+              </ButtonLink>
+            ) : null}
+            <EmploymentBadge status={driver.employment_status} />
+          </div>
+        }
       />
       {sp.created === "1" ? (
         <Alert tone="success" className="mb-4">
