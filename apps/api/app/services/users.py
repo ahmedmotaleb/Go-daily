@@ -84,9 +84,25 @@ def _active_super_admin_count(db: Session) -> int:
     )
 
 
-def create_user(db: Session, *, actor: User | None, data: UserCreate) -> User:
-    """Create an account. `actor=None` is only used by the bootstrap CLI."""
-    if actor is not None:
+def ensure_phone_available(db: Session, phone: str, *, exclude: uuid.UUID | None = None) -> None:
+    _ensure_unique(db, phone=phone, email=None, exclude=exclude)
+
+
+def create_user(
+    db: Session,
+    *,
+    actor: User | None,
+    data: UserCreate,
+    commit: bool = True,
+    enforce_role_policy: bool = True,
+) -> User:
+    """Create an account.
+
+    `actor=None` is only used by the bootstrap CLI. `enforce_role_policy=False`
+    is only used for driver app accounts (always role DRIVER), whose caller
+    authorizes with `drivers:write`.
+    """
+    if actor is not None and enforce_role_policy:
         _ensure_can_manage(actor, data.role)
     _ensure_unique(db, phone=data.phone, email=data.email)
     validate_new_password(data.password, phone=data.phone)
@@ -109,7 +125,8 @@ def create_user(db: Session, *, actor: User | None, data: UserCreate) -> User:
         entity_id=user.id,
         changes=audit.diff({}, audit.snapshot(user, AUDITED_FIELDS)),
     )
-    db.commit()
+    if commit:
+        db.commit()
     return user
 
 

@@ -5,10 +5,14 @@ from __future__ import annotations
 import itertools
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import UserRole
 from app.core.security import hash_password
+from app.core.text import plate_key
+from app.models.driver import Driver, EmploymentStatus
+from app.models.fleet import Vehicle, VehicleType
 from app.models.user import User
 
 DEFAULT_PASSWORD = "Str0ng-pass-123"
@@ -63,3 +67,43 @@ def auth(token: str) -> dict[str, str]:
 def login_as(client: TestClient, db: Session, role: UserRole) -> tuple[User, dict[str, str]]:
     user = make_user(db, role=role)
     return user, auth(login(client, user))
+
+
+_code_seq = itertools.count(1)
+
+
+def vehicle_type_id(db: Session, code: str = "MICROBUS") -> str:
+    vt = db.scalar(select(VehicleType).where(VehicleType.code == code))
+    assert vt is not None
+    return str(vt.id)
+
+
+def make_vehicle(db: Session, **overrides: object) -> Vehicle:
+    n = next(_code_seq)
+    plate = str(overrides.pop("plate_number", f"ق ط ر {1000 + n}"))
+    values: dict[str, object] = {
+        "internal_code": f"GD-{n:04d}",
+        "plate_number": plate,
+        "plate_key": plate_key(plate),
+        "vehicle_type_id": db.scalar(select(VehicleType.id).where(VehicleType.code == "MICROBUS")),
+        "is_active": True,
+        "current_odometer_km": 100_000,
+    }
+    values.update(overrides)
+    vehicle = Vehicle(**values)
+    db.add(vehicle)
+    db.flush()
+    return vehicle
+
+
+def make_driver(db: Session, **overrides: object) -> Driver:
+    values: dict[str, object] = {
+        "full_name": "سائق تجريبي",
+        "phone": next_phone(),
+        "employment_status": EmploymentStatus.ACTIVE,
+    }
+    values.update(overrides)
+    driver = Driver(**values)
+    db.add(driver)
+    db.flush()
+    return driver

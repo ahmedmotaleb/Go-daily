@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     login_max_failed_attempts: int = 5
     login_lockout_minutes: int = 15
 
+    # Fernet key (urlsafe base64, 32 bytes) for encrypting sensitive personal
+    # data such as national IDs. Required in staging/production.
+    data_encryption_key: SecretStr | None = None
+
+    # Show "expiring soon" warnings this many days before a document expires.
+    expiry_warning_days: int = 30
+
     # Optional bootstrap admin (used only by `python -m app.cli bootstrap-admin`).
     bootstrap_admin_phone: str | None = None
     bootstrap_admin_password: SecretStr | None = None
