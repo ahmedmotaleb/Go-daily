@@ -201,17 +201,19 @@ def test_logs_scrub_sensitive_and_personal_fields() -> None:
     from app.core.logging import JsonFormatter
 
     record = logging.LogRecord("t", logging.INFO, __file__, 1, "event", (), None)
-    record.__dict__.update(
-        {
-            "password": "p@ss",
-            "token": "abc",
-            "phone": "01012345678",
-            "latitude": 30.1,
-            "nested": {"national_id": "29001011234567", "kind": "ok"},
-        }
-    )
+    secrets = {
+        "password": "p@ss-word-91827",
+        "token": "tok-5f1e9c2d",
+        "phone": "01012345678",
+        "latitude": 30.0444196,
+        "longitude": 31.2357116,
+    }
+    record.__dict__.update({**secrets, "nested": {"national_id": "29001011234567", "kind": "ok"}})
     line = json.loads(JsonFormatter().format(record))
+    for key in secrets:
+        assert line[key] == "[REDACTED]", key
+    assert line["nested"] == {"national_id": "[REDACTED]", "kind": "ok"}
+    # Distinctive values: none may appear anywhere in the line (e.g. inside the message).
     blob = json.dumps(line, ensure_ascii=False)
-    for secret in ("p@ss", "abc", "01012345678", "30.1", "29001011234567"):
-        assert secret not in blob
-    assert line["nested"]["kind"] == "ok"
+    for value in (*map(str, secrets.values()), "29001011234567"):
+        assert value not in blob
