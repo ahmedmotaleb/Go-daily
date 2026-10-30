@@ -99,6 +99,7 @@ def test_repeated_failures_lock_the_account(client: TestClient, db: Session) -> 
         text("UPDATE users SET locked_until = now() - interval '1 minute' WHERE id = :id"),
         {"id": user.id},
     )
+    db.commit()
     assert (
         client.post(LOGIN, json={"phone": user.phone, "password": DEFAULT_PASSWORD}).status_code
         == 200
@@ -151,7 +152,7 @@ def test_expired_session_is_rejected(client: TestClient, db: Session) -> None:
     session = db.scalar(select(AuthSession).where(AuthSession.user_id == user.id))
     assert session is not None
     session.expires_at = utcnow() - timedelta(seconds=1)
-    db.flush()
+    db.commit()
     res = client.get(ME, headers=auth(token))
     assert res.status_code == 401
     assert res.json()["error"]["code"] == "session_expired"
@@ -163,7 +164,7 @@ def test_idle_web_session_expires(client: TestClient, db: Session) -> None:
     session = db.scalar(select(AuthSession).where(AuthSession.user_id == user.id))
     assert session is not None
     session.last_used_at = utcnow() - timedelta(hours=73)
-    db.flush()
+    db.commit()
     assert client.get(ME, headers=auth(token)).status_code == 401
     db.refresh(session)
     assert session.revoke_reason == "idle_timeout"
@@ -173,7 +174,7 @@ def test_deactivated_user_existing_session_is_rejected(client: TestClient, db: S
     user = make_user(db)
     token = login(client, user)
     user.is_active = False
-    db.flush()
+    db.commit()
     res = client.get(ME, headers=auth(token))
     assert res.status_code == 401
     assert res.json()["error"]["code"] == "account_inactive"

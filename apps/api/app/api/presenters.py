@@ -6,9 +6,19 @@ from app.core.time import utcnow
 from app.models.assignment import DriverVehicleAssignment
 from app.models.driver import Driver
 from app.models.fleet import Vehicle
+from app.models.operations import OperationType, RouteDefinition
+from app.models.shift import OperationSession, SessionStatus, Shift, ShiftStatus
 from app.schemas.assignment import AssignmentOut
 from app.schemas.driver import DriverOut
 from app.schemas.fleet import AssignmentSummary, VehicleOut, VehicleTypeOut
+from app.schemas.shift import (
+    OperationTypeRef,
+    PersonRef,
+    RouteRef,
+    SessionOut,
+    ShiftOut,
+    VehicleRef,
+)
 from app.services.drivers import masked_national_id
 from app.services.expiry import expiry_status
 
@@ -85,4 +95,69 @@ def driver_out(d: Driver, current: list[DriverVehicleAssignment] | None = None) 
         current_assignments=[assignment_summary(a) for a in current or []],
         created_at=d.created_at,
         updated_at=d.updated_at,
+    )
+
+
+def _op_ref(ot: OperationType | None) -> OperationTypeRef | None:
+    if ot is None:
+        return None
+    return OperationTypeRef(id=ot.id, code=ot.code, kind=ot.kind, name_ar=ot.name_ar)
+
+
+def _route_ref(route: RouteDefinition | None) -> RouteRef | None:
+    return RouteRef(id=route.id, name=route.name) if route else None
+
+
+def session_out(s: OperationSession) -> SessionOut:
+    op = _op_ref(s.operation_type)
+    assert op is not None  # noqa: S101
+    return SessionOut(
+        id=s.id,
+        shift_id=s.shift_id,
+        operation_type=op,
+        route=_route_ref(s.route),
+        status=s.status,
+        started_at=s.started_at,
+        ended_at=s.ended_at,
+        start_odometer_km=s.start_odometer_km,
+        end_odometer_km=s.end_odometer_km,
+        notes=s.notes,
+    )
+
+
+def shift_out(s: Shift) -> ShiftOut:
+    sessions = [session_out(x) for x in s.sessions]
+    end = s.ended_at or (utcnow() if s.status is ShiftStatus.ACTIVE else None)
+    duration = (
+        int((end - s.started_at).total_seconds() // 60)
+        if s.started_at and end is not None
+        else None
+    )
+    return ShiftOut(
+        id=s.id,
+        driver=PersonRef(id=s.driver.id, full_name=s.driver.full_name),
+        vehicle=VehicleRef(
+            id=s.vehicle.id,
+            internal_code=s.vehicle.internal_code,
+            plate_number=s.vehicle.plate_number,
+        ),
+        status=s.status,
+        source=s.source,
+        planned_start_at=s.planned_start_at,
+        planned_end_at=s.planned_end_at,
+        planned_operation_type=_op_ref(s.planned_operation_type),
+        planned_route=_route_ref(s.planned_route),
+        started_at=s.started_at,
+        ended_at=s.ended_at,
+        start_odometer_km=s.start_odometer_km,
+        end_odometer_km=s.end_odometer_km,
+        odometer_distance_km=s.odometer_distance_km,
+        duration_minutes=duration,
+        assignment_override_reason=s.assignment_override_reason,
+        cancel_reason=s.cancel_reason,
+        notes=s.notes,
+        sessions=sessions,
+        active_session=next((x for x in sessions if x.status is SessionStatus.ACTIVE), None),
+        created_at=s.created_at,
+        updated_at=s.updated_at,
     )

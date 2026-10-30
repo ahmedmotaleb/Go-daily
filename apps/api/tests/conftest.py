@@ -88,7 +88,12 @@ def client(db: Session) -> Iterator[TestClient]:
     app = create_app()
 
     def _get_db() -> Iterator[Session]:
-        yield db
+        # Production closes the session after each request, discarding anything
+        # a failed request flushed but never committed. Mirror that here.
+        try:
+            yield db
+        finally:
+            db.rollback()
 
     app.dependency_overrides[get_db] = _get_db
     with TestClient(app) as c:
