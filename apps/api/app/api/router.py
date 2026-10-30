@@ -18,6 +18,7 @@ from app.api.routes import (
     notifications,
     operations,
     profitability,
+    reports,
     revenue,
     ride_hailing,
     route_events,
@@ -50,3 +51,4 @@ api_router.include_router(attachments.router)
 api_router.include_router(maintenance.router)
 api_router.include_router(exceptions.router)
 api_router.include_router(notifications.router)
+api_router.include_router(reports.router)

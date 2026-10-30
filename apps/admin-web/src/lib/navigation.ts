@@ -78,7 +78,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: "maintenance",
     permission: "maintenance:read",
   },
-  { href: "/reports", label: "التقارير", icon: "reports", permission: "reports:read", soon: true },
+  { href: "/reports", label: "التقارير", icon: "reports", permission: "reports:read" },
   {
     href: "/exceptions",
     label: "حالات للمراجعة",

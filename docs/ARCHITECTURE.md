@@ -230,6 +230,15 @@ ExceptionRun (window, per-rule counts, per-rule errors)
 - **Self-clearing:** a run that no longer produces a condition marks its notifications cleared (hidden from the inbox, kept in history). The bell counts unread, uncleared rows; critical ones turn it red.
 - **Channels:** in-app is always on. Push, e-mail, WhatsApp or SMS plug in through the `NotificationChannel` interface (`deliver(notification, user)`), enabled by name in `NOTIFICATION_CHANNELS` with a minimum severity. They run after commit, only for new rows, and a failing provider is logged without affecting others. Only a development `log` channel ships; no vendor is hardwired.
 
+### Reports (Task 23)
+
+- Every report is a `ReportDef` in `app/services/reports.py`: the permissions its data needs, the filters it accepts, and a builder returning columns, rows, summaries and notes. One shape serves the web table, JSON and CSV.
+- Totals are computed from the rows returned, never from a separate query, so each total is traceable to its records. Financial reports use approved records only, and say so in the notes.
+- Access: `reports:read` **and** every permission of the underlying data (e.g. revenue needs `revenue:read`). The catalog hides what a user cannot open, and the API refuses it anyway.
+- Limits: one year per request and 20,000 rows; beyond that the user is asked to narrow the filters (no silent truncation).
+- CSV: UTF-8 with BOM (Excel shows Arabic correctly), money as plain decimals, local times, a totals row, and text cells starting with `= + - @` prefixed with `'` to block spreadsheet formula injection. The web downloads through `/reports/[code]/csv`, which forwards the session.
+- PDF is not offered: reliable Arabic shaping and right-to-left layout in generated PDFs was not verified, and the spec allows CSV only in that case.
+
 ## 8. Observability
 
 - JSON logs (one object per line) with a request ID. The ID is taken from `X-Request-ID` or generated, and echoed in the response.
