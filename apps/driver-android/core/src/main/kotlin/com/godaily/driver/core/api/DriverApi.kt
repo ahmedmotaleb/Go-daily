@@ -28,6 +28,10 @@ interface DriverApi {
 
     suspend fun endSession(sessionId: String): Session
 
+    suspend fun recordFuel(request: FuelEntryRequest, idempotencyKey: String): FuelEntry
+
+    suspend fun myFuel(): List<FuelEntry>
+
     suspend fun uploadPoints(batch: PointBatch): PointBatchResult
 
     suspend fun uploadEvents(request: TrackingEventsRequest): TrackingEventsResult

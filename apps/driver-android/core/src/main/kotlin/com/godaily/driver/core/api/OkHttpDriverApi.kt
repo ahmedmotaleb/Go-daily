@@ -94,6 +94,17 @@ class OkHttpDriverApi(
             decode(it, Session.serializer())
         }
 
+    override suspend fun recordFuel(request: FuelEntryRequest, idempotencyKey: String): FuelEntry =
+        post(
+            "driver/fuel",
+            request,
+            FuelEntryRequest.serializer(),
+            FuelEntry.serializer(),
+            idempotencyKey = idempotencyKey,
+        )
+
+    override suspend fun myFuel(): List<FuelEntry> = get("driver/fuel", ListSerializer(FuelEntry.serializer()))
+
     override suspend fun uploadPoints(batch: PointBatch): PointBatchResult =
         post("driver/tracking/points", batch, PointBatch.serializer(), PointBatchResult.serializer())
 

@@ -104,6 +104,7 @@ fun HomeScreen(state: UiState, vm: MainViewModel) {
         is Dialog.StartShift -> StartShiftDialog(state, dialog.planned, vm)
         Dialog.EndShift -> EndShiftDialog(state, vm)
         Dialog.ChangeOperation -> OperationDialog(state, vm)
+        Dialog.RecordFuel -> FuelDialog(state, vm)
         null -> Unit
     }
 }
@@ -149,6 +150,9 @@ private fun ActiveShiftCard(shift: Shift, state: UiState, vm: MainViewModel) {
             if (session != null) {
                 OutlinedButton(onClick = vm::endSession, enabled = !state.busy) { Text("إنهاء التشغيل") }
             }
+        }
+        OutlinedButton(onClick = vm::openFuel, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+            Text("تسجيل وقود أو زيت")
         }
         Button(
             onClick = vm::openEndShift,

@@ -9,14 +9,17 @@ import com.godaily.driver.core.api.ApiError
 import com.godaily.driver.core.api.DriverCatalog
 import com.godaily.driver.core.api.DriverMe
 import com.godaily.driver.core.api.DriverVehicle
+import com.godaily.driver.core.api.FuelEntryRequest
 import com.godaily.driver.core.api.LoginRequest
 import com.godaily.driver.core.api.Shift
 import com.godaily.driver.core.api.StartSessionRequest
 import com.godaily.driver.core.api.StartShiftRequest
 import com.godaily.driver.core.sync.PendingShiftEnd
+import com.godaily.driver.core.text.DecimalInput
 import com.godaily.driver.core.text.OdometerInput
 import com.godaily.driver.core.text.normalizeDigits
 import com.godaily.driver.core.text.parseOdometer
+import com.godaily.driver.core.text.parsePositiveDecimal
 import com.godaily.driver.core.tracking.TrackingStatus
 import com.godaily.driver.sync.SyncScheduler
 import com.godaily.driver.tracking.TrackingController
@@ -38,6 +41,8 @@ sealed interface Dialog {
     data object EndShift : Dialog
 
     data object ChangeOperation : Dialog
+
+    data object RecordFuel : Dialog
 }
 
 data class UiState(
@@ -69,6 +74,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // retried, so a lost response never creates a second shift or session.
     private var startShiftKey: String? = null
     private var sessionKey: String? = null
+    private var fuelKey: String? = null
 
     init {
         if (c.tokenStore.isLoggedIn()) {
@@ -200,7 +206,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(dialog = Dialog.ChangeOperation, dialogError = null) }
     }
 
+    fun openFuel() {
+        fuelKey = UUID.randomUUID().toString()
+        _state.update { it.copy(dialog = Dialog.RecordFuel, dialogError = null) }
+    }
+
     fun closeDialog() = _state.update { it.copy(dialog = null, dialogError = null) }
+
+    fun recordFuel(fuelTypeId: String?, quantity: String, total: String, odometer: String, paidByDriver: Boolean) {
+        if (fuelTypeId == null) {
+            _state.update { it.copy(dialogError = "اختر نوع الوقود أو الزيت") }
+            return
+        }
+        val qty = parsePositiveDecimal(quantity, 3, "الكمية")
+        val amount = parsePositiveDecimal(total, 2, "المبلغ")
+        val odometerKm = if (odometer.isBlank()) null else parseOdometer(odometer)
+        val error = listOf(qty, amount).filterIsInstance<DecimalInput.Invalid>().firstOrNull()?.message
+            ?: (odometerKm as? OdometerInput.Invalid)?.message
+        if (error != null) {
+            _state.update { it.copy(dialogError = error) }
+            return
+        }
+        val key = fuelKey ?: UUID.randomUUID().toString().also { fuelKey = it }
+        busy {
+            try {
+                c.api.recordFuel(
+                    FuelEntryRequest(
+                        fuelTypeId = fuelTypeId,
+                        quantity = (qty as DecimalInput.Valid).value,
+                        totalAmount = (amount as DecimalInput.Valid).value,
+                        odometerKm = (odometerKm as? OdometerInput.Valid)?.km,
+                        paidBy = if (paidByDriver) "DRIVER" else "COMPANY",
+                    ),
+                    key,
+                )
+                fuelKey = null
+                _state.update { it.copy(dialog = null, message = "تم تسجيل الوقود — بانتظار مراجعة الإدارة") }
+            } catch (e: ApiError) {
+                _state.update { it.copy(dialogError = e.message) }
+            }
+        }
+    }
 
     fun startShift(
         vehicle: DriverVehicle,

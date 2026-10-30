@@ -29,4 +29,23 @@ class DigitsTest {
             parseOdometer("999", minimumKm = 1000),
         )
     }
+
+    @Test
+    fun `decimals are validated as text, never as floats`() {
+        assertEquals(DecimalInput.Valid("84.50"), parsePositiveDecimal("٨٤٫٥٠", 2, "المبلغ"))
+        assertEquals(DecimalInput.Valid("12.5"), parsePositiveDecimal(" 12,5 ", 3, "الكمية"))
+        assertEquals(DecimalInput.Valid("0.75"), parsePositiveDecimal("00.75", 2, "المبلغ"))
+        assertEquals(DecimalInput.Valid("140"), parsePositiveDecimal("0140", 2, "المبلغ"))
+        assertEquals(DecimalInput.Invalid("أدخل المبلغ"), parsePositiveDecimal("", 2, "المبلغ"))
+        assertEquals(DecimalInput.Invalid("المبلغ أرقام فقط"), parsePositiveDecimal("1e3", 2, "المبلغ"))
+        assertEquals(DecimalInput.Invalid("المبلغ أرقام فقط"), parsePositiveDecimal("-5", 2, "المبلغ"))
+        assertEquals(
+            DecimalInput.Invalid("المبلغ بحد أقصى 2 أرقام عشرية"),
+            parsePositiveDecimal("1.234", 2, "المبلغ"),
+        )
+        assertEquals(
+            DecimalInput.Invalid("المبلغ يجب أن يكون أكبر من صفر"),
+            parsePositiveDecimal("0.00", 2, "المبلغ"),
+        )
+    }
 }

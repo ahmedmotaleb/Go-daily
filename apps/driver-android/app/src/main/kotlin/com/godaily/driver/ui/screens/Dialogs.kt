@@ -198,3 +198,63 @@ fun OperationDialog(state: UiState, vm: MainViewModel) {
         dismissButton = { TextButton(onClick = vm::closeDialog) { Text("إلغاء") } },
     )
 }
+
+@Composable
+fun FuelDialog(state: UiState, vm: MainViewModel) {
+    val types = state.catalog?.fuelTypes.orEmpty()
+    var typeId by remember { mutableStateOf(types.firstOrNull()?.id) }
+    var quantity by remember { mutableStateOf("") }
+    var total by remember { mutableStateOf("") }
+    var odometer by remember { mutableStateOf("") }
+    var paidByDriver by remember { mutableStateOf(true) }
+
+    AlertDialog(
+        onDismissRequest = vm::closeDialog,
+        title = { Text("تسجيل وقود أو زيت") },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+            ) {
+                Text("النوع", fontWeight = FontWeight.SemiBold)
+                if (types.isEmpty()) Text("حدّث الشاشة لتحميل الأنواع", color = MaterialTheme.colorScheme.error)
+                types.forEach { t -> Choice(t.nameAr, typeId == t.id) { typeId = t.id } }
+                OutlinedTextField(
+                    value = quantity,
+                    onValueChange = { quantity = it },
+                    label = { Text("الكمية") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = total,
+                    onValueChange = { total = it },
+                    label = { Text("المبلغ المدفوع (جنيه)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = odometer,
+                    onValueChange = { odometer = it },
+                    label = { Text("قراءة العداد (اختياري)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text("من دفع؟", fontWeight = FontWeight.SemiBold)
+                Choice("دفعت أنا (يُضاف لحسابي بعد المراجعة)", paidByDriver) { paidByDriver = true }
+                Choice("دفعت الشركة", !paidByDriver) { paidByDriver = false }
+                DialogError(state.dialogError)
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { vm.recordFuel(typeId, quantity, total, odometer, paidByDriver) },
+                enabled = !state.busy,
+            ) { Text("حفظ") }
+        },
+        dismissButton = { TextButton(onClick = vm::closeDialog) { Text("إلغاء") } },
+    )
+}

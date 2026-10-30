@@ -42,3 +42,29 @@ fun parseOdometer(raw: String, minimumKm: Int? = null): OdometerInput {
     }
     return OdometerInput.Valid(km.toInt())
 }
+
+sealed interface DecimalInput {
+    /** Normalised decimal string (ASCII digits, '.' separator), sent as is to the API. */
+    data class Valid(val value: String) : DecimalInput
+
+    data class Invalid(val message: String) : DecimalInput
+}
+
+/**
+ * Validates a positive decimal typed by the driver (money or quantity)
+ * without ever converting it to a floating-point number.
+ */
+fun parsePositiveDecimal(raw: String, maxDecimals: Int, label: String): DecimalInput {
+    val text = normalizeDigits(raw).trim().replace('٫', '.').replace(",", ".")
+    if (text.isEmpty()) return DecimalInput.Invalid("أدخل $label")
+    val match = Regex("""^(\d{1,9})(?:\.(\d+))?$""").matchEntire(text)
+        ?: return DecimalInput.Invalid("$label أرقام فقط")
+    val fraction = match.groupValues[2]
+    if (fraction.length > maxDecimals) {
+        return DecimalInput.Invalid("$label بحد أقصى $maxDecimals أرقام عشرية")
+    }
+    val whole = match.groupValues[1].trimStart('0')
+    if (whole.isEmpty() && fraction.all { it == '0' }) return DecimalInput.Invalid("$label يجب أن يكون أكبر من صفر")
+    val normalized = (whole.ifEmpty { "0" }) + if (fraction.isNotEmpty()) ".$fraction" else ""
+    return DecimalInput.Valid(normalized)
+}

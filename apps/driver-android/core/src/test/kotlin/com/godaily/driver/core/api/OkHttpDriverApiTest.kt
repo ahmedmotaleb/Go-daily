@@ -191,4 +191,34 @@ class OkHttpDriverApiTest {
     fun `ids are not allowed to alter the request path`() = runTest {
         assertThrows<IllegalArgumentException> { api.endSession("../auth/logout") }
     }
+
+    @Test
+    fun `fuel entries send decimal strings and the idempotency key`() = runTest {
+        respond(
+            201,
+            """{"id":"f1","fuel_type":"غاز طبيعي","quantity":"12.000","unit":"CUBIC_METER",
+               "total_amount":"84.00","occurred_at":"2026-03-01T06:30:00Z","status":"SUBMITTED","paid_by":"DRIVER"}""",
+        )
+        val entry = api.recordFuel(FuelEntryRequest(fuelTypeId = "t1", quantity = "12", totalAmount = "84.00"), "fuel-1")
+        assertEquals("84.00", entry.totalAmount)
+        assertEquals("SUBMITTED", entry.status)
+        val req = server.takeRequest()
+        assertEquals("/api/v1/driver/fuel", req.url.encodedPath)
+        assertEquals("fuel-1", req.headers["Idempotency-Key"])
+        val body = GoDailyJson.parseToJsonElement(req.body!!.utf8()).jsonObject
+        assertTrue(body["total_amount"]!!.jsonPrimitive.isString) // never a float
+        assertEquals("DRIVER", body["paid_by"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `catalog includes fuel types and tolerates older servers without them`() = runTest {
+        respond(
+            200,
+            """{"operation_types":[],"routes":[],
+               "fuel_types":[{"id":"t1","code":"CNG","name_ar":"غاز طبيعي","default_unit":"CUBIC_METER"}]}""",
+        )
+        assertEquals("CNG", api.catalog().fuelTypes.single().code)
+        respond(200, """{"operation_types":[],"routes":[]}""")
+        assertTrue(api.catalog().fuelTypes.isEmpty())
+    }
 }

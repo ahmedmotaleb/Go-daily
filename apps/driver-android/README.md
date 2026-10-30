@@ -1,9 +1,10 @@
 # Go Daily — Driver app (Android)
 
 Native Android app for drivers: log in, see the assigned vehicle and today's
-shifts, start and end a shift, switch the current operation, and record the
-vehicle's location automatically for the whole work shift. It does
-nothing else.
+shifts, start and end a shift, switch the current operation, record fuel or
+oil purchases during the shift (reviewed by the office before they count),
+and record the vehicle's location automatically for the whole work shift.
+It does nothing else.
 
 - Kotlin, Jetpack Compose (Material 3), Arabic RTL UI
 - minSdk 26 (Android 8.0), targetSdk 36

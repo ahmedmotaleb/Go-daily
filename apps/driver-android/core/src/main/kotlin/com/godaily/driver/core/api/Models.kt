@@ -72,9 +72,43 @@ data class DriverRoute(
 )
 
 @Serializable
+data class DriverFuelType(
+    val id: String,
+    val code: String,
+    @SerialName("name_ar") val nameAr: String,
+    @SerialName("default_unit") val defaultUnit: String,
+)
+
+@Serializable
 data class DriverCatalog(
     @SerialName("operation_types") val operationTypes: List<OperationType>,
     val routes: List<DriverRoute>,
+    @SerialName("fuel_types") val fuelTypes: List<DriverFuelType> = emptyList(),
+)
+
+/** Fuel/oil entry during the active shift. Money and quantities are decimal strings. */
+@Serializable
+data class FuelEntryRequest(
+    @SerialName("fuel_type_id") val fuelTypeId: String,
+    val quantity: String,
+    @SerialName("total_amount") val totalAmount: String,
+    @SerialName("odometer_km") val odometerKm: Int? = null,
+    val vendor: String? = null,
+    @SerialName("paid_by") val paidBy: String = "DRIVER",
+    @SerialName("payment_method") val paymentMethod: String = "CASH",
+    val notes: String? = null,
+)
+
+@Serializable
+data class FuelEntry(
+    val id: String,
+    @SerialName("fuel_type") val fuelType: String,
+    val quantity: String,
+    val unit: String,
+    @SerialName("total_amount") val totalAmount: String,
+    @SerialName("occurred_at") @Serializable(InstantSerializer::class) val occurredAt: Instant,
+    val status: String,
+    @SerialName("paid_by") val paidBy: String,
 )
 
 @Serializable
