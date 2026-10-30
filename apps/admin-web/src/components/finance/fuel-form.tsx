@@ -36,6 +36,11 @@ export function FuelForm({
   return (
     <ActionForm
       action={action}
+      confirm={
+        mode === "correct"
+          ? "يُلغى السجل المعتمد وينشأ سجل جديد مرتبط به؛ السجلان محفوظان. متابعة؟"
+          : undefined
+      }
       submitLabel={LABELS[mode]}
       variant="accent"
       version={record?.updated_at}

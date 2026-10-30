@@ -3,7 +3,9 @@ import type { ComponentProps } from "react";
 
 export function Table({ className, ...props }: ComponentProps<"table">) {
   return (
-    <div className="overflow-x-auto">
+    // `relative`: absolutely positioned cells content (e.g. sr-only labels)
+    // stays inside the scroll box instead of widening the page.
+    <div className="relative overflow-x-auto">
       <table className={clsx("w-full min-w-[640px] text-start text-sm", className)} {...props} />
     </div>
   );

@@ -87,6 +87,7 @@ export async function AttachmentsPanel({
                         action={deleteAttachmentAction.bind(null, a.id, returnPath)}
                         submitLabel="حذف"
                         variant="danger"
+                        confirm="يُخفى الملف من السجل ويبقى محفوظًا مع السبب. متابعة؟"
                         className="mt-2 max-w-sm"
                       >
                         <TextField name="reason" label="السبب" required />

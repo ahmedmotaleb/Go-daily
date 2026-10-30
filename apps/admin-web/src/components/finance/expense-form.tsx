@@ -30,6 +30,11 @@ export function ExpenseForm({
   return (
     <ActionForm
       action={action}
+      confirm={
+        mode === "correct"
+          ? "يُلغى السجل المعتمد وينشأ سجل جديد مرتبط به؛ السجلان محفوظان. متابعة؟"
+          : undefined
+      }
       submitLabel={mode === "create" ? "حفظ" : mode === "edit" ? "حفظ التعديلات" : "حفظ التصحيح"}
       variant="accent"
       version={record?.updated_at}

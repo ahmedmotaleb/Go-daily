@@ -12,6 +12,11 @@ type Base = {
   className?: string;
 };
 
+/** Screen readers announce the error, or else the hint, with the control. */
+function describedBy(name: string, error?: string, hint?: string): string | undefined {
+  return error ? `${name}-error` : hint ? `${name}-hint` : undefined;
+}
+
 function useField(name: string, defaultValue?: string | number | null) {
   const state = useActionFormState();
   const echoed = state.values?.[name];
@@ -46,6 +51,7 @@ export function TextField({
       className={className}
     >
       <Input
+        aria-describedby={describedBy(name, error, hint)}
         id={name}
         name={name}
         defaultValue={value}
@@ -82,6 +88,7 @@ export function SelectField({
       className={className}
     >
       <Select
+        aria-describedby={describedBy(name, error, hint)}
         id={name}
         name={name}
         defaultValue={value ?? ""}
@@ -119,6 +126,7 @@ export function TextareaField({
       className={className}
     >
       <Textarea
+        aria-describedby={describedBy(name, error, hint)}
         id={name}
         name={name}
         defaultValue={value}

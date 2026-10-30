@@ -23,6 +23,12 @@
     unicode-bidi: plaintext;
   }
 
+  /* Grid columns may shrink below their content (e.g. a wide table), so
+     tables scroll inside their own box instead of widening the page. */
+  .grid > * {
+    min-width: 0;
+  }
+
   :focus-visible {
     outline: 2px solid var(--color-lime-500);
     outline-offset: 2px;

@@ -98,6 +98,7 @@ export function ReviewPanel({
               action={reviewAction.bind(null, resource, id, "approve")}
               submitLabel="اعتماد"
               variant="accent"
+              confirm="بعد الاعتماد يدخل السجل في الإجماليات (وحساب السائق إن وجد) ولا يُعدّل إلا بتصحيح موثق. متابعة؟"
             >
               <TextField name="note" label="ملاحظة (اختياري)" />
             </ActionForm>

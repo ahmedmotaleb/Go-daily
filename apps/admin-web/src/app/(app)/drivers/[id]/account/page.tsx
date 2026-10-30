@@ -139,6 +139,7 @@ export default async function DriverAccountPage({
                             action={voidLedgerEntryAction.bind(null, e.id, id)}
                             submitLabel="إلغاء القيد"
                             variant="danger"
+                            confirm="يُلغى القيد ويبقى محفوظًا مع السبب. متابعة؟"
                             className="mt-2 w-64"
                           >
                             <TextField name="reason" label="السبب" required />

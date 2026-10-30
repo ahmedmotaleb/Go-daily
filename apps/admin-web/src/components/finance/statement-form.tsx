@@ -29,6 +29,11 @@ export function StatementForm({
   return (
     <ActionForm
       action={action}
+      confirm={
+        mode === "correct"
+          ? "يُلغى السجل المعتمد وينشأ سجل جديد مرتبط به؛ السجلان محفوظان. متابعة؟"
+          : undefined
+      }
       submitLabel={
         mode === "create" ? "حفظ الكشف" : mode === "edit" ? "حفظ التعديلات" : "حفظ التصحيح"
       }

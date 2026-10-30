@@ -174,6 +174,7 @@ export default async function RevenueDetailPage({
                           action={voidReceiptAction.bind(null, rc.id, r.id)}
                           submitLabel="إلغاء المقبوض"
                           variant="danger"
+                          confirm="يُلغى المقبوض ويبقى محفوظًا مع السبب. متابعة؟"
                           className="mt-2 w-64"
                         >
                           <TextField name="reason" label="السبب" required />

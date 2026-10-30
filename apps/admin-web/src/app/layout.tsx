@@ -12,6 +12,8 @@ export const metadata: Metadata = {
   },
   description: "نظام Go Daily لإدارة وتشغيل الأسطول",
   robots: { index: false, follow: false },
+  icons: { apple: "/apple-touch-icon.png" },
+  appleWebApp: { title: "Go Daily", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
