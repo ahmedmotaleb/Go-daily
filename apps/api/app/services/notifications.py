@@ -23,6 +23,7 @@ from sqlalchemy import Select, func, select, true, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.core import monitoring
 from app.core.config import get_settings
 from app.core.errors import NotFoundError
 from app.core.permissions import ROLE_PERMISSIONS, Permission, UserRole
@@ -359,6 +360,7 @@ def generate(db: Session) -> dict[str, Any]:
             results[kind] = {"conditions": len(drafts), "new": new, "cleared": int(cleared or 0)}
         except Exception as exc:
             logger.exception("notification_generator_failed", extra={"kind": kind})
+            monitoring.capture_exception(exc, component="notification_generator", name=kind)
             errors[kind] = type(exc).__name__
     db.commit()
     _deliver(

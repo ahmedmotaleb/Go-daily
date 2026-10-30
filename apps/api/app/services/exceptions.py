@@ -17,6 +17,7 @@ from sqlalchemy import Select, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.core import monitoring
 from app.core.config import get_settings
 from app.core.errors import ConflictError, NotFoundError, field_error
 from app.core.time import local_day_bounds_utc, utcnow
@@ -86,6 +87,7 @@ def run_detection(
         except Exception as exc:
             # One broken rule must not stop the others; the run records it.
             logger.exception("exception_rule_failed", extra={"rule": info.code})
+            monitoring.capture_exception(exc, component="exception_rule", name=info.code)
             errors[info.code] = type(exc).__name__
     run.results = results
     run.errors = errors

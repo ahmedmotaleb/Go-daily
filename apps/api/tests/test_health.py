@@ -18,7 +18,7 @@ def test_health_ok(client: TestClient) -> None:
 def test_ready_checks_database(client: TestClient) -> None:
     res = client.get("/ready")
     assert res.status_code == 200
-    assert res.json() == {"status": "ready", "checks": {"database": "ok"}}
+    assert res.json() == {"status": "ready", "checks": {"database": "ok", "migrations": "ok"}}
 
 
 def test_ready_reports_unavailable_database() -> None:

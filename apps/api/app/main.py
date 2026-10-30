@@ -6,8 +6,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
-from app.api.routes import health
+from app.api.routes import health, metrics
 from app.core.config import get_settings
+from app.core.crypto import check_configured
 from app.core.errors import register_error_handlers
 from app.core.logging import RequestContextMiddleware, configure_logging
 
@@ -15,6 +16,8 @@ from app.core.logging import RequestContextMiddleware, configure_logging
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_json)
+    # Refuse to start (rather than fail on first use) without the encryption key.
+    check_configured()
 
     app = FastAPI(
         title=settings.app_name,
@@ -38,6 +41,7 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
 
     app.include_router(health.router)
+    app.include_router(metrics.router)
     app.include_router(api_router)
     return app
 

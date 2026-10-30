@@ -19,6 +19,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.core import monitoring
+from app.core.logging import security_headers
+
 logger = logging.getLogger(__name__)
 
 
@@ -126,11 +129,18 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
         # Never leak internals to clients; details go to the logs only.
-        logger.exception("unhandled_error", extra={"path": request.url.path})
-        return JSONResponse(
+        rid = request.scope.get("godaily.request_id")
+        logger.exception("unhandled_error", extra={"path": request.url.path, "request_id": rid})
+        monitoring.capture_exception(exc, component="api", path=request.url.path, request_id=rid)
+        response = JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=_error_body("internal_error", "حدث خطأ غير متوقع"),
         )
+        if rid:
+            # Lets support find the log line from what the user sees.
+            response.headers["X-Request-ID"] = rid
+        security_headers(response)
+        return response
 
 
 def field_error(field: str, message: str, *, code: str = "validation_error") -> ValidationFailed:

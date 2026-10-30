@@ -48,7 +48,9 @@ function buildUrl(path: string, query?: Query): string {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
+  // Correlates this call with the API's log line; shown to the user on server errors.
+  const requestId = crypto.randomUUID().replaceAll("-", "");
+  const headers: Record<string, string> = { Accept: "application/json", "X-Request-ID": requestId };
   if (!options.anonymous) {
     const token = await getSessionToken();
     if (!token) redirect("/login");
@@ -84,12 +86,22 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (res.status === 404 && options.allow404) return null as T;
 
   const text = await res.text();
-  const data: unknown = text ? JSON.parse(text) : null;
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // e.g. an HTML 502 page from a proxy; treated as an error without a body.
+    if (res.ok)
+      throw new ApiError(502, { code: "bad_response", message: "رد غير متوقع من الخادم" });
+  }
   if (!res.ok) {
     const body = (data as { error?: ApiErrorBody } | null)?.error ?? {
       code: "http_error",
       message: "حدث خطأ غير متوقع",
     };
+    if (res.status >= 500) {
+      body.message = `${body.message} (رمز المتابعة: ${requestId.slice(0, 12)})`;
+    }
     throw new ApiError(res.status, body);
   }
   return data as T;

@@ -24,6 +24,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from app.core.config import get_settings
+from app.core.metrics import http_metrics
 from app.core.request_context import RequestContext, reset_request_context, set_request_context
 
 request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
@@ -90,7 +91,10 @@ class JsonFormatter(logging.Formatter):
 
 class RequestIdFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        record.request_id = request_id_var.get() or "-"
+        # An explicit `extra={"request_id": ...}` wins (e.g. the 500 handler,
+        # which runs after the request context has been reset).
+        if not getattr(record, "request_id", None):
+            record.request_id = request_id_var.get() or "-"
         return True
 
 
@@ -113,7 +117,18 @@ def configure_logging(level: str = "INFO", json_logs: bool = True) -> None:
 access_logger = logging.getLogger("app.access")
 
 
-def _security_headers(response: Response) -> None:
+def route_label(request: Request) -> str:
+    """Route template (e.g. /api/v1/fuel/{tx_id}), never the raw path: ids in
+    metric labels would be unbounded. Unknown paths share one label."""
+    if request.scope.get("route") is None:
+        return "unmatched"
+    path = request.url.path
+    for name, value in (request.scope.get("path_params") or {}).items():
+        path = path.replace(f"/{value}", f"/{{{name}}}", 1)
+    return path
+
+
+def security_headers(response: Response) -> None:
     """Defaults for an API that returns personal and financial data."""
     h = response.headers
     h.setdefault("X-Content-Type-Options", "nosniff")
@@ -134,6 +149,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         incoming = request.headers.get("x-request-id", "")
         rid = incoming if 0 < len(incoming) <= 64 and incoming.isprintable() else uuid.uuid4().hex
         token = request_id_var.set(rid)
+        # Kept on the scope too: the 500 handler runs after this middleware.
+        request.scope["godaily.request_id"] = rid
         ctx_token = set_request_context(
             RequestContext(
                 ip_address=request.client.host if request.client else None,
@@ -146,10 +163,12 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             status_code = response.status_code
             response.headers["X-Request-ID"] = rid
-            _security_headers(response)
+            security_headers(response)
             return response
         finally:
-            duration_ms = round((time.perf_counter() - start) * 1000, 1)
+            elapsed = time.perf_counter() - start
+            duration_ms = round(elapsed * 1000, 1)
+            http_metrics.observe(request.method, route_label(request), status_code, elapsed)
             # Path only, never the query string (it may contain identifiers).
             access_logger.info(
                 "request",

@@ -20,6 +20,8 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        # `VAR=` (as compose passes unset values) means "not set", not "".
+        env_ignore_empty=True,
     )
 
     app_name: str = "Go Daily API"
@@ -39,6 +41,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
 
     log_level: str = "INFO"
+    # Bearer token for GET /metrics (Prometheus). Unset = endpoint disabled.
+    metrics_token: SecretStr | None = None
     log_json: bool = True
 
     # Opaque session tokens (see docs/ARCHITECTURE.md -> Authentication).
