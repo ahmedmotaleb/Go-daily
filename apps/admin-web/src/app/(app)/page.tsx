@@ -9,10 +9,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { api } from "@/lib/api";
-import { getCurrentUser } from "@/lib/auth";
+import { LiveFleetMap } from "@/components/map/live-fleet-map";
+import { can, getCurrentUser } from "@/lib/auth";
+import { tileConfig } from "@/lib/map-config";
 import { actionLabel } from "@/lib/audit-labels";
 import { formatDateTime, formatNumber } from "@/lib/format";
-import type { DashboardSummary } from "@/lib/types";
+import type { DashboardSummary, LivePosition } from "@/lib/types";
 
 export const metadata: Metadata = { title: "لوحة التحكم" };
 
@@ -85,7 +87,11 @@ function Placeholder({
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
-  const data = await api.get<DashboardSummary>("/dashboard/summary");
+  const canTrack = can(user, "tracking:read");
+  const [data, live] = await Promise.all([
+    api.get<DashboardSummary>("/dashboard/summary"),
+    canTrack ? api.get<LivePosition[]>("/tracking/live") : Promise.resolve(null),
+  ]);
   const { kpis } = data;
 
   return (
@@ -102,12 +108,32 @@ export default async function DashboardPage() {
         <Kpi label="ورديات اليوم" value={kpis.today_shifts} icon={CalendarDays} />
       </div>
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-2">
-        <Placeholder
-          icon={MapPin}
-          title="الخريطة المباشرة"
-          text="سيتم تفعيل التتبع المباشر في مرحلة GPS"
-        />
+      <div className="mb-6 grid gap-4 lg:grid-cols-3">
+        {live ? (
+          <Card className="lg:col-span-2">
+            <CardHeader
+              title="الخريطة المباشرة"
+              actions={
+                <Link
+                  href="/tracking"
+                  className="text-sm font-medium text-forest-700 hover:underline"
+                >
+                  عرض كامل
+                </Link>
+              }
+            />
+            <CardBody>
+              {live.length === 0 ? (
+                <p className="flex items-center gap-2 text-sm text-ink-muted">
+                  <MapPin className="size-4" aria-hidden="true" />
+                  لا توجد ورديات نشطة الآن. تظهر المركبات عند بدء وردية وإرسال تطبيق السائق للمواقع.
+                </p>
+              ) : (
+                <LiveFleetMap tiles={tileConfig()} initial={live} height={300} compact />
+              )}
+            </CardBody>
+          </Card>
+        ) : null}
         <Placeholder
           icon={Bell}
           title="التنبيهات التشغيلية"

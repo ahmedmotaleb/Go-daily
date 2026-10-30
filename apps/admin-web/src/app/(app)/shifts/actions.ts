@@ -162,3 +162,54 @@ export async function endSessionAction(sessionId: string, shiftId: string): Prom
   refresh(shiftId);
   redirect(`/shifts/${shiftId}?notice=session_ended`);
 }
+
+export async function voidRouteEventAction(
+  eventId: string,
+  shiftId: string,
+  _: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    await api.post(`/route-events/${eventId}/void`, { reason: text(formData, "reason") ?? "" });
+  } catch (error) {
+    return errorToFormState(error);
+  }
+  refresh(shiftId);
+  redirect(`/shifts/${shiftId}?notice=route_event_voided`);
+}
+
+export async function addRouteEventAction(
+  sessionId: string,
+  shiftId: string,
+  _: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const values = formValues(formData);
+  try {
+    await api.post(
+      `/operation-sessions/${sessionId}/route-events`,
+      compact({
+        event_type: text(formData, "event_type"),
+        occurred_at: datetime(formData, "occurred_at"),
+        reason: text(formData, "reason") ?? "",
+      }),
+    );
+  } catch (error) {
+    return errorToFormState(error, values);
+  }
+  refresh(shiftId);
+  redirect(`/shifts/${shiftId}?notice=route_event_added`);
+}
+
+export async function recomputeRouteEventsAction(
+  sessionId: string,
+  shiftId: string,
+): Promise<FormState> {
+  try {
+    await api.post(`/operation-sessions/${sessionId}/route-events/recompute`);
+  } catch (error) {
+    return errorToFormState(error);
+  }
+  refresh(shiftId);
+  redirect(`/shifts/${shiftId}?notice=route_events_recomputed`);
+}

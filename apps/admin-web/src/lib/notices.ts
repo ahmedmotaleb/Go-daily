@@ -17,6 +17,11 @@ export const NOTICES = {
   odometer_correction: "تم تصحيح قراءات العداد وتسجيل السبب.",
   sessions: "بدأ تشغيل جديد.",
   session_ended: "انتهى التشغيل الحالي.",
+  route_event_voided: "تم إلغاء الحدث وتسجيل السبب.",
+  route_event_added: "تمت إضافة الحدث يدويًا وتسجيل السبب.",
+  route_events_recomputed: "تمت إعادة احتساب أحداث المسار من نقاط GPS.",
+  generated: "تم إنشاء الدورات المجدولة.",
+  status_corrected: "تم تصحيح الحالة وتسجيل السبب.",
 } as const;
 
 export type NoticeCode = keyof typeof NOTICES;

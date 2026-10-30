@@ -34,12 +34,18 @@ export default async function OperationsPage({ searchParams }: PageProps<"/opera
         title="التشغيل"
         description="أنواع التشغيل ومسارات الخطوط الثابتة والمدارس ونقل الموظفين"
         actions={
-          can(me, "operations:write") ? (
-            <ButtonLink href="/operations/routes/new" variant="accent">
-              <Plus className="size-4" aria-hidden="true" />
-              مسار جديد
-            </ButtonLink>
-          ) : null
+          <>
+            <ButtonLink href="/operations/school-runs">دورات المدارس</ButtonLink>
+            {can(me, "tracking:read") ? (
+              <ButtonLink href="/tracking">الخريطة المباشرة</ButtonLink>
+            ) : null}
+            {can(me, "operations:write") ? (
+              <ButtonLink href="/operations/routes/new" variant="accent">
+                <Plus className="size-4" aria-hidden="true" />
+                مسار جديد
+              </ButtonLink>
+            ) : null}
+          </>
         }
       />
       <Card className="mb-6">

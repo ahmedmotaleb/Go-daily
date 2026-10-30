@@ -175,6 +175,8 @@ export type OperationSession = {
   start_odometer_km: number | null;
   end_odometer_km: number | null;
   notes: string | null;
+  loops: number;
+  legs: number;
 };
 
 export type ShiftStatus = "PLANNED" | "ACTIVE" | "COMPLETED" | "CANCELLED";
@@ -239,4 +241,90 @@ export type DashboardSummary = {
     entity_id: string | null;
     actor_name: string | null;
   }[];
+};
+
+export type TrackingState = "ONLINE" | "STALE" | "OFFLINE" | "NOT_IN_SHIFT";
+
+export type LivePosition = {
+  vehicle_id: string;
+  vehicle_code: string;
+  plate_number: string;
+  driver_id: string;
+  driver_name: string;
+  shift_id: string;
+  state: TrackingState;
+  latitude: number | null;
+  longitude: number | null;
+  accuracy_m: number | null;
+  speed_kmh: number | null;
+  heading_deg: number | null;
+  last_recorded_at: string | null;
+  last_received_at: string | null;
+  current_operation: string | null;
+  last_event: string | null;
+};
+
+export type ShiftTrack = {
+  shift_id: string;
+  vehicle_id: string;
+  driver_id: string;
+  window_start: string | null;
+  window_end: string | null;
+  points: {
+    t: string;
+    lat: number;
+    lng: number;
+    acc: number | null;
+    spd: number | null;
+    q: string;
+  }[];
+  counts: Record<string, number>;
+  gps_distance_km: number;
+  odometer_distance_km: number | null;
+  gaps: { start: string; end: string; seconds: number; displacement_m: number | null }[];
+  stops: { start: string; end: string; seconds: number; latitude: number; longitude: number }[];
+  timeline: { at: string; kind: string; label: string; until: string | null }[];
+};
+
+export type RouteEvent = {
+  id: string;
+  session_id: string;
+  stop_id: string | null;
+  stop_name: string | null;
+  event_type:
+    | "ENTERED"
+    | "EXITED"
+    | "REACHED_ORIGIN"
+    | "REACHED_DESTINATION"
+    | "LEG_COMPLETED"
+    | "LOOP_COMPLETED";
+  direction: "OUTBOUND" | "INBOUND" | null;
+  occurred_at: string;
+  sequence_no: number | null;
+  source: "AUTO" | "MANUAL";
+  status: "ACTIVE" | "VOIDED";
+  reason: string | null;
+  void_reason: string | null;
+};
+
+export type SchoolRunStatus =
+  "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "COMPLETED_UNVERIFIED" | "MISSED" | "CANCELLED";
+
+export type SchoolRun = {
+  id: string;
+  route: { id: string; name: string };
+  service_date: string;
+  scheduled_start_at: string;
+  scheduled_end_at: string;
+  vehicle: { id: string; internal_code: string; plate_number: string };
+  driver: { id: string; full_name: string } | null;
+  status: SchoolRunStatus;
+  session_id: string | null;
+  shift_id: string | null;
+  actual_start_at: string | null;
+  actual_end_at: string | null;
+  label: string | null;
+  notes: string | null;
+  status_reason: string | null;
+  evidence: { reached_origin: boolean; reached_destination: boolean; route_events: number };
 };

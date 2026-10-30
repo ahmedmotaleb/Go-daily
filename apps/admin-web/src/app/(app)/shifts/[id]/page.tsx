@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AuditTrail } from "@/components/audit-trail";
 import { OperationSelect } from "@/components/domain/operation-select";
+import { RouteEventsPanel } from "@/components/domain/route-events-panel";
+import { ShiftTrackView } from "@/components/map/shift-track-view";
 import {
   formatDuration,
   SessionStatusBadge,
@@ -19,7 +21,8 @@ import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { can, requirePermission } from "@/lib/auth";
 import { formatDateTime, formatNumber } from "@/lib/format";
-import type { OperationType, Page, Route, Shift } from "@/lib/types";
+import { tileConfig } from "@/lib/map-config";
+import type { OperationType, Page, Route, RouteEvent, Shift, ShiftTrack } from "@/lib/types";
 import {
   cancelShiftAction,
   correctOdometerAction,
@@ -54,6 +57,18 @@ export default async function ShiftDetailPage({ params, searchParams }: PageProp
         api.get<Page<Route>>("/routes", { is_active: true, page_size: 100 }),
       ])
     : [[] as OperationType[], { items: [] as Route[] } as Page<Route>];
+  const canTrack = can(me, "tracking:read") && shift.started_at !== null;
+  const routedSessions = shift.sessions.filter((s) => s.route && s.status !== "CANCELLED");
+  const [track, routeEvents] = canTrack
+    ? await Promise.all([
+        api.get<ShiftTrack>(`/shifts/${shift.id}/track`),
+        Promise.all(
+          routedSessions.map((s) =>
+            api.get<RouteEvent[]>(`/operation-sessions/${s.id}/route-events`),
+          ),
+        ),
+      ])
+    : [null, [] as RouteEvent[][]];
 
   return (
     <>
@@ -101,7 +116,8 @@ export default async function ShiftDetailPage({ params, searchParams }: PageProp
           <Stat label="المدة" value={formatDuration(shift.duration_minutes)} />
         </CardBody>
         <p className="border-t border-line px-5 py-2 text-xs text-ink-muted">
-          المسافة هنا من قراءات العداد فقط. مسافة GPS تُعرض منفصلة بعد تفعيل التتبع.
+          المسافة هنا من قراءات العداد فقط. مسافة GPS معروضة منفصلة في قسم المسار الفعلي ولا يُستبدل
+          أي منهما بالآخر.
         </p>
       </Card>
 
@@ -187,6 +203,36 @@ export default async function ShiftDetailPage({ params, searchParams }: PageProp
               </CardBody>
             ) : null}
           </Card>
+          {track ? (
+            <Card>
+              <CardHeader
+                title="المسار الفعلي حسب GPS"
+                description="إعادة المسار، التوقفات، الانقطاعات والخط الزمني"
+              />
+              <CardBody>
+                <ShiftTrackView tiles={tileConfig()} track={track} />
+              </CardBody>
+            </Card>
+          ) : null}
+          {canTrack && routedSessions.length > 0 ? (
+            <Card>
+              <CardHeader
+                title="الدورات والمحطات"
+                description="محسوبة تلقائيًا من نقاط GPS مع إمكانية التصحيح الموثق"
+              />
+              <CardBody className="space-y-6">
+                {routedSessions.map((s, i) => (
+                  <RouteEventsPanel
+                    key={s.id}
+                    session={s}
+                    shiftId={shift.id}
+                    events={routeEvents[i] ?? []}
+                    canWrite={canWrite}
+                  />
+                ))}
+              </CardBody>
+            </Card>
+          ) : null}
           {shift.notes ? (
             <Card>
               <CardHeader title="ملاحظات" />

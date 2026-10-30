@@ -18,10 +18,10 @@ Phases follow the master task list ([`GO_DAILY_CLAUDE_MASTER_TASKS.md`](GO_DAILY
 | 07 | Shifts & operation sessions | ✅ | Lifecycle, single active shift, odometer rules, multiple sessions per shift |
 | 08 | Admin dashboard V1 | ✅ | Real KPIs and lists; map/alerts placeholders until GPS phase |
 | 09 | Android driver app foundation | ⬜ | |
-| 10 | Work-shift GPS tracking | ⬜ | |
-| 11 | Live fleet map & route replay | ⬜ | |
-| 12 | Geofences & fixed-route loop detection | ⬜ | |
-| 13 | School route operations | ⬜ | |
+| 10 | Work-shift GPS tracking | 🟡 | Backend complete and tested (idempotent ingestion, shift-window privacy, quality flags, retention). Android tracking service written but not buildable here (see Task 09). |
+| 11 | Live fleet map & route replay | ✅ | Provider-neutral map (Leaflet impl), live polling, replay, stops, gaps, GPS vs odometer distance |
+| 12 | Geofences & fixed-route loop detection | ✅ | Debounced engine, idempotent events, audited admin corrections |
+| 13 | School route operations | ✅ | Scheduled runs, GPS-evidenced completion, review/missed states, audited corrections |
 | 14 | Ride-hailing operations | ⬜ | |
 | 15 | Fuel / CNG / oil ledger | ⬜ | |
 | 16 | General expenses | ⬜ | |
