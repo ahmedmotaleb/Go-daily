@@ -41,7 +41,7 @@ from app.schemas.shift import (
     ShiftStart,
     ShiftUpdate,
 )
-from app.services import audit
+from app.services import audit, route_events, school_runs
 from app.services.common import paginate
 from app.services.expiry import ExpiryStatus, expiry_status
 from app.services.operations import get_operation_type, validate_route_for_type
@@ -427,6 +427,7 @@ def end_shift(
     session = active_session(shift)
     if session is not None:
         _close_session(session, ended_at=ended_at, end_odometer_km=data.end_odometer_km)
+        _after_session_closed(db, session)
     shift.status = ShiftStatus.COMPLETED
     shift.ended_at = ended_at
     shift.end_odometer_km = data.end_odometer_km
@@ -458,6 +459,7 @@ def cancel_shift(db: Session, *, actor: User, shift_id: uuid.UUID, reason: str) 
         if session.status is SessionStatus.ACTIVE:
             session.status = SessionStatus.CANCELLED
             session.ended_at = now
+            _after_session_closed(db, session)
     shift.status = ShiftStatus.CANCELLED
     shift.cancel_reason = reason
     if shift.started_at is not None:
@@ -549,6 +551,14 @@ def _close_session(
         session.end_odometer_km = max(end_odometer_km, session.start_odometer_km)
 
 
+def _after_session_closed(db: Session, session: OperationSession) -> None:
+    """Derive route events and school-run completion for a session that just ended."""
+    db.flush()
+    if session.route_id is not None:
+        route_events.detect_safely(db, [session.id])
+    school_runs.on_session_closed(db, session)
+
+
 def _open_session(
     db: Session,
     *,
@@ -575,6 +585,7 @@ def _open_session(
     db.add(session)
     db.flush()
     db.refresh(shift)
+    school_runs.link_session(db, session)
     audit.record(
         db,
         action="operation_session.started",
@@ -611,7 +622,7 @@ def start_session(
         if started_at < current.started_at:
             raise ValidationFailed("وقت البدء قبل بداية التشغيل الحالي", code="invalid_range")
         _close_session(current, ended_at=started_at, end_odometer_km=data.start_odometer_km)
-        db.flush()
+        _after_session_closed(db, current)
     session = _open_session(
         db,
         actor=actor,
@@ -666,6 +677,7 @@ def end_session(
     session.end_odometer_km = data.end_odometer_km
     if data.notes:
         session.notes = f"{session.notes}\n{data.notes}" if session.notes else data.notes
+    _after_session_closed(db, session)
     audit.record(
         db,
         action="operation_session.ended",
@@ -687,6 +699,7 @@ def cancel_session(
         raise ConflictError("هذا التشغيل ملغي بالفعل", code="session_already_cancelled")
     session.status = SessionStatus.CANCELLED
     session.ended_at = session.ended_at or utcnow()
+    _after_session_closed(db, session)
     audit.record(
         db,
         action="operation_session.cancelled",

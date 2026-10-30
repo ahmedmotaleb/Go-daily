@@ -5,6 +5,7 @@ from app.models.audit import AuditLog
 from app.models.base import Base
 from app.models.driver import CompensationMethod, Driver, DriverCompensationPlan, EmploymentStatus
 from app.models.fleet import OwnershipStatus, Vehicle, VehicleType
+from app.models.idempotency import IdempotencyRecord
 from app.models.operations import (
     OperationKind,
     OperationType,
@@ -13,7 +14,25 @@ from app.models.operations import (
     StopKind,
     TripPattern,
 )
+from app.models.route_events import (
+    EventSource,
+    EventStatus,
+    LegDirection,
+    RouteEvent,
+    RouteEventType,
+    SchoolRun,
+    SchoolRunStatus,
+)
 from app.models.shift import OperationSession, SessionStatus, Shift, ShiftSource, ShiftStatus
+from app.models.tracking import (
+    GpsPoint,
+    GpsUploadBatch,
+    PointQuality,
+    PointSource,
+    TrackingEvent,
+    TrackingEventType,
+    VehicleLatestPosition,
+)
 from app.models.user import AuthSession, ClientType, User
 
 __all__ = [
@@ -27,19 +46,34 @@ __all__ = [
     "DriverCompensationPlan",
     "DriverVehicleAssignment",
     "EmploymentStatus",
+    "EventSource",
+    "EventStatus",
+    "GpsPoint",
+    "GpsUploadBatch",
+    "IdempotencyRecord",
+    "LegDirection",
     "OperationKind",
     "OperationSession",
     "OperationType",
     "OwnershipStatus",
+    "PointQuality",
+    "PointSource",
     "RouteDefinition",
+    "RouteEvent",
+    "RouteEventType",
     "RouteStop",
+    "SchoolRun",
+    "SchoolRunStatus",
     "SessionStatus",
     "Shift",
     "ShiftSource",
     "ShiftStatus",
     "StopKind",
+    "TrackingEvent",
+    "TrackingEventType",
     "TripPattern",
     "User",
     "Vehicle",
+    "VehicleLatestPosition",
     "VehicleType",
 ]

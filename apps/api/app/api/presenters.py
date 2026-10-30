@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from app.core.time import utcnow
 from app.models.assignment import DriverVehicleAssignment
 from app.models.driver import Driver
@@ -108,7 +110,7 @@ def _route_ref(route: RouteDefinition | None) -> RouteRef | None:
     return RouteRef(id=route.id, name=route.name) if route else None
 
 
-def session_out(s: OperationSession) -> SessionOut:
+def session_out(s: OperationSession, counts: dict[str, int] | None = None) -> SessionOut:
     op = _op_ref(s.operation_type)
     assert op is not None  # noqa: S101
     return SessionOut(
@@ -122,11 +124,13 @@ def session_out(s: OperationSession) -> SessionOut:
         start_odometer_km=s.start_odometer_km,
         end_odometer_km=s.end_odometer_km,
         notes=s.notes,
+        loops=(counts or {}).get("loops", 0),
+        legs=(counts or {}).get("legs", 0),
     )
 
 
-def shift_out(s: Shift) -> ShiftOut:
-    sessions = [session_out(x) for x in s.sessions]
+def shift_out(s: Shift, counts: dict[uuid.UUID, dict[str, int]] | None = None) -> ShiftOut:
+    sessions = [session_out(x, (counts or {}).get(x.id)) for x in s.sessions]
     end = s.ended_at or (utcnow() if s.status is ShiftStatus.ACTIVE else None)
     duration = (
         int((end - s.started_at).total_seconds() // 60)

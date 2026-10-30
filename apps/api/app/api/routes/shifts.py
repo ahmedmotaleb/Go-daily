@@ -27,6 +27,7 @@ from app.schemas.shift import (
     ShiftStart,
     ShiftUpdate,
 )
+from app.services import route_events
 from app.services import shifts as shifts_service
 
 router = APIRouter(tags=["shifts"])
@@ -63,7 +64,8 @@ def create_shift(body: ShiftCreate, actor: Writer, db: DbSession) -> ShiftOut:
 
 @router.get("/shifts/{shift_id}", response_model=ShiftOut)
 def get_shift(shift_id: uuid.UUID, _: Reader, db: DbSession) -> ShiftOut:
-    return shift_out(shifts_service.get_shift(db, shift_id))
+    shift = shifts_service.get_shift(db, shift_id)
+    return shift_out(shift, route_events.counts(db, [x.id for x in shift.sessions]))
 
 
 @router.patch("/shifts/{shift_id}", response_model=ShiftOut)

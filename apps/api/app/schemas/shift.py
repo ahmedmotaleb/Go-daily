@@ -116,6 +116,9 @@ class SessionOut(BaseModel):
     start_odometer_km: int | None
     end_odometer_km: int | None
     notes: str | None
+    # Counted from GPS route events (fixed routes); 0 when none detected.
+    loops: int = 0
+    legs: int = 0
 
 
 class ShiftOut(BaseModel):

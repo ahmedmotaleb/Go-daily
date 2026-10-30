@@ -7,9 +7,12 @@ from app.api.routes import (
     audit,
     auth,
     dashboard,
+    driver_app,
     drivers,
     operations,
+    route_events,
     shifts,
+    tracking,
     users,
     vehicles,
 )
@@ -24,3 +27,6 @@ api_router.include_router(assignments.router)
 api_router.include_router(operations.router)
 api_router.include_router(shifts.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(driver_app.router)
+api_router.include_router(tracking.router)
+api_router.include_router(route_events.router)

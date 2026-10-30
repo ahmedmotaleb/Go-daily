@@ -152,3 +152,14 @@ def assign(
     db.add(a)
     db.commit()
     return a
+
+
+def make_driver_account(
+    client: TestClient, db: Session, *, vehicle: Vehicle | None = None
+) -> tuple[Driver, User, dict[str, str], Vehicle]:
+    """A driver with an app account, assigned to a vehicle, logged in on mobile."""
+    user = make_user(db, role=UserRole.DRIVER)
+    driver = make_driver(db, user_id=user.id, phone=user.phone)
+    vehicle = vehicle or make_vehicle(db, current_odometer_km=50_000)
+    assign(db, driver, vehicle)
+    return driver, user, auth(login(client, user)), vehicle

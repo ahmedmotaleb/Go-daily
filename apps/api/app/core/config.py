@@ -55,6 +55,17 @@ class Settings(BaseSettings):
     # Show "expiring soon" warnings this many days before a document expires.
     expiry_warning_days: int = 30
 
+    # GPS tracking (see docs/ARCHITECTURE.md -> Tracking).
+    gps_max_accuracy_m: float = 100.0
+    gps_max_speed_kmh: float = 200.0
+    gps_gap_seconds: int = 300
+    gps_stop_min_seconds: int = 180
+    gps_stop_radius_m: float = 60.0
+    tracking_online_seconds: int = 120
+    tracking_stale_seconds: int = 600
+    gps_retention_days: int = 180
+    gps_max_batch_points: int = 500
+
     # Optional bootstrap admin (used only by `python -m app.cli bootstrap-admin`).
     bootstrap_admin_phone: str | None = None
     bootstrap_admin_password: SecretStr | None = None

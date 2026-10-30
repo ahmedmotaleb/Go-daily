@@ -7,11 +7,13 @@ from typing import Annotated
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.errors import AuthenticationError, PermissionDenied
 from app.core.permissions import STAFF_ROLES, Permission, UserRole, has_permission
+from app.models.driver import Driver, EmploymentStatus
 from app.models.user import AuthSession, User
 from app.services import auth as auth_service
 
@@ -60,3 +62,16 @@ def get_current_driver_user(user: CurrentUser) -> User:
 
 
 CurrentDriverUser = Annotated[User, Depends(get_current_driver_user)]
+
+
+def get_current_driver(user: CurrentDriverUser, db: DbSession) -> Driver:
+    """The Driver profile of the logged-in driver account (must be employed)."""
+    driver = db.scalar(select(Driver).where(Driver.user_id == user.id))
+    if driver is None:
+        raise PermissionDenied("الحساب غير مرتبط بملف سائق", code="no_driver_profile")
+    if driver.employment_status is not EmploymentStatus.ACTIVE:
+        raise PermissionDenied("ملف السائق غير نشط", code="driver_not_active")
+    return driver
+
+
+CurrentDriver = Annotated[Driver, Depends(get_current_driver)]

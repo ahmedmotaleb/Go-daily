@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.core.errors import DomainError
+from app.services.idempotency import prune
+from app.services.tracking import prune_old_points
 from app.services.users import bootstrap_super_admin
 
 Seeder = Callable[[Session], int]
@@ -69,6 +71,21 @@ def cmd_bootstrap_admin(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_prune_gps(args: argparse.Namespace) -> int:
+    """Delete raw GPS points of finished shifts older than the retention period."""
+    days = args.older_than_days or get_settings().gps_retention_days
+    with SessionLocal() as db:
+        deleted = prune_old_points(db, older_than_days=days)
+    print(f"Deleted {deleted} GPS points older than {days} days.")
+    return 0
+
+
+def cmd_prune_idempotency(_: argparse.Namespace) -> int:
+    with SessionLocal() as db:
+        print(f"Deleted {prune(db)} expired idempotency records.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="app.cli", description="Go Daily operations CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -76,6 +93,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "bootstrap-admin", help="Create the first SUPER_ADMIN from BOOTSTRAP_ADMIN_* env vars"
     ).set_defaults(func=cmd_bootstrap_admin)
+    prune = sub.add_parser("prune-gps", help="Delete raw GPS points past the retention period")
+    prune.add_argument("--older-than-days", type=int, default=None)
+    prune.set_defaults(func=cmd_prune_gps)
+    sub.add_parser("prune-idempotency", help="Delete expired idempotency records").set_defaults(
+        func=cmd_prune_idempotency
+    )
     return parser
 
 
