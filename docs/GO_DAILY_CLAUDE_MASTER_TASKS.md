@@ -672,33 +672,33 @@ No real credentials in repository.
 
 Before declaring production-ready:
 
--   [ ] all backend tests pass
--   [ ] frontend lint passes
--   [ ] TypeScript typecheck passes
--   [ ] frontend production build passes
--   [ ] Android build/tests pass
--   [ ] Alembic migrations apply from clean DB
--   [ ] upgrade path from existing DB tested
--   [ ] authentication/RBAC verified
--   [ ] vehicle CRUD verified
--   [ ] driver CRUD verified
--   [ ] assignments verified
--   [ ] shifts verified
--   [ ] GPS ingestion/retry verified
--   [ ] live/latest position verified
--   [ ] route replay verified
--   [ ] fixed-route loop detection verified
--   [ ] fuel/CNG/gasoline/oil ledger verified
--   [ ] revenue/expense ledger verified
--   [ ] driver settlement math verified
--   [ ] profitability calculations verified
--   [ ] exception engine verified
--   [ ] maintenance verified
--   [ ] Arabic RTL reviewed
--   [ ] mobile driver UX reviewed
--   [ ] no secrets committed
--   [ ] docs updated
--   [ ] backup/restore procedure reviewed
+-   [x] all backend tests pass
+-   [x] frontend lint passes
+-   [x] TypeScript typecheck passes
+-   [x] frontend production build passes
+-   [x] Android build/tests pass
+-   [x] Alembic migrations apply from clean DB
+-   [x] upgrade path from existing DB tested
+-   [x] authentication/RBAC verified
+-   [x] vehicle CRUD verified
+-   [x] driver CRUD verified
+-   [x] assignments verified
+-   [x] shifts verified
+-   [x] GPS ingestion/retry verified
+-   [x] live/latest position verified
+-   [x] route replay verified
+-   [x] fixed-route loop detection verified
+-   [x] fuel/CNG/gasoline/oil ledger verified
+-   [x] revenue/expense ledger verified
+-   [x] driver settlement math verified
+-   [x] profitability calculations verified
+-   [x] exception engine verified
+-   [x] maintenance verified
+-   [x] Arabic RTL reviewed
+-   [ ] mobile driver UX reviewed (open: needs real phones; see docs/RELEASE_REPORT.md)
+-   [x] no secrets committed
+-   [x] docs updated
+-   [x] backup/restore procedure reviewed
 
 Create a final release report listing: 1. completed functionality 2.
 automated test results 3. manual checks 4. known limitations 5. external
