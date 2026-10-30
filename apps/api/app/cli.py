@@ -20,6 +20,7 @@ from app.core.db import SessionLocal
 from app.core.errors import DomainError
 from app.services.exceptions import run_detection
 from app.services.idempotency import prune
+from app.services.notifications import generate as generate_notifications
 from app.services.tracking import prune_old_points
 from app.services.users import bootstrap_super_admin
 
@@ -103,6 +104,18 @@ def cmd_detect_exceptions(args: argparse.Namespace) -> int:
     return 1 if run.errors else 0
 
 
+def cmd_generate_notifications(_: argparse.Namespace) -> int:
+    """Create in-app notifications from the current state (safe to repeat; run hourly)."""
+    with SessionLocal() as db:
+        outcome = generate_notifications(db)
+    new = sum(r.get("new", 0) for r in outcome["results"].values())
+    cleared = sum(r.get("cleared", 0) for r in outcome["results"].values())
+    print(f"Notifications: {new} new, {cleared} cleared.")
+    for kind, error in outcome["errors"].items():
+        print(f"  generator {kind} failed: {error}", file=sys.stderr)
+    return 1 if outcome["errors"] else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="app.cli", description="Go Daily operations CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -119,6 +132,9 @@ def build_parser() -> argparse.ArgumentParser:
     detect = sub.add_parser("detect-exceptions", help="Run the operational exception rules")
     detect.add_argument("--days", type=int, default=None, help="Look-back window (default 3)")
     detect.set_defaults(func=cmd_detect_exceptions)
+    sub.add_parser(
+        "generate-notifications", help="Create in-app notifications from the current state"
+    ).set_defaults(func=cmd_generate_notifications)
     return parser
 
 

@@ -222,6 +222,14 @@ ExceptionRun (window, per-rule counts, per-rule errors)
 - **Failure isolation.** Each rule runs in a savepoint; a failing rule is logged and recorded on the run, and the others still run.
 - **Audit.** Every review step is an audit entry with the status change, the note and the resolution.
 
+### Notifications (Task 22)
+
+- One `Notification` row per recipient, generated from the current state by `python -m app.cli generate-notifications` (hourly) or the admin "refresh now" button: vehicle licence/insurance and driver licence expiry, maintenance overdue or due soon, tracking interrupted during an active shift (after a grace period), open exception cases of medium or high importance, and a daily summary of financial records waiting for review.
+- Recipients are active staff users whose role holds the generator's permission (drivers never receive admin notifications).
+- **No spam:** `(user, dedupe_key)` is unique; keys change only when the situation does (expiring → expired, a new tracking interruption after recovery). Low-importance cases stay on the exceptions page, and pending reviews come as at most one summary per day.
+- **Self-clearing:** a run that no longer produces a condition marks its notifications cleared (hidden from the inbox, kept in history). The bell counts unread, uncleared rows; critical ones turn it red.
+- **Channels:** in-app is always on. Push, e-mail, WhatsApp or SMS plug in through the `NotificationChannel` interface (`deliver(notification, user)`), enabled by name in `NOTIFICATION_CHANNELS` with a minimum severity. They run after commit, only for new rows, and a failing provider is logged without affecting others. Only a development `log` channel ships; no vendor is hardwired.
+
 ## 8. Observability
 
 - JSON logs (one object per line) with a request ID. The ID is taken from `X-Request-ID` or generated, and echoed in the response.

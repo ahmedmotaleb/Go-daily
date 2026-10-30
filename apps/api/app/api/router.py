@@ -15,6 +15,7 @@ from app.api.routes import (
     expenses,
     fuel,
     maintenance,
+    notifications,
     operations,
     profitability,
     revenue,
@@ -48,3 +49,4 @@ api_router.include_router(profitability.router)
 api_router.include_router(attachments.router)
 api_router.include_router(maintenance.router)
 api_router.include_router(exceptions.router)
+api_router.include_router(notifications.router)

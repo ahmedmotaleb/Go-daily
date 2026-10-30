@@ -106,6 +106,13 @@ class Settings(BaseSettings):
     exception_revenue_ratio: float = 2.0
     exception_revenue_min_statements: int = 5
 
+    # Notifications (Task 22). In-app is always on. Extra channels are
+    # comma-separated names registered in app/services/notification_channels.py.
+    notification_channels: str = ""
+    notification_channel_min_severity: Literal["INFO", "WARNING", "CRITICAL"] = "CRITICAL"
+    # Financial records waiting longer than this are summarised for approvers.
+    notification_pending_review_hours: int = 24
+
     # Optional bootstrap admin (used only by `python -m app.cli bootstrap-admin`).
     bootstrap_admin_phone: str | None = None
     bootstrap_admin_password: SecretStr | None = None

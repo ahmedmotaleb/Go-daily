@@ -76,6 +76,7 @@ Run `make help` for the full list.
 | `make seed` | Seed reference data (idempotent) |
 | `make bootstrap-admin` | Create the first `SUPER_ADMIN` from env vars |
 | `make detect-exceptions` | Run the exception rules now (also schedule it, see below) |
+| `make notifications` | Generate in-app notifications now (also schedule it) |
 | `make test` | API tests (pytest, real PostgreSQL) and web unit tests (vitest) |
 | `make lint` | Ruff, ESLint, Prettier check |
 | `make typecheck` | mypy (strict) and `tsc` |
@@ -102,6 +103,7 @@ Run these from the server's scheduler (cron, systemd timer or the hosting platfo
 | Command | Suggested schedule | Purpose |
 | --- | --- | --- |
 | `python -m app.cli detect-exceptions` | hourly | Runs the review rules over the last 3 days (`--days N` to change). Re-running never duplicates cases. Exit code 1 if a rule failed. |
+| `python -m app.cli generate-notifications` | hourly, after `detect-exceptions` | Creates in-app notifications from the current state and clears those whose cause is gone. Exit code 1 if a generator failed. |
 | `python -m app.cli prune-gps` | daily | Deletes raw GPS points of finished shifts older than `GPS_RETENTION_DAYS`. |
 | `python -m app.cli prune-idempotency` | daily | Deletes expired idempotency records. |
 

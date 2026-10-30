@@ -90,7 +90,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "التنبيهات",
     icon: "alerts",
     permission: "notifications:read",
-    soon: true,
   },
   { href: "/users", label: "المستخدمون", icon: "users", permission: "users:read" },
   {

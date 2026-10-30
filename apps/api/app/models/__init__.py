@@ -39,6 +39,7 @@ from app.models.finance import (
 from app.models.fleet import OwnershipStatus, Vehicle, VehicleType
 from app.models.idempotency import IdempotencyRecord
 from app.models.maintenance import MaintenanceRecord, MaintenanceSchedule, MaintenanceType
+from app.models.notifications import Notification, NotificationSeverity
 from app.models.operations import (
     OperationKind,
     OperationType,
@@ -105,6 +106,8 @@ __all__ = [
     "MaintenanceRecord",
     "MaintenanceSchedule",
     "MaintenanceType",
+    "Notification",
+    "NotificationSeverity",
     "OperationKind",
     "OperationSession",
     "OperationType",
