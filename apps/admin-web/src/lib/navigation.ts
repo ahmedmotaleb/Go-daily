@@ -28,8 +28,8 @@ export type NavItem = {
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "لوحة التحكم", icon: "dashboard" },
-  { href: "/vehicles", label: "الأسطول", icon: "fleet", permission: "vehicles:read", soon: true },
-  { href: "/drivers", label: "السائقون", icon: "drivers", permission: "drivers:read", soon: true },
+  { href: "/vehicles", label: "الأسطول", icon: "fleet", permission: "vehicles:read" },
+  { href: "/drivers", label: "السائقون", icon: "drivers", permission: "drivers:read" },
   {
     href: "/operations",
     label: "التشغيل",

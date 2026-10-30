@@ -23,6 +23,14 @@ const ACTION_LABELS: Record<string, string> = {
   "auth.login.failed": "محاولة دخول فاشلة",
   "auth.logout": "تسجيل خروج",
   "auth.password_changed": "تغيير كلمة المرور",
+  "vehicle.created": "إضافة المركبة",
+  "vehicle.updated": "تعديل بيانات المركبة",
+  "vehicle.activated": "تفعيل المركبة",
+  "vehicle.deactivated": "إيقاف المركبة",
+  "driver.created": "إضافة السائق",
+  "driver.updated": "تعديل بيانات السائق",
+  "driver.sensitive_viewed": "عرض الرقم القومي",
+  "driver.app_account_created": "إنشاء حساب التطبيق",
 };
 
 /** Arabic names for audited fields; unknown fields fall back to their key. */
@@ -33,6 +41,22 @@ const FIELD_LABELS: Record<string, string> = {
   role: "الصلاحية",
   is_active: "حالة التفعيل",
   notes: "ملاحظات",
+  internal_code: "الكود الداخلي",
+  plate_number: "رقم اللوحة",
+  vehicle_type_id: "نوع المركبة",
+  manufacturer: "الشركة المصنعة",
+  model: "الموديل",
+  model_year: "سنة الصنع",
+  color: "اللون",
+  ownership_status: "الملكية",
+  current_odometer_km: "قراءة العداد",
+  license_expiry: "انتهاء الرخصة",
+  insurance_expiry: "انتهاء التأمين",
+  national_id: "الرقم القومي",
+  license_number: "رقم الرخصة",
+  employment_status: "حالة العمل",
+  hire_date: "تاريخ التعيين",
+  end_date: "تاريخ انتهاء العمل",
 };
 
 function describeChanges(changes: AuditEntry["changes"]): string | null {

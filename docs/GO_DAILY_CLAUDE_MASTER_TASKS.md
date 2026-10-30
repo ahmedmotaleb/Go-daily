@@ -133,10 +133,10 @@ timestamps
 Vehicle types must be extensible; seed: `MICROBUS`, `SEDAN`, `VAN`,
 `BUS`, `OTHER`.
 
-Implement: - \[ \] migrations/model/schema/service/API - \[ \]
-list/detail/create/edit - \[ \] activate/deactivate - \[ \]
-search/filter/pagination - \[ \] Arabic RTL fleet screens - \[ \]
-validation and authorization - \[ \] expiry indicators for
+Implement: - \[x\] migrations/model/schema/service/API - \[x\]
+list/detail/create/edit - \[x\] activate/deactivate - \[x\]
+search/filter/pagination - \[x\] Arabic RTL fleet screens - \[x\]
+validation and authorization - \[x\] expiry indicators for
 license/insurance
 
 Do not permanently bind one driver or one operation type to a vehicle.
@@ -153,9 +153,8 @@ license expiry - employment status - hire date - notes
 Prepare compensation configuration for: - fixed salary - daily wage -
 revenue percentage - fixed + incentive
 
-Implement: - \[ \] CRUD - \[ \] active/inactive/employment status - \[
-\] search/filter - \[ \] license expiry warning - \[ \] Arabic RTL
-screens - \[ \] tests
+Implement: - \[x\] CRUD - \[x\] active/inactive/employment status - \[x\] search/filter - \[x\] license expiry warning - \[x\] Arabic RTL
+screens - \[x\] tests
 
 Sensitive IDs must never appear in logs.
 
@@ -168,10 +167,9 @@ Create historical assignment model rather than `vehicle.driver_id`.
 Fields: - driver_id - vehicle_id - starts_at - ends_at nullable -
 active - notes - timestamps
 
-Implement: - \[ \] assign driver to vehicle - \[ \] end assignment - \[
-\] current assignment - \[ \] history - \[ \] prevent impossible
-overlapping active assignments where practical - \[ \] UI from both
-driver and vehicle pages - \[ \] tests
+Implement: - \[x\] assign driver to vehicle - \[x\] end assignment - \[x\] current assignment - \[x\] history - \[x\] prevent impossible
+overlapping active assignments where practical - \[x\] UI from both
+driver and vehicle pages - \[x\] tests
 
 Never delete historical assignments just because a new assignment
 begins.
