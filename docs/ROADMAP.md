@@ -14,9 +14,9 @@ Phases follow the master task list ([`GO_DAILY_CLAUDE_MASTER_TASKS.md`](GO_DAILY
 | 03 | Fleet / vehicles | ✅ | Extensible types, normalised plates, expiry indicators, odometer correction audit |
 | 04 | Drivers | ✅ | Encrypted national IDs, app accounts, versioned compensation plans |
 | 05 | Driver ↔ vehicle assignment history | ✅ | PRIMARY/RELIEF, DB exclusion constraints, never deleted |
-| 06 | Operation types & route definitions | ⬜ | |
-| 07 | Shifts & operation sessions | ⬜ | |
-| 08 | Admin dashboard V1 | ⬜ | |
+| 06 | Operation types & route definitions | ✅ | Extensible types with behaviour kind; routes with ordered stops/geofence radius |
+| 07 | Shifts & operation sessions | ✅ | Lifecycle, single active shift, odometer rules, multiple sessions per shift |
+| 08 | Admin dashboard V1 | ✅ | Real KPIs and lists; map/alerts placeholders until GPS phase |
 | 09 | Android driver app foundation | ⬜ | |
 | 10 | Work-shift GPS tracking | ⬜ | |
 | 11 | Live fleet map & route replay | ⬜ | |

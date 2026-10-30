@@ -204,9 +204,9 @@ start/end odometer - status - operation context - notes
 
 Statuses: `PLANNED`, `ACTIVE`, `COMPLETED`, `CANCELLED`.
 
-Implement: - \[ \] plan shift - \[ \] start - \[ \] end - \[ \] cancel -
-\[ \] history - \[ \] active shifts - \[ \] odometer validation - \[ \]
-end odometer cannot be lower than start - \[ \] vehicle/driver
+Implement: - \[x\] plan shift - \[x\] start - \[x\] end - \[x\] cancel -
+\[x\] history - \[x\] active shifts - \[x\] odometer validation - \[x\]
+end odometer cannot be lower than start - \[x\] vehicle/driver
 consistency checks
 
 A shift may contain multiple operation sessions, e.g.: 1. university

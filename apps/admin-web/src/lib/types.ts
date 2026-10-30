@@ -120,3 +120,123 @@ export type CompensationPlan = {
   notes: string | null;
   created_at: string;
 };
+
+export type OperationKind =
+  "RIDE_HAILING" | "FIXED_ROUTE" | "SCHOOL_ROUTE" | "PRIVATE_TRIP" | "EMPLOYEE_TRANSPORT" | "OTHER";
+
+export type OperationType = {
+  id: string;
+  code: string;
+  kind: OperationKind;
+  name_ar: string;
+  name_en: string | null;
+  is_active: boolean;
+  sort_order: number;
+  uses_routes: boolean;
+};
+
+export type RouteStop = {
+  id: string;
+  sequence: number;
+  kind: "ORIGIN" | "INTERMEDIATE" | "DESTINATION";
+  name: string;
+  latitude: string | null;
+  longitude: string | null;
+  radius_m: number;
+};
+
+export type Route = {
+  id: string;
+  name: string;
+  operation_type: OperationType;
+  trip_pattern: "ONE_WAY" | "ROUND_TRIP";
+  is_active: boolean;
+  expected_distance_km: string | null;
+  expected_duration_minutes: number | null;
+  window_start: string | null;
+  window_end: string | null;
+  operating_days: number[] | null;
+  notes: string | null;
+  stops: RouteStop[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type OperationTypeRef = { id: string; code: string; kind: OperationKind; name_ar: string };
+
+export type OperationSession = {
+  id: string;
+  shift_id: string;
+  operation_type: OperationTypeRef;
+  route: { id: string; name: string } | null;
+  status: "ACTIVE" | "COMPLETED" | "CANCELLED";
+  started_at: string;
+  ended_at: string | null;
+  start_odometer_km: number | null;
+  end_odometer_km: number | null;
+  notes: string | null;
+};
+
+export type ShiftStatus = "PLANNED" | "ACTIVE" | "COMPLETED" | "CANCELLED";
+
+export type Shift = {
+  id: string;
+  driver: { id: string; full_name: string };
+  vehicle: { id: string; internal_code: string; plate_number: string };
+  status: ShiftStatus;
+  source: "ADMIN" | "DRIVER_APP";
+  planned_start_at: string | null;
+  planned_end_at: string | null;
+  planned_operation_type: OperationTypeRef | null;
+  planned_route: { id: string; name: string } | null;
+  started_at: string | null;
+  ended_at: string | null;
+  start_odometer_km: number | null;
+  end_odometer_km: number | null;
+  odometer_distance_km: number | null;
+  duration_minutes: number | null;
+  assignment_override_reason: string | null;
+  cancel_reason: string | null;
+  notes: string | null;
+  sessions: OperationSession[];
+  active_session: OperationSession | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DashboardSummary = {
+  generated_at: string;
+  kpis: {
+    active_vehicles: number;
+    active_drivers: number;
+    active_shifts: number;
+    today_shifts: number;
+  };
+  active_shifts: Shift[];
+  vehicles: {
+    id: string;
+    internal_code: string;
+    plate_number: string;
+    vehicle_type: string;
+    driver_name: string | null;
+    in_shift: boolean;
+    current_operation: string | null;
+  }[];
+  assignments: AssignmentSummary[];
+  expiring_documents: {
+    kind: "VEHICLE_LICENSE" | "VEHICLE_INSURANCE" | "DRIVER_LICENSE";
+    entity_type: "vehicle" | "driver";
+    entity_id: string;
+    label: string;
+    expires_on: string;
+    status: ExpiryStatus;
+  }[];
+  recent_activity: {
+    id: string;
+    occurred_at: string;
+    action: string;
+    entity_type: string | null;
+    entity_id: string | null;
+    actor_name: string | null;
+  }[];
+};

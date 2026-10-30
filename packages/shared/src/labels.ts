@@ -42,3 +42,34 @@ export type AssignmentRole = keyof typeof ASSIGNMENT_ROLE_LABELS_AR;
 export function options<T extends Record<string, string>>(labels: T): { value: keyof T & string; label: string }[] {
   return Object.entries(labels).map(([value, label]) => ({ value: value as keyof T & string, label }));
 }
+
+export const SHIFT_STATUS_LABELS_AR = {
+  PLANNED: "مخططة",
+  ACTIVE: "نشطة",
+  COMPLETED: "منتهية",
+  CANCELLED: "ملغاة",
+} as const;
+
+export const SESSION_STATUS_LABELS_AR = {
+  ACTIVE: "جارٍ",
+  COMPLETED: "انتهى",
+  CANCELLED: "ملغى",
+} as const;
+
+export const TRIP_PATTERN_LABELS_AR = {
+  ROUND_TRIP: "ذهاب وعودة متكرر",
+  ONE_WAY: "اتجاه واحد",
+} as const;
+
+/** ISO weekday (1 = Monday) -> Arabic name. */
+export const WEEKDAY_LABELS_AR: Record<number, string> = {
+  6: "السبت",
+  7: "الأحد",
+  1: "الاثنين",
+  2: "الثلاثاء",
+  3: "الأربعاء",
+  4: "الخميس",
+  5: "الجمعة",
+};
+/** Egyptian week order (Saturday first). */
+export const WEEKDAY_ORDER = [6, 7, 1, 2, 3, 4, 5] as const;

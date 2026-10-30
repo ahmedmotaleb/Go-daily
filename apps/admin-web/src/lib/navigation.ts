@@ -35,9 +35,8 @@ export const NAV_ITEMS: NavItem[] = [
     label: "التشغيل",
     icon: "operations",
     permission: "operations:read",
-    soon: true,
   },
-  { href: "/shifts", label: "الورديات", icon: "shifts", permission: "shifts:read", soon: true },
+  { href: "/shifts", label: "الورديات", icon: "shifts", permission: "shifts:read" },
   {
     href: "/collections",
     label: "التحصيلات",

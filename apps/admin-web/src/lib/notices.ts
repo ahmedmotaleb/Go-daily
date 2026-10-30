@@ -11,6 +11,12 @@ export const NOTICES = {
   account_deactivated: "تم إيقاف حساب التطبيق وإنهاء جلساته.",
   vehicle_activated: "تم تفعيل المركبة.",
   vehicle_deactivated: "تم إيقاف المركبة.",
+  start: "بدأت الوردية.",
+  end: "انتهت الوردية وتم تحديث قراءة عداد المركبة.",
+  cancel: "تم إلغاء الوردية.",
+  odometer_correction: "تم تصحيح قراءات العداد وتسجيل السبب.",
+  sessions: "بدأ تشغيل جديد.",
+  session_ended: "انتهى التشغيل الحالي.",
 } as const;
 
 export type NoticeCode = keyof typeof NOTICES;

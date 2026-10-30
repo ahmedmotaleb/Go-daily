@@ -140,16 +140,41 @@ Roles: `SUPER_ADMIN`, `ADMIN`, `OPERATIONS`, `ACCOUNTANT`, `DRIVER`.
 - CORS allows only configured origins. Interactive API docs are disabled in production.
 - Security headers on the admin web: `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`.
 
-## 6. Observability
+## 6. Domain model (operations core)
+
+```text
+VehicleType 1─* Vehicle *─┐                       ┌─* Driver ─? User(DRIVER)
+                          ├─ DriverVehicleAssignment (history, PRIMARY/RELIEF)
+                          │
+OperationType(kind) 1─* RouteDefinition 1─* RouteStop (ordered, lat/lng/radius)
+                          │
+Shift (driver, vehicle, PLANNED→ACTIVE→COMPLETED|CANCELLED, odometer start/end)
+  1─* OperationSession (operation type, optional route; one ACTIVE per shift)
+Driver 1─* DriverCompensationPlan (versioned by effective dates)
+```
+
+- **No permanent bindings.** A vehicle has no `driver_id` or operation type. Who drives is in the assignment history, and what it does is in the shifts and sessions.
+- **Operation behaviour** is keyed on `OperationType.kind`, never on a specific route, school or place. Admins can add types (for example a factory shuttle) that reuse a kind.
+- **Shift invariants:**
+  - The database allows one ACTIVE shift per driver and per vehicle (partial unique indexes).
+  - The driver must be assigned to the vehicle at start. Staff may override with a reason; the driver app never can.
+  - An expired driver or vehicle license blocks the start.
+  - Odometer readings never go below the vehicle's last reading, and end ≥ start.
+  - The distance per shift is capped at 1,500 km.
+  - Corrections are audited with old and new values and a reason.
+  - Staff may backdate up to 7 days. The driver app always uses server time.
+- **Odometer and GPS distance** are kept separate. Shifts report `odometer_distance_km` only; GPS distance comes from the tracking phase.
+
+## 7. Observability
 
 - JSON logs (one object per line) with a request ID. The ID is taken from `X-Request-ID` or generated, and echoed in the response.
 - Liveness is `GET /health`. Readiness is `GET /ready`, which runs `SELECT 1` against the database and returns 503 on failure.
 
-## 7. Local infrastructure
+## 8. Local infrastructure
 
 `compose.yaml` runs `postgres`, a one-shot `migrate` job, `api` and `admin-web`. Production images run as non-root users and include health checks. Dockerfiles accept an optional BuildKit secret `extra_ca` for building behind TLS-intercepting proxies. The secret is never stored in an image layer.
 
-## 8. Decision log
+## 9. Decision log
 
 | Date | Decision | Reason |
 | --- | --- | --- |
@@ -157,3 +182,6 @@ Roles: `SUPER_ADMIN`, `ADMIN`, `OPERATIONS`, `ACCOUNTANT`, `DRIVER`.
 | 2026-10-29 | Real PostgreSQL in tests, schema built from migrations | The schema relies on PostgreSQL features, and the migration chain is verified on every run. |
 | 2026-10-29 | Next.js `cacheComponents` disabled | The admin is fully authenticated and dynamic, so caching adds complexity without benefit. Revisit when Next.js makes it mandatory. |
 | 2026-10-29 | Tailwind v4 tokens in a shared package | One source of truth for brand colours across web, charts and maps. |
+| 2026-10-29 | National IDs encrypted with Fernet plus an HMAC blind index | Personal data protection: the database alone does not reveal IDs, and uniqueness still works. `DATA_ENCRYPTION_KEY` is required outside dev and test. |
+| 2026-10-29 | `btree_gist` exclusion constraints for assignment and compensation overlap | Race-safe enforcement in the database, on top of friendly service-level errors. |
+| 2026-10-30 | Partial unique indexes for "one active shift" | Simple, portable, and race-safe. |
