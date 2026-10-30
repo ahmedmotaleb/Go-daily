@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.core.errors import DomainError
+from app.services.exceptions import run_detection
 from app.services.idempotency import prune
 from app.services.tracking import prune_old_points
 from app.services.users import bootstrap_super_admin
@@ -86,6 +87,22 @@ def cmd_prune_idempotency(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_detect_exceptions(args: argparse.Namespace) -> int:
+    """Run the exception rules over the last N days (safe to repeat; schedule it hourly)."""
+    with SessionLocal() as db:
+        try:
+            run = run_detection(db, actor=None, trigger="cli", days=args.days)
+        except DomainError as exc:
+            print(f"detect-exceptions: {exc}", file=sys.stderr)
+            return 1
+    found = sum(r.get("found", 0) for r in run.results.values())
+    new = sum(r.get("new", 0) for r in run.results.values())
+    print(f"Exception rules found {found} cases ({new} new).")
+    for rule, error in run.errors.items():
+        print(f"  rule {rule} failed: {error}", file=sys.stderr)
+    return 1 if run.errors else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="app.cli", description="Go Daily operations CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -99,6 +116,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("prune-idempotency", help="Delete expired idempotency records").set_defaults(
         func=cmd_prune_idempotency
     )
+    detect = sub.add_parser("detect-exceptions", help="Run the operational exception rules")
+    detect.add_argument("--days", type=int, default=None, help="Look-back window (default 3)")
+    detect.set_defaults(func=cmd_detect_exceptions)
     return parser
 
 

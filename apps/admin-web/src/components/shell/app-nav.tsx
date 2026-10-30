@@ -15,6 +15,7 @@ import {
   Route,
   FileBarChart,
   Settings,
+  ShieldAlert,
   TrendingUp,
   UserCog,
   UsersRound,
@@ -45,6 +46,7 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   maintenance: Wrench,
   reports: FileBarChart,
   alerts: Bell,
+  review: ShieldAlert,
   users: UserCog,
   settings: Settings,
 };

@@ -18,6 +18,7 @@ export type NavIcon =
   | "maintenance"
   | "reports"
   | "alerts"
+  | "review"
   | "users"
   | "settings";
 
@@ -79,10 +80,16 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { href: "/reports", label: "التقارير", icon: "reports", permission: "reports:read", soon: true },
   {
-    href: "/alerts",
+    href: "/exceptions",
+    label: "حالات للمراجعة",
+    icon: "review",
+    permission: "exceptions:read",
+  },
+  {
+    href: "/notifications",
     label: "التنبيهات",
     icon: "alerts",
-    permission: "exceptions:read",
+    permission: "notifications:read",
     soon: true,
   },
   { href: "/users", label: "المستخدمون", icon: "users", permission: "users:read" },

@@ -5,6 +5,13 @@ from app.models.attachment import Attachment, AttachmentKind, AttachmentOwner
 from app.models.audit import AuditLog
 from app.models.base import Base
 from app.models.driver import CompensationMethod, Driver, DriverCompensationPlan, EmploymentStatus
+from app.models.exceptions import (
+    ExceptionLabel,
+    ExceptionRun,
+    ExceptionSeverity,
+    ExceptionStatus,
+    OperationalException,
+)
 from app.models.finance import (
     DriverLedgerEntry,
     DriverSettlement,
@@ -79,6 +86,10 @@ __all__ = [
     "EmploymentStatus",
     "EventSource",
     "EventStatus",
+    "ExceptionLabel",
+    "ExceptionRun",
+    "ExceptionSeverity",
+    "ExceptionStatus",
     "Expense",
     "ExpenseCategory",
     "ExpenseGroup",
@@ -97,6 +108,7 @@ __all__ = [
     "OperationKind",
     "OperationSession",
     "OperationType",
+    "OperationalException",
     "OwnershipStatus",
     "PaidBy",
     "PaymentMethod",

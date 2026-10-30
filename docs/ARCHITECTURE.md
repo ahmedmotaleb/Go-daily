@@ -29,7 +29,7 @@ apps/api/
     schemas/     Pydantic request/response models
     services/    business logic (use cases); the only place that writes data
     api/         FastAPI routers (thin), dependencies (auth, RBAC)
-    cli.py       operational commands (seed, bootstrap-admin)
+    cli.py       operational commands (seed, bootstrap-admin, detect-exceptions, prune-*)
   alembic/       migrations (hand-reviewed)
   tests/         pytest suite against real PostgreSQL
 apps/admin-web/
@@ -205,6 +205,23 @@ Vehicle 1─* MaintenanceRecord (review lifecycle, parts/labour/other, downtime)
 - An oil purchase stays a consumable fuel transaction. A service record may link to it, but its cost is not added again; the record carries its own parts, labour and other cost.
 - Maintenance cost in the vehicle P&L = approved maintenance records + approved expenses in maintenance-group categories. Staff are told not to record the same invoice in both places.
 
+### Exception detection (Task 20)
+
+```text
+RULES (app/services/exception_rules.py) ──▶ Candidate(rule, severity, summary, evidence, links, dedupe_key)
+        │ run_detection (CLI hourly / "run now" in the web), one run at a time (advisory lock)
+        ▼
+OperationalException (OPEN → UNDER_REVIEW / ESCALATED → EXPLAINED / CORRECTED / DISMISSED; reopen with a note)
+ExceptionRun (window, per-rule counts, per-rule errors)
+```
+
+- **Signals, not verdicts.** Every case carries one of two neutral labels, "مراجعة مطلوبة" or "حالة غير معتادة", plus the facts and thresholds the rule used. The UI says so on every case page. No rule infers intent.
+- **Rules:** GPS switched off or permission withdrawn during a shift; GPS gaps (with how far the vehicle moved); mock location; long stops away from the route's own stops; route deviation (corridor around straight lines between stops, not road geometry); outside the configured operating areas (disabled until `EXCEPTION_OPERATING_AREAS` is set); odometer increase between shifts (no tracking outside shifts, so this comes from readings); implausible or backwards odometer; GPS vs odometer distance (only with ≥ 80% GPS coverage); fuel cost per km against the vehicle's own weekly history; fuel recorded far from the vehicle (only when both locations exist); driver-paid fuel outside any shift; the same file on different records; same amount/type/vehicle records close in time; platform statements with no recorded ride-hailing activity or far-off income per hour.
+- **Thresholds** are environment settings (`EXCEPTION_*`) and are shown in the web next to the rules.
+- **Dedupe.** Each case has a stable key (per shift, session, record or week). A later run updates an active case's evidence; a closed case is never reopened or rewritten. If a later run re-checks a case's scope and no longer finds it (e.g. a duplicate was voided), the case is marked "no longer detected" but stays for the reviewer.
+- **Failure isolation.** Each rule runs in a savepoint; a failing rule is logged and recorded on the run, and the others still run.
+- **Audit.** Every review step is an audit entry with the status change, the note and the resolution.
+
 ## 8. Observability
 
 - JSON logs (one object per line) with a request ID. The ID is taken from `X-Request-ID` or generated, and echoed in the response.
@@ -230,3 +247,4 @@ Vehicle 1─* MaintenanceRecord (review lifecycle, parts/labour/other, downtime)
 | 2026-10-30 | Driver custody tracked in the driver ledger | Microbus drivers collect fares and pay fuel in cash. The ledger shows what each driver holds or is owed without mixing custody into revenue. |
 | 2026-10-30 | Attachments behind a storage interface, local or S3-compatible | Works on a single server today and moves to object storage by configuration only; no vendor lock-in. |
 | 2026-10-30 | Maintenance due state computed, not stored | Always consistent with the latest approved record and odometer; nothing to keep in sync. |
+| 2026-10-30 | Exception rules as plain functions with stored evidence | Each case can be explained from its own row; thresholds are configuration, not code. No opaque scoring. |

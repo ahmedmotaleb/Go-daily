@@ -80,6 +80,32 @@ class Settings(BaseSettings):
     storage_s3_secret_access_key: SecretStr | None = None
     attachment_max_bytes: int = 10 * 1024 * 1024
 
+    # Exception detection (Task 20). Thresholds are review hints, not verdicts.
+    exception_lookback_days: int = 3
+    exception_gps_disabled_minutes: int = 5
+    exception_gps_gap_minutes: int = 15
+    exception_gps_gap_moved_m: float = 1000.0
+    exception_long_stop_minutes: int = 45
+    # Corridor around the straight lines joining a route's stops (not roads).
+    exception_route_corridor_m: float = 2000.0
+    exception_route_min_minutes: int = 5
+    # "lat,lng,radius_km;lat,lng,radius_km". Empty disables the operating-area rule.
+    exception_operating_areas: str = ""
+    exception_outside_area_minutes: int = 5
+    exception_moved_between_shifts_km: int = 5
+    exception_max_avg_speed_kmh: float = 120.0
+    exception_odometer_tolerance_pct: float = 25.0
+    exception_odometer_tolerance_km: float = 5.0
+    exception_odometer_min_gps_coverage_pct: float = 80.0
+    exception_fuel_ratio: float = 1.6
+    exception_fuel_min_week_km: int = 150
+    exception_fuel_history_weeks: int = 8
+    exception_fuel_distance_m: float = 1000.0
+    exception_fuel_outside_shift_minutes: int = 60
+    exception_duplicate_window_minutes: int = 60
+    exception_revenue_ratio: float = 2.0
+    exception_revenue_min_statements: int = 5
+
     # Optional bootstrap admin (used only by `python -m app.cli bootstrap-admin`).
     bootstrap_admin_phone: str | None = None
     bootstrap_admin_password: SecretStr | None = None

@@ -11,6 +11,7 @@ from app.api.routes import (
     driver_app,
     driver_finance,
     drivers,
+    exceptions,
     expenses,
     fuel,
     maintenance,
@@ -46,3 +47,4 @@ api_router.include_router(driver_finance.router)
 api_router.include_router(profitability.router)
 api_router.include_router(attachments.router)
 api_router.include_router(maintenance.router)
+api_router.include_router(exceptions.router)

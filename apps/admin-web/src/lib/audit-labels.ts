@@ -37,6 +37,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "attachment.uploaded": "رفع مرفق",
   "attachment.deleted": "حذف مرفق",
   "maintenance_schedule.saved": "حفظ جدول صيانة",
+  "operational_exception.reviewed": "مراجعة حالة",
   "driver_ledger.posted": "قيد في حساب السائق",
   "driver_ledger.voided": "إلغاء قيد في حساب السائق",
   "revenue_receipt.added": "تسجيل تحصيل",
@@ -125,6 +126,7 @@ export const FIELD_LABELS: Record<string, string> = {
   interval_days: "كل (يوم)",
   baseline_km: "آخر تنفيذ معروف (كم)",
   baseline_date: "تاريخ آخر تنفيذ معروف",
+  resolution: "النتيجة",
 };
 
 export function actionLabel(action: string): string {

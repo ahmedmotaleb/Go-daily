@@ -40,7 +40,7 @@ logs: ## Follow Docker stack logs
 	docker compose logs -f
 
 # ---------------------------------------------------------------- database
-.PHONY: migrate migration seed bootstrap-admin
+.PHONY: migrate migration seed bootstrap-admin detect-exceptions
 migrate: ## Apply database migrations
 	$(UV) run alembic upgrade head
 
@@ -53,6 +53,9 @@ seed: ## Seed reference data (idempotent; no fake operational data)
 
 bootstrap-admin: ## Create the first SUPER_ADMIN from BOOTSTRAP_ADMIN_* env vars
 	$(UV) run python -m app.cli bootstrap-admin
+
+detect-exceptions: ## Run the operational exception rules over the last 3 days
+	$(UV) run python -m app.cli detect-exceptions
 
 # ---------------------------------------------------------------- quality
 .PHONY: test api-test web-test android-test lint api-lint web-lint typecheck format build check

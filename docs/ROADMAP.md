@@ -28,7 +28,7 @@ Phases follow the master task list ([`GO_DAILY_CLAUDE_MASTER_TASKS.md`](GO_DAILY
 | 17 | Collections & revenue | ✅ | Single revenue ledger with receipts (cash/electronic, driver/company), outstanding amounts, contract periods, filters and summaries by vehicle/driver/date/kind. API + admin web tested. |
 | 18 | Driver financial account & settlement | ✅ | Signed driver ledger (custody, reimbursements, advances, payments, reasoned adjustments), statements, settlements frozen at finalisation and non-overlapping. API + admin web tested. |
 | 19 | Vehicle profitability | ✅ | Per-vehicle P&L from approved records with stated allocation rules and incomplete-data warnings; maintenance = approved maintenance records + maintenance-group expenses. API + admin web tested. |
-| 20 | Audit & exception detection engine | ⬜ | |
+| 20 | Audit & exception detection engine | ✅ | 15 explainable rules (tracking, odometer, fuel, duplicates, revenue) with stored evidence, neutral labels (مراجعة مطلوبة / حالة غير معتادة), dedupe, "no longer detected" marking, audited review workflow (open, under review, escalated, explained, corrected, dismissed, reopen), CLI for scheduling and a "run now" button. API + admin web tested. Rules use recorded data only; route deviation uses straight lines between stops, not roads. |
 | 21 | Maintenance | ✅ | Types with default km/day intervals; per-vehicle schedules with overrides and a known baseline; due states (ok / soon / overdue / no baseline); service records with parts/labour/other cost, vendor, downtime, invoices, review lifecycle and corrections; optional link to an oil purchase without counting it twice. API + admin web tested. |
 | 22 | Notifications | ⬜ | |
 | 23 | Reports | ⬜ | |

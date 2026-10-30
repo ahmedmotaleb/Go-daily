@@ -14,6 +14,7 @@ import { ActionForm } from "@/components/forms/action-form";
 import { TextareaField, TextField } from "@/components/forms/fields";
 import { Notice } from "@/components/notice";
 import { Alert } from "@/components/ui/alert";
+import { ShiftExceptions } from "@/components/exceptions/panels";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
@@ -233,6 +234,7 @@ export default async function ShiftDetailPage({ params, searchParams }: PageProp
               </CardBody>
             </Card>
           ) : null}
+          {can(me, "exceptions:read") ? <ShiftExceptions shiftId={shift.id} /> : null}
           {shift.notes ? (
             <Card>
               <CardHeader title="ملاحظات" />

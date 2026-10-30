@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ExpiryBadge } from "@/components/domain/badges";
 import { formatDuration } from "@/components/domain/shift-badges";
 import { Badge } from "@/components/ui/badge";
+import { ExceptionsSummaryCard } from "@/components/exceptions/panels";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
@@ -134,11 +135,15 @@ export default async function DashboardPage() {
             </CardBody>
           </Card>
         ) : null}
-        <Placeholder
-          icon={Bell}
-          title="التنبيهات التشغيلية"
-          text="سيتم تفعيلها بعد تشغيل نظام التتبع والتحليل"
-        />
+        {can(user, "exceptions:read") ? (
+          <ExceptionsSummaryCard />
+        ) : (
+          <Placeholder
+            icon={Bell}
+            title="التنبيهات التشغيلية"
+            text="تظهر هنا لمن لديه صلاحية مراجعة الحالات"
+          />
+        )}
       </div>
 
       <div className="grid gap-6 xl:grid-cols-3">
