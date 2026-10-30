@@ -239,6 +239,25 @@ ExceptionRun (window, per-rule counts, per-rule errors)
 - CSV: UTF-8 with BOM (Excel shows Arabic correctly), money as plain decimals, local times, a totals row, and text cells starting with `= + - @` prefixed with `'` to block spreadsheet formula injection. The web downloads through `/reports/[code]/csv`, which forwards the session.
 - PDF is not offered: reliable Arabic shaping and right-to-left layout in generated PDFs was not verified, and the spec allows CSV only in that case.
 
+### Data integrity and concurrency (Task 26)
+
+Services validate and return clear errors. Row locks serialise competing writes to the same record. Database constraints are the final guard, so a bug or a race can never store a broken state.
+
+| Concern | Service behaviour | Database guarantee | Tests |
+| --- | --- | --- | --- |
+| Active driver/vehicle assignments | Locks the driver and vehicle rows, then checks for overlap | `btree_gist` exclusion constraints (no overlapping primary assignment per vehicle/driver) | `test_assignments.py::test_database_rejects_overlap_even_without_the_service` |
+| Shift lifecycle | Locks the shift; start/end/cancel only from the right state | Partial unique indexes: one active shift per driver and per vehicle, one active session per shift. Check constraints: active needs start time and reading, completed needs end time and reading | `test_shifts.py::test_one_active_shift_per_driver_and_vehicle`, `test_integrity.py` |
+| Odometer monotonicity | Start reading ≥ vehicle's last reading; end ≥ start; implausible jumps refused; corrections need a reason | `end_odometer_km >= start_odometer_km`, non-negative readings | `test_shifts.py`, `test_integrity.py` |
+| Duplicate GPS batches/points/events | Batch replay answers from the stored result | Unique (driver, client batch id), (shift, client point id), (driver, client event id) | `test_tracking.py` |
+| Duplicate financial submissions | Driver-app writes take an `Idempotency-Key`. Admin forms disable submit while pending; near-identical records are also flagged by the exception engine | Unique (user, idempotency key); one live revenue entry per statement; one live ledger entry per source | `test_finance_costs.py`, `test_integrity.py` |
+| Review actions (approve, reject, void, correct) | `finance_common.fetch(lock=True)` takes `SELECT … FOR UPDATE` on every write path; the second reviewer sees the first decision and gets 409 | Lifecycle columns and the unique indexes above | `test_integrity.py::test_review_actions_lock_the_record` |
+| Settlement finalisation | Locks the settlement; finalising freezes the calculation (plan terms, inputs, lines) | Exclusion constraint: finalised settlements of one driver never overlap; one live `EARNING` entry per settlement | `test_finance_settlements.py` |
+| Loop detection duplication | Recomputing voids its own previous automatic events | Unique `dedupe_key` per route event; one school run per session | `test_route_events_api.py`, `test_integrity.py` |
+| Exception and notification runs | One detection run at a time (advisory lock); upserts by key | Unique `dedupe_key`; unique (user, dedupe key) | `test_exceptions.py`, `test_notifications.py` |
+| Audit records | Written in the same transaction as the change they describe (commit both or neither) | Triggers block `UPDATE`, `DELETE` and `TRUNCATE` on `audit_logs` | `test_auth.py`, `test_integrity.py` |
+
+Admin web create forms do not send idempotency keys: the browser cannot resubmit while a request is pending, and the Next.js server does not retry API calls. Mobile writes need keys because they are retried on bad networks.
+
 ## 8. Observability
 
 - JSON logs (one object per line) with a request ID. The ID is taken from `X-Request-ID` or generated, and echoed in the response.

@@ -106,11 +106,8 @@ def update_category(
 # --- Expenses ---------------------------------------------------------------------------
 
 
-def get(db: Session, expense_id: uuid.UUID) -> Expense:
-    expense = db.get(Expense, expense_id)
-    if expense is None:
-        raise NotFoundError("المصروف غير موجود")
-    return expense
+def get(db: Session, expense_id: uuid.UUID, *, lock: bool = False) -> Expense:
+    return fc.fetch(db, Expense, expense_id, "المصروف غير موجود", lock=lock)
 
 
 def _active_category(db: Session, category_id: uuid.UUID) -> ExpenseCategory:
@@ -209,7 +206,7 @@ def create(db: Session, *, actor: User, data: ExpenseCreate, can_approve: bool =
 
 
 def update(db: Session, *, actor: User, expense_id: uuid.UUID, data: ExpenseUpdate) -> Expense:
-    expense = get(db, expense_id)
+    expense = get(db, expense_id, lock=True)
     fc.ensure_editable(expense)
     fields = data.model_dump(exclude_unset=True)
     if {"driver_id", "shift_id", "session_id"} & fields.keys():
@@ -242,14 +239,14 @@ def update(db: Session, *, actor: User, expense_id: uuid.UUID, data: ExpenseUpda
 
 
 def approve(db: Session, *, actor: User, expense_id: uuid.UUID, note: str | None) -> Expense:
-    expense = get(db, expense_id)
+    expense = get(db, expense_id, lock=True)
     _approve(db, expense, actor, note)
     db.commit()
     return expense
 
 
 def reject(db: Session, *, actor: User, expense_id: uuid.UUID, reason: str) -> Expense:
-    expense = get(db, expense_id)
+    expense = get(db, expense_id, lock=True)
     fc.reject(expense, actor, reason)
     audit.record(
         db,
@@ -278,7 +275,7 @@ def _void(db: Session, expense: Expense, actor: User, reason: str) -> None:
 
 
 def void(db: Session, *, actor: User, expense_id: uuid.UUID, reason: str) -> Expense:
-    expense = get(db, expense_id)
+    expense = get(db, expense_id, lock=True)
     _void(db, expense, actor, reason)
     db.commit()
     return expense
@@ -287,7 +284,7 @@ def void(db: Session, *, actor: User, expense_id: uuid.UUID, reason: str) -> Exp
 def correct(
     db: Session, *, actor: User, expense_id: uuid.UUID, data: ExpenseCorrection, can_approve: bool
 ) -> Expense:
-    original = get(db, expense_id)
+    original = get(db, expense_id, lock=True)
     fc.ensure_correctable(original)
     _void(db, original, actor, f"تصحيح: {data.reason}")
     replacement = _new(db, actor=actor, data=data, corrects=original)

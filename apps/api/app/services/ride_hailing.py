@@ -131,11 +131,8 @@ def update_platform(
 # --- Statements -------------------------------------------------------------------------
 
 
-def get(db: Session, statement_id: uuid.UUID) -> RideHailingStatement:
-    statement = db.get(RideHailingStatement, statement_id)
-    if statement is None:
-        raise NotFoundError("الكشف غير موجود")
-    return statement
+def get(db: Session, statement_id: uuid.UUID, *, lock: bool = False) -> RideHailingStatement:
+    return fc.fetch(db, RideHailingStatement, statement_id, "الكشف غير موجود", lock=lock)
 
 
 def revenue_entry_for(db: Session, statement_id: uuid.UUID) -> RevenueEntry | None:
@@ -304,7 +301,7 @@ def create(
 def update(
     db: Session, *, actor: User, statement_id: uuid.UUID, data: StatementFields
 ) -> RideHailingStatement:
-    statement = get(db, statement_id)
+    statement = get(db, statement_id, lock=True)
     fc.ensure_editable(statement)
     if db.get(RideHailingPlatform, data.platform_id) is None:
         raise field_error("platform_id", "المنصة غير موجودة")
@@ -328,7 +325,7 @@ def update(
 def approve(
     db: Session, *, actor: User, statement_id: uuid.UUID, note: str | None
 ) -> RideHailingStatement:
-    statement = get(db, statement_id)
+    statement = get(db, statement_id, lock=True)
     _approve(db, statement, actor, note)
     db.commit()
     return statement
@@ -337,7 +334,7 @@ def approve(
 def reject(
     db: Session, *, actor: User, statement_id: uuid.UUID, reason: str
 ) -> RideHailingStatement:
-    statement = get(db, statement_id)
+    statement = get(db, statement_id, lock=True)
     fc.reject(statement, actor, reason)
     audit.record(
         db,
@@ -368,7 +365,7 @@ def _void(db: Session, s: RideHailingStatement, actor: User, reason: str) -> Non
 
 
 def void(db: Session, *, actor: User, statement_id: uuid.UUID, reason: str) -> RideHailingStatement:
-    statement = get(db, statement_id)
+    statement = get(db, statement_id, lock=True)
     _void(db, statement, actor, reason)
     db.commit()
     return statement
@@ -382,7 +379,7 @@ def correct(
     data: StatementCorrection,
     can_approve: bool,
 ) -> RideHailingStatement:
-    original = get(db, statement_id)
+    original = get(db, statement_id, lock=True)
     fc.ensure_correctable(original)
     _void(db, original, actor, f"تصحيح: {data.reason}")
     db.flush()

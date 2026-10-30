@@ -116,11 +116,8 @@ def update_type(db: Session, *, actor: User, type_id: uuid.UUID, data: FuelTypeU
 # --- Transactions ----------------------------------------------------------------------
 
 
-def get(db: Session, tx_id: uuid.UUID) -> FuelTransaction:
-    tx = db.get(FuelTransaction, tx_id)
-    if tx is None:
-        raise NotFoundError("سجل الوقود غير موجود")
-    return tx
+def get(db: Session, tx_id: uuid.UUID, *, lock: bool = False) -> FuelTransaction:
+    return fc.fetch(db, FuelTransaction, tx_id, "سجل الوقود غير موجود", lock=lock)
 
 
 def _active_type(db: Session, type_id: uuid.UUID) -> FuelType:
@@ -272,7 +269,7 @@ def create_from_driver(
 
 
 def update(db: Session, *, actor: User, tx_id: uuid.UUID, data: FuelUpdate) -> FuelTransaction:
-    tx = get(db, tx_id)
+    tx = get(db, tx_id, lock=True)
     fc.ensure_editable(tx)
     fields = data.model_dump(exclude_unset=True)
     if {"driver_id", "shift_id"} & fields.keys():
@@ -318,14 +315,14 @@ def _approve(db: Session, tx: FuelTransaction, actor: User, note: str | None) ->
 
 
 def approve(db: Session, *, actor: User, tx_id: uuid.UUID, note: str | None) -> FuelTransaction:
-    tx = get(db, tx_id)
+    tx = get(db, tx_id, lock=True)
     _approve(db, tx, actor, note)
     db.commit()
     return tx
 
 
 def reject(db: Session, *, actor: User, tx_id: uuid.UUID, reason: str) -> FuelTransaction:
-    tx = get(db, tx_id)
+    tx = get(db, tx_id, lock=True)
     fc.reject(tx, actor, reason)
     audit.record(
         db,
@@ -354,7 +351,7 @@ def _void(db: Session, tx: FuelTransaction, actor: User, reason: str) -> None:
 
 
 def void(db: Session, *, actor: User, tx_id: uuid.UUID, reason: str) -> FuelTransaction:
-    tx = get(db, tx_id)
+    tx = get(db, tx_id, lock=True)
     _void(db, tx, actor, reason)
     db.commit()
     return tx
@@ -363,7 +360,7 @@ def void(db: Session, *, actor: User, tx_id: uuid.UUID, reason: str) -> FuelTran
 def correct(
     db: Session, *, actor: User, tx_id: uuid.UUID, data: FuelCorrection, can_approve: bool
 ) -> FuelTransaction:
-    original = get(db, tx_id)
+    original = get(db, tx_id, lock=True)
     fc.ensure_correctable(original)
     _void(db, original, actor, f"تصحيح: {data.reason}")
     replacement = _new(db, actor=actor, data=data, source=RecordSource.ADMIN, corrects=original)

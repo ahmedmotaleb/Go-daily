@@ -98,11 +98,15 @@ def outstanding(entry: RevenueEntry) -> Decimal:
     return net_amount(entry) - received(entry)
 
 
-def get(db: Session, entry_id: uuid.UUID) -> RevenueEntry:
-    entry = db.get(RevenueEntry, entry_id, options=[selectinload(RevenueEntry.receipts)])
-    if entry is None:
-        raise NotFoundError("الإيراد غير موجود")
-    return entry
+def get(db: Session, entry_id: uuid.UUID, *, lock: bool = False) -> RevenueEntry:
+    return fc.fetch(
+        db,
+        RevenueEntry,
+        entry_id,
+        "الإيراد غير موجود",
+        lock=lock,
+        options=[selectinload(RevenueEntry.receipts)],
+    )
 
 
 def _validate(entry: RevenueEntry) -> None:
@@ -245,7 +249,7 @@ def _ensure_manual(entry: RevenueEntry) -> None:
 
 
 def update(db: Session, *, actor: User, entry_id: uuid.UUID, data: RevenueUpdate) -> RevenueEntry:
-    entry = get(db, entry_id)
+    entry = get(db, entry_id, lock=True)
     _ensure_manual(entry)
     fc.ensure_editable(entry)
     fields = data.model_dump(exclude_unset=True)
@@ -348,7 +352,7 @@ def add_receipt_to(
 
 
 def add_receipt(db: Session, *, actor: User, entry_id: uuid.UUID, data: ReceiptIn) -> RevenueEntry:
-    entry = get(db, entry_id)
+    entry = get(db, entry_id, lock=True)
     _ensure_manual(entry)
     add_receipt_to(db, entry, data, actor)
     db.commit()
@@ -384,14 +388,14 @@ def void_receipt(db: Session, *, actor: User, receipt_id: uuid.UUID, reason: str
 
 
 def approve(db: Session, *, actor: User, entry_id: uuid.UUID, note: str | None) -> RevenueEntry:
-    entry = get(db, entry_id)
+    entry = get(db, entry_id, lock=True)
     _approve(db, entry, actor, note)
     db.commit()
     return entry
 
 
 def reject(db: Session, *, actor: User, entry_id: uuid.UUID, reason: str) -> RevenueEntry:
-    entry = get(db, entry_id)
+    entry = get(db, entry_id, lock=True)
     _ensure_manual(entry)
     if active_receipts(entry):
         raise ConflictError("ألغِ المقبوضات المسجلة قبل رفض الإيراد", code="has_receipts")
@@ -424,7 +428,7 @@ def void_with_receipts(db: Session, entry: RevenueEntry, actor: User, reason: st
 
 
 def void(db: Session, *, actor: User, entry_id: uuid.UUID, reason: str) -> RevenueEntry:
-    entry = get(db, entry_id)
+    entry = get(db, entry_id, lock=True)
     _ensure_manual(entry)
     if active_receipts(entry):
         raise ConflictError(
@@ -452,7 +456,7 @@ def correct(
     can_approve: bool,
 ) -> RevenueEntry:
     """Replace an approved entry; its receipts move to the replacement."""
-    original = get(db, entry_id)
+    original = get(db, entry_id, lock=True)
     _ensure_manual(original)
     fc.ensure_correctable(original)
     if data.kind is RevenueKind.RIDE_HAILING:

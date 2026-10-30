@@ -9,13 +9,15 @@ replacement linked through `corrects_id`.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.errors import ConflictError, field_error
+from app.core.errors import ConflictError, NotFoundError, field_error
 from app.core.time import utcnow
 from app.models.driver import Driver
 from app.models.finance import (
@@ -39,6 +41,30 @@ CLOCK_SKEW = timedelta(minutes=5)
 MAX_BACKFILL = timedelta(days=400)
 
 REVIEW_FIELDS = ("status", "reviewed_by_id", "review_note", "voided_by_id", "void_reason")
+
+
+def fetch[M](
+    db: Session,
+    model: type[M],
+    record_id: uuid.UUID,
+    missing: str,
+    *,
+    lock: bool = False,
+    options: Sequence[Any] = (),
+) -> M:
+    """Load a record. With `lock`, its row stays locked until commit, so two
+    reviewers acting on the same record run one after the other and the
+    second sees the first one's result (e.g. "already approved")."""
+    obj = db.get(
+        model,
+        record_id,
+        options=list(options),
+        with_for_update={"of": model} if lock else None,
+        populate_existing=lock,
+    )
+    if obj is None:
+        raise NotFoundError(missing)
+    return obj
 
 
 def money(value: Decimal) -> Decimal:

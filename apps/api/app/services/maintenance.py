@@ -225,11 +225,8 @@ def due_status(
 # --- Records -------------------------------------------------------------------------
 
 
-def get(db: Session, record_id: uuid.UUID) -> MaintenanceRecord:
-    record = db.get(MaintenanceRecord, record_id)
-    if record is None:
-        raise NotFoundError("سجل الصيانة غير موجود")
-    return record
+def get(db: Session, record_id: uuid.UUID, *, lock: bool = False) -> MaintenanceRecord:
+    return fc.fetch(db, MaintenanceRecord, record_id, "سجل الصيانة غير موجود", lock=lock)
 
 
 def _validate(db: Session, r: MaintenanceRecord) -> None:
@@ -300,7 +297,7 @@ def create(
 def update(
     db: Session, *, actor: User, record_id: uuid.UUID, data: RecordFields
 ) -> MaintenanceRecord:
-    record = get(db, record_id)
+    record = get(db, record_id, lock=True)
     fc.ensure_editable(record)
     if data.vehicle_id != record.vehicle_id:
         raise field_error("vehicle_id", "لا يمكن تغيير المركبة؛ أنشئ سجلًا جديدًا")
@@ -328,14 +325,14 @@ def update(
 def approve(
     db: Session, *, actor: User, record_id: uuid.UUID, note: str | None
 ) -> MaintenanceRecord:
-    record = get(db, record_id)
+    record = get(db, record_id, lock=True)
     _approve(db, record, actor, note)
     db.commit()
     return record
 
 
 def reject(db: Session, *, actor: User, record_id: uuid.UUID, reason: str) -> MaintenanceRecord:
-    record = get(db, record_id)
+    record = get(db, record_id, lock=True)
     fc.reject(record, actor, reason)
     audit.record(
         db,
@@ -362,7 +359,7 @@ def _void(db: Session, record: MaintenanceRecord, actor: User, reason: str) -> N
 
 
 def void(db: Session, *, actor: User, record_id: uuid.UUID, reason: str) -> MaintenanceRecord:
-    record = get(db, record_id)
+    record = get(db, record_id, lock=True)
     _void(db, record, actor, reason)
     db.commit()
     return record
@@ -371,7 +368,7 @@ def void(db: Session, *, actor: User, record_id: uuid.UUID, reason: str) -> Main
 def correct(
     db: Session, *, actor: User, record_id: uuid.UUID, data: RecordCorrection, can_approve: bool
 ) -> MaintenanceRecord:
-    original = get(db, record_id)
+    original = get(db, record_id, lock=True)
     fc.ensure_correctable(original)
     _void(db, original, actor, f"تصحيح: {data.reason}")
     replacement = _new(db, actor=actor, data=data, corrects=original)

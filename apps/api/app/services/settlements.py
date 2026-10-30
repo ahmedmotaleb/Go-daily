@@ -29,7 +29,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import ConflictError, NotFoundError, field_error
+from app.core.errors import ConflictError, field_error
 from app.core.time import local_day_bounds_utc, to_local_date, utcnow
 from app.models.driver import CompensationMethod, Driver, DriverCompensationPlan
 from app.models.finance import (
@@ -249,11 +249,8 @@ def compute(db: Session, driver_id: uuid.UUID, start: date, end: date) -> Comput
     return comp
 
 
-def get(db: Session, settlement_id: uuid.UUID) -> DriverSettlement:
-    settlement = db.get(DriverSettlement, settlement_id)
-    if settlement is None:
-        raise NotFoundError("التسوية غير موجودة")
-    return settlement
+def get(db: Session, settlement_id: uuid.UUID, *, lock: bool = False) -> DriverSettlement:
+    return fc.fetch(db, DriverSettlement, settlement_id, "التسوية غير موجودة", lock=lock)
 
 
 def _finalized_overlap(
@@ -309,7 +306,7 @@ def create_draft(db: Session, *, actor: User, data: SettlementCreate) -> DriverS
 
 
 def recalculate(db: Session, *, actor: User, settlement_id: uuid.UUID) -> DriverSettlement:
-    settlement = get(db, settlement_id)
+    settlement = get(db, settlement_id, lock=True)
     if settlement.status is not SettlementStatus.DRAFT:
         raise ConflictError("إعادة الحساب للمسودات فقط", code="invalid_state")
     comp = compute(db, settlement.driver_id, settlement.period_start, settlement.period_end)
@@ -329,7 +326,7 @@ def recalculate(db: Session, *, actor: User, settlement_id: uuid.UUID) -> Driver
 
 
 def finalize(db: Session, *, actor: User, settlement_id: uuid.UUID) -> DriverSettlement:
-    settlement = get(db, settlement_id)
+    settlement = get(db, settlement_id, lock=True)
     if settlement.status is not SettlementStatus.DRAFT:
         raise ConflictError("يمكن اعتماد المسودات فقط", code="invalid_state")
     if _finalized_overlap(db, settlement.driver_id, settlement.period_start, settlement.period_end):
@@ -386,7 +383,7 @@ def finalize(db: Session, *, actor: User, settlement_id: uuid.UUID) -> DriverSet
 
 
 def void(db: Session, *, actor: User, settlement_id: uuid.UUID, reason: str) -> DriverSettlement:
-    settlement = get(db, settlement_id)
+    settlement = get(db, settlement_id, lock=True)
     if settlement.status is SettlementStatus.VOIDED:
         raise ConflictError("التسوية ملغاة بالفعل", code="invalid_state")
     if settlement.status is SettlementStatus.FINALIZED:
