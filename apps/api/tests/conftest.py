@@ -39,6 +39,7 @@ from sqlalchemy import text  # noqa: E402
 from sqlalchemy.engine import Connection  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
+from app.api.routes.auth import login_limiter  # noqa: E402
 from app.core.db import engine, get_db  # noqa: E402
 from app.core.storage import LocalStorage  # noqa: E402
 from app.main import create_app  # noqa: E402
@@ -107,3 +108,9 @@ def _isolated_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LocalS
     storage = LocalStorage(tmp_path / "attachments")
     monkeypatch.setattr("app.services.attachments.get_storage", lambda: storage)
     return storage
+
+
+@pytest.fixture(autouse=True)
+def _fresh_login_limiter() -> None:
+    """The per-IP login limiter is process-wide; each test starts with a clean slate."""
+    login_limiter.reset()

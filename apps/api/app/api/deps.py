@@ -52,6 +52,8 @@ def require_permissions(*permissions: Permission) -> Callable[[User], User]:
             raise PermissionDenied(details={"missing": [p.value for p in missing]})
         return user
 
+    # Read by the RBAC matrix test to check every route against every role.
+    _dependency.required_permissions = permissions  # type: ignore[attr-defined]
     return _dependency
 
 

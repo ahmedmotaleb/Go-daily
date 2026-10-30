@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Request, status
 
 from app.api.deps import CurrentSession, CurrentUser, DbSession
+from app.core.config import get_settings
+from app.core.errors import TooManyRequests
 from app.core.permissions import permissions_for
+from app.core.ratelimit import SlidingWindowLimiter
 from app.models.user import ClientType, User
 from app.schemas.auth import ChangePasswordRequest, LoginRequest, LoginResponse
 from app.schemas.common import Message
@@ -22,8 +25,21 @@ def current_user_out(user: User) -> CurrentUserOut:
     )
 
 
+_settings = get_settings()
+login_limiter = SlidingWindowLimiter(
+    _settings.login_rate_limit, _settings.login_rate_window_seconds
+)
+
+
 @router.post("/login", response_model=LoginResponse)
-def login(body: LoginRequest, db: DbSession) -> LoginResponse:
+def login(body: LoginRequest, request: Request, db: DbSession) -> LoginResponse:
+    retry_after = login_limiter.hit(request.client.host if request.client else "unknown")
+    if retry_after is not None:
+        raise TooManyRequests(
+            "محاولات دخول كثيرة من هذا الجهاز، حاول بعد قليل",
+            code="rate_limited",
+            details={"retry_after_seconds": retry_after},
+        )
     result = auth_service.login(
         db,
         phone=body.phone,

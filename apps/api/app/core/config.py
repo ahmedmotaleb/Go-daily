@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     session_idle_timeout_hours: int = 72
     login_max_failed_attempts: int = 5
     login_lockout_minutes: int = 15
+    # Login attempts per client IP per window (all accounts). The admin web
+    # logs users in from its server, so this must cover the whole office.
+    login_rate_limit: int = 60
+    login_rate_window_seconds: int = 300
 
     # Fernet key (urlsafe base64, 32 bytes) for encrypting sensitive personal
     # data such as national IDs. Required in staging/production.

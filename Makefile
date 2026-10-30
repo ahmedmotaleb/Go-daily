@@ -61,7 +61,7 @@ notifications: ## Generate in-app notifications from the current state
 	$(UV) run python -m app.cli generate-notifications
 
 # ---------------------------------------------------------------- quality
-.PHONY: test api-test web-test android-test lint api-lint web-lint typecheck format build check
+.PHONY: test api-test web-test android-test lint api-lint web-lint typecheck format build check audit
 test: api-test web-test ## Run all tests
 
 api-test: ## Run API tests (needs PostgreSQL; uses TEST_DATABASE_URL)
@@ -94,5 +94,9 @@ format: ## Auto-format code
 
 build: ## Production build of the admin web
 	pnpm --filter admin-web build
+
+audit: ## Check dependencies for known vulnerabilities (needs network access)
+	cd apps/api && $(UV) export --no-dev --format requirements-txt --no-hashes -q > /tmp/godaily-req.txt && uvx pip-audit -r /tmp/godaily-req.txt --disable-pip --no-deps
+	pnpm audit --prod
 
 check: lint typecheck test build ## Everything CI runs

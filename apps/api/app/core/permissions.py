@@ -96,6 +96,8 @@ _OPERATIONS = frozenset(
     }
 )
 
+# No tracking:read: accountants work from approved records and per-shift
+# distances, not live positions or routes (drivers' location is personal data).
 _ACCOUNTANT = frozenset(
     {
         P.VEHICLES_READ,
@@ -103,7 +105,6 @@ _ACCOUNTANT = frozenset(
         P.ASSIGNMENTS_READ,
         P.OPERATIONS_READ,
         P.SHIFTS_READ,
-        P.TRACKING_READ,
         P.FUEL_READ,
         P.FUEL_WRITE,
         P.EXPENSES_READ,

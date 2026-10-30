@@ -186,4 +186,5 @@ def test_role_permission_matrix_least_privilege() -> None:
     assert Permission.SETTLEMENTS_FINALIZE not in ops
     assert Permission.REVENUE_WRITE not in ops
     assert Permission.VEHICLES_WRITE not in acc
+    assert Permission.TRACKING_READ not in acc  # location data is not needed for finance
     assert ROLE_PERMISSIONS[UserRole.DRIVER] == frozenset()

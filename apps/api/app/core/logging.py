@@ -23,6 +23,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.core.config import get_settings
 from app.core.request_context import RequestContext, reset_request_context, set_request_context
 
 request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
@@ -44,6 +45,17 @@ SENSITIVE_KEYS = {
     "authorization",
     "national_id",
     "secret",
+    "cookie",
+    "set-cookie",
+    "idempotency_key",
+    "data_encryption_key",
+    "storage_s3_secret_access_key",
+    # Personal data that logs never need.
+    "phone",
+    "latitude",
+    "longitude",
+    "lat",
+    "lng",
 }
 
 
@@ -101,6 +113,18 @@ def configure_logging(level: str = "INFO", json_logs: bool = True) -> None:
 access_logger = logging.getLogger("app.access")
 
 
+def _security_headers(response: Response) -> None:
+    """Defaults for an API that returns personal and financial data."""
+    h = response.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "DENY")
+    h.setdefault("Referrer-Policy", "no-referrer")
+    # Responses are per-user; shared caches and browsers must not keep them.
+    h.setdefault("Cache-Control", "no-store")
+    if get_settings().is_production:
+        h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+
 class RequestContextMiddleware(BaseHTTPMiddleware):
     """Assigns a request ID, echoes it in the response and logs one line per request."""
 
@@ -122,6 +146,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             status_code = response.status_code
             response.headers["X-Request-ID"] = rid
+            _security_headers(response)
             return response
         finally:
             duration_ms = round((time.perf_counter() - start) * 1000, 1)
