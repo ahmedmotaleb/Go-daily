@@ -85,6 +85,11 @@ services:
     restart: unless-stopped
     environment:
       API_INTERNAL_URL: http://api:8000
+      # Map tiles (HTTPS). The default OpenStreetMap servers are for light use only.
+      # Empty = the built-in OpenStreetMap default (see .env.example).
+      MAP_TILE_URL: ${MAP_TILE_URL:-}
+      MAP_TILE_ATTRIBUTION: ${MAP_TILE_ATTRIBUTION:-}
+      MAP_TILE_MAX_ZOOM: ${MAP_TILE_MAX_ZOOM:-}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
