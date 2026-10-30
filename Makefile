@@ -55,7 +55,7 @@ bootstrap-admin: ## Create the first SUPER_ADMIN from BOOTSTRAP_ADMIN_* env vars
 	$(UV) run python -m app.cli bootstrap-admin
 
 # ---------------------------------------------------------------- quality
-.PHONY: test api-test web-test lint api-lint web-lint typecheck format build check
+.PHONY: test api-test web-test android-test lint api-lint web-lint typecheck format build check
 test: api-test web-test ## Run all tests
 
 api-test: ## Run API tests (needs PostgreSQL; uses TEST_DATABASE_URL)
@@ -63,6 +63,9 @@ api-test: ## Run API tests (needs PostgreSQL; uses TEST_DATABASE_URL)
 
 web-test: ## Run admin web unit tests
 	pnpm --filter admin-web test
+
+android-test: ## Run driver app core tests (needs JDK 17+; no Android SDK)
+	cd apps/driver-android && ./gradlew -p core test
 
 lint: api-lint web-lint ## Lint everything
 

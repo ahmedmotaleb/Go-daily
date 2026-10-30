@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Go Daily brand tokens (packages/config/tokens/theme.css). -->
+    <color name="forest_800">#FF123B2B</color>
+    <color name="lime_400">#FFA8DF33</color>
+    <color name="neutral_100">#FFF0F2EE</color>
+</resources>

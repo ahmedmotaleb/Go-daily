@@ -17,8 +17,8 @@ Phases follow the master task list ([`GO_DAILY_CLAUDE_MASTER_TASKS.md`](GO_DAILY
 | 06 | Operation types & route definitions | ✅ | Extensible types with behaviour kind; routes with ordered stops/geofence radius |
 | 07 | Shifts & operation sessions | ✅ | Lifecycle, single active shift, odometer rules, multiple sessions per shift |
 | 08 | Admin dashboard V1 | ✅ | Real KPIs and lists; map/alerts placeholders until GPS phase |
-| 09 | Android driver app foundation | ⬜ | |
-| 10 | Work-shift GPS tracking | 🟡 | Backend complete and tested (idempotent ingestion, shift-window privacy, quality flags, retention). Android tracking service written but not buildable here (see Task 09). |
+| 09 | Android driver app foundation | 🟡 | Kotlin/Compose app in `apps/driver-android`: login, vehicle, today's shifts, start/end shift, current operation, permission onboarding, Keystore token, Arabic RTL. Pure logic in `core/` is unit-tested (53 tests). The `app/` module builds only in CI (the dev sandbox cannot reach Google Maven); not tested on a device yet. |
+| 10 | Work-shift GPS tracking | 🟡 | Backend complete and tested (idempotent ingestion, shift-window privacy, quality flags, retention). App side: foreground location service, SQLite offline queue, idempotent batch sync, adaptive sampling, driver-visible status, device events. Sync/status/sampling logic unit-tested; device behaviour (background, reboot, OEM battery killers) not yet verified on phones. |
 | 11 | Live fleet map & route replay | ✅ | Provider-neutral map (Leaflet impl), live polling, replay, stops, gaps, GPS vs odometer distance |
 | 12 | Geofences & fixed-route loop detection | ✅ | Debounced engine, idempotent events, audited admin corrections |
 | 13 | School route operations | ✅ | Scheduled runs, GPS-evidenced completion, review/missed states, audited corrections |

@@ -14,7 +14,7 @@ Go Daily is a fleet management and operations platform for a transport company i
 apps/
   api/             FastAPI + SQLAlchemy 2 + Alembic (Python 3.12)
   admin-web/       Next.js 16 (App Router) + TypeScript + Tailwind CSS v4
-  driver-android/  Android driver app (added in the GPS phase)
+  driver-android/  Android driver app (Kotlin, Compose) — see its README
 packages/
   config/          Shared tsconfig and Go Daily design tokens
   shared/          Shared TypeScript constants (roles, Arabic labels)

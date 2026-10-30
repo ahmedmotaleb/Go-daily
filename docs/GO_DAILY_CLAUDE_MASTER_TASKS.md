@@ -278,9 +278,9 @@ available - source - sync status / server receipt time
 Implement: - \[ \] Android foreground location service as required by
 Android - \[ \] explicit work-tracking disclosure and permissions - \[
 \] tracking only in authorized work context - \[ \] local offline
-queue - \[ \] retry/sync after internet returns - \[ \] idempotent
-backend ingestion - \[ \] batch upload endpoint - \[ \] server
-validation - \[ \] retention-aware DB design - \[ \] battery-conscious
+queue - \[ \] retry/sync after internet returns - \[x\] idempotent
+backend ingestion - \[x\] batch upload endpoint - \[x\] server
+validation - \[x\] retention-aware DB design - \[ \] battery-conscious
 adaptive sampling - \[ \] detect/report permission/location-service
 problems - \[ \] driver-visible tracking status
 
