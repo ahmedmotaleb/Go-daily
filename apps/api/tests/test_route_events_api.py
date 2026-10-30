@@ -118,7 +118,8 @@ def _upload(client, h, shift_id, points) -> dict[str, Any]:
         json={"batch_id": str(uuid.uuid4()), "shift_id": shift_id, "points": points},
     )
     assert res.status_code == 200, res.text
-    return res.json()
+    body: dict[str, Any] = res.json()
+    return body
 
 
 def test_loops_are_counted_from_uploaded_gps(client: TestClient, db: Session) -> None:
