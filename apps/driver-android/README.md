@@ -14,7 +14,7 @@ It does nothing else.
 
 | Part | What it is | Verified where |
 |---|---|---|
-| `core/` | Pure Kotlin/JVM: API client, offline sync engine, tracking state machine, adaptive sampling, input parsing | **Unit-tested** (53 tests) locally and in CI (`./gradlew -p core test`) |
+| `core/` | Pure Kotlin/JVM: API client, offline sync engine, tracking state machine, adaptive sampling, input parsing | **Unit-tested** (58 tests) locally and in CI (`./gradlew -p core test`) |
 | `app/` | Android app: Compose UI, foreground location service, SQLite queue, WorkManager sync, Keystore token storage | **Compiles and passes Android lint in CI** (`:app:assembleDebug :app:lintDebug`); no instrumented tests yet |
 | On-device behaviour | Background tracking, reboot recovery, OEM battery killers | **Not verified**: needs real phones (see "Device test plan") |
 
@@ -129,6 +129,23 @@ switch / no fixes / offline / backlog       ▼
   bodies carry the token, password and location).
 - IDs used in URL paths are validated so they cannot change the request path.
 - No national ID or other sensitive driver data is stored on the phone.
+
+## Reliability scenarios (Task 29)
+
+| Scenario | What the app does | Verified by |
+| --- | --- | --- |
+| App process killed or restarted | Queue, in-flight batch id, pending shift end and work context are on disk (SQLite, preferences). A new process resumes the same batch with its original id. The service restarts if Android allows it; otherwise the driver gets a "tap to resume" notification | `SyncReliabilityTest` (restart mid-backlog); device plan 7–8 |
+| Device reboot during a shift | `BootReceiver` restarts tracking if "Allow all the time" was granted; otherwise a notification asks the driver to open the app | Device plan 7 |
+| Internet lost and back | Every fix goes to SQLite first. Uploads back off with jitter; a validated network clears the backoff. The status shows *offline but recording* | `SyncEngineTest`, `BackoffTest`, `TrackingStatusTest`; device plan 3 |
+| Answer lost after the server stored a batch | The batch is resent with the same id; the server answers from its record (no duplicates) | `SyncEngineTest`, `SyncReliabilityTest` (seeded long-shift simulation: every fix exactly once, in order); API `test_tracking.py` |
+| Temporary GPS loss | Status *weak GPS signal*; `GPS_SIGNAL_LOST`/`RESTORED` events; gaps stay gaps on the server | `TrackingStatusTest`; device plan 6 |
+| Permission denied or revoked, location switched off | Status *blocked* with a button to the right settings screen; events for management; the server's exception engine raises "مراجعة مطلوبة" for long interruptions | `TrackingStatusTest`; API `test_exceptions.py`; device plan 4–5 |
+| Battery optimisation / power save | Warning shown to the driver and sent as an event; power save doubles the interval but never stops tracking | `AdaptiveSamplerTest`, `TrackingStatusTest`; device plan (OEM phones) |
+| Large offline queue | Uploaded in batches of ≤ 500, at most a few batches per run, so the app stays responsive; a backlog warning goes to management | `SyncEngineTest` (huge backlog); device plan 10 |
+| Two uploads at once (service flush and WorkManager) | One sync at a time per process (`Syncer` mutex); requests are idempotent anyway | Code review; `SyncEngineTest` replay cases |
+| Shift ended with unsynced fixes | Tracking stops at once; the end request (odometer, idempotency key) is stored and sent after the remaining fixes; the server accepts fixes from inside the shift window after the shift has ended | `SyncEngineTest`, `SyncReliabilityTest`; API `test_late_sync_after_shift_end_is_accepted`; device plan 9 |
+
+Failures are never hidden. The driver sees one of *active*, *offline but recording*, *weak GPS signal*, *blocked*, *stopped* or *idle*. Management sees device events on the shift timeline, the live map's tracking state, "tracking interrupted" notifications and review cases from the exception engine.
 
 ## Android power management — known limitations
 
