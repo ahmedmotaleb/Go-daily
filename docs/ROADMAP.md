@@ -22,17 +22,17 @@ Phases follow the master task list ([`GO_DAILY_CLAUDE_MASTER_TASKS.md`](GO_DAILY
 | 11 | Live fleet map & route replay | ✅ | Provider-neutral map (Leaflet impl), live polling, replay, stops, gaps, GPS vs odometer distance |
 | 12 | Geofences & fixed-route loop detection | ✅ | Debounced engine, idempotent events, audited admin corrections |
 | 13 | School route operations | ✅ | Scheduled runs, GPS-evidenced completion, review/missed states, audited corrections |
-| 14 | Ride-hailing operations | 🟡 | Manual statement entry (no scraping); approval generates revenue + custody receipts; reconciliation vs recorded shifts, time and distance. API + admin web tested. Statement file upload waits on Task 24 (attachments). |
-| 15 | Fuel / CNG / oil ledger | 🟡 | Extensible types (CNG, gasoline, diesel, oil); oil kept out of fuel figures; staff entry, review, correction and audit in API + admin web; driver-app entry API done. Receipt upload waits on Task 24; driver-app fuel screen pending. |
-| 16 | General expenses | 🟡 | Configurable categories with P&L grouping; review/correction/audit; driver-paid costs reimbursed via the driver account. API + admin web tested. Receipt upload waits on Task 24. |
+| 14 | Ride-hailing operations | ✅ | Manual statement entry (no scraping); approval generates revenue + custody receipts; reconciliation vs recorded shifts, time and distance; statement files attach to the statement. API + admin web tested. |
+| 15 | Fuel / CNG / oil ledger | ✅ | Extensible types (CNG, gasoline, diesel, oil); oil kept out of fuel figures; staff entry, review, correction, audit and receipt files in API + admin web; drivers record purchases during the shift in the app (API tested; app compiles and passes lint in CI, not device-tested). The API accepts a receipt photo and location from the app, but the app does not send them yet (Task 29). |
+| 16 | General expenses | ✅ | Configurable categories with P&L grouping; review/correction/audit; receipt files; driver-paid costs reimbursed via the driver account. API + admin web tested. |
 | 17 | Collections & revenue | ✅ | Single revenue ledger with receipts (cash/electronic, driver/company), outstanding amounts, contract periods, filters and summaries by vehicle/driver/date/kind. API + admin web tested. |
 | 18 | Driver financial account & settlement | ✅ | Signed driver ledger (custody, reimbursements, advances, payments, reasoned adjustments), statements, settlements frozen at finalisation and non-overlapping. API + admin web tested. |
-| 19 | Vehicle profitability | ✅ | Per-vehicle P&L from approved records with stated allocation rules and incomplete-data warnings; maintenance from maintenance-group expenses until Task 21. API + admin web tested. |
+| 19 | Vehicle profitability | ✅ | Per-vehicle P&L from approved records with stated allocation rules and incomplete-data warnings; maintenance = approved maintenance records + maintenance-group expenses. API + admin web tested. |
 | 20 | Audit & exception detection engine | ⬜ | |
-| 21 | Maintenance | ⬜ | |
+| 21 | Maintenance | ✅ | Types with default km/day intervals; per-vehicle schedules with overrides and a known baseline; due states (ok / soon / overdue / no baseline); service records with parts/labour/other cost, vendor, downtime, invoices, review lifecycle and corrections; optional link to an oil purchase without counting it twice. API + admin web tested. |
 | 22 | Notifications | ⬜ | |
 | 23 | Reports | ⬜ | |
-| 24 | Attachments / receipt storage | ⬜ | |
+| 24 | Attachments / receipt storage | ✅ | Storage abstraction (local disk or any S3-compatible bucket, chosen by environment; objects private); type sniffed from content (JPEG/PNG/WebP/PDF), size limit, server-generated keys, sha256 duplicate warning, metadata in PostgreSQL, files served only after a permission check on the owning record, soft delete with reason, evidence locked once a record is approved or voided. Local backend verified end to end; S3 backend tested against a mocked S3 (moto), not against a real bucket. |
 | 25 | Security hardening | ⬜ | |
 | 26 | Data integrity & concurrency | ⬜ | |
 | 27 | Observability & backups | ⬜ | |

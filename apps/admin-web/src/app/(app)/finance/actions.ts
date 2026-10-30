@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { api } from "@/lib/api";
+import { boundId, boundOneOf } from "@/lib/bound";
 import { errorToFormState, formValues } from "@/lib/form-state";
 import type { FormState } from "@/lib/forms";
 import { FINANCE_PAGE, type FinanceResource as Resource } from "@/lib/finance-paths";
@@ -25,10 +26,12 @@ const API_PATH: Record<Resource, string> = {
   expenses: "/expenses",
   revenue: "/revenue",
   statements: "/ride-hailing/statements",
+  maintenance: "/maintenance/records",
 };
 
 function refresh(resource: Resource, id?: string) {
   revalidatePath(FINANCE_PAGE[resource]);
+  if (resource === "maintenance") revalidatePath("/maintenance");
   revalidatePath("/finance/profitability");
   if (id) revalidatePath(`${FINANCE_PAGE[resource]}/${id}`);
 }
@@ -46,7 +49,9 @@ async function save(
   values: Record<string, string>,
   editMethod: "patch" | "put" = "patch",
 ): Promise<FormState> {
+  mode = boundOneOf(mode, ["create", "edit", "correct"] as const);
   const base = API_PATH[resource];
+  if (id !== null) id = boundId(id);
   let saved: { id: string };
   try {
     if (mode === "create") saved = await api.post(base, body);
@@ -79,6 +84,9 @@ export async function reviewAction(
   _: FormState,
   formData: FormData,
 ): Promise<FormState> {
+  resource = boundOneOf(resource, Object.keys(API_PATH) as Resource[]);
+  id = boundId(id);
+  op = boundOneOf(op, ["approve", "reject", "void"] as const);
   const body =
     op === "approve"
       ? compact({ note: text(formData, "note") })
@@ -226,6 +234,7 @@ export async function addReceiptAction(
   _: FormState,
   formData: FormData,
 ): Promise<FormState> {
+  entryId = boundId(entryId);
   try {
     await api.post(`/revenue/${entryId}/receipts`, receiptBody(formData));
   } catch (error) {
@@ -241,6 +250,8 @@ export async function voidReceiptAction(
   _: FormState,
   formData: FormData,
 ): Promise<FormState> {
+  receiptId = boundId(receiptId);
+  entryId = boundId(entryId);
   try {
     await api.post(`/revenue/receipts/${receiptId}/void`, {
       reason: text(formData, "reason") ?? "",
@@ -287,6 +298,7 @@ export async function addLedgerEntryAction(
   _: FormState,
   formData: FormData,
 ): Promise<FormState> {
+  driverId = boundId(driverId);
   const values = formValues(formData);
   try {
     await api.post(
@@ -313,6 +325,8 @@ export async function voidLedgerEntryAction(
   _: FormState,
   formData: FormData,
 ): Promise<FormState> {
+  entryId = boundId(entryId);
+  driverId = boundId(driverId);
   try {
     await api.post(`/driver-ledger/${entryId}/void`, { reason: text(formData, "reason") ?? "" });
   } catch (error) {
@@ -347,6 +361,8 @@ export async function settlementAction(
   _: FormState,
   formData: FormData,
 ): Promise<FormState> {
+  id = boundId(id);
+  op = boundOneOf(op, ["finalize", "recalculate", "void"] as const);
   try {
     await api.post(
       `/settlements/${id}/${op}`,
@@ -374,6 +390,7 @@ export async function createSettingAction(
   _: FormState,
   formData: FormData,
 ): Promise<FormState> {
+  kind = boundOneOf(kind, Object.keys(SETTINGS_PATH) as SettingsKind[]);
   const body =
     kind === "platforms"
       ? compact({ name: text(formData, "name"), notes: text(formData, "notes") })
@@ -400,11 +417,68 @@ export async function toggleSettingAction(
   _state: FormState,
   _formData: FormData,
 ): Promise<FormState> {
+  kind = boundOneOf(kind, Object.keys(SETTINGS_PATH) as SettingsKind[]);
+  id = boundId(id);
   try {
-    await api.patch(`${SETTINGS_PATH[kind]}/${id}`, { is_active: active });
+    await api.patch(`${SETTINGS_PATH[kind]}/${id}`, { is_active: active === true });
   } catch (error) {
     return errorToFormState(error);
   }
   revalidatePath("/finance/settings");
   redirect("/finance/settings?notice=record_updated");
+}
+
+// --- Maintenance ----------------------------------------------------------------------
+
+export async function saveMaintenanceAction(
+  mode: Mode,
+  id: string | null,
+  _: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const body = {
+    ...compact({
+      vehicle_id: text(formData, "vehicle_id"),
+      type_id: text(formData, "type_id"),
+      performed_on: text(formData, "performed_on"),
+      odometer_km: int(formData, "odometer_km"),
+      vendor: text(formData, "vendor"),
+      parts_cost: decimal(formData, "parts_cost") ?? "0",
+      labor_cost: decimal(formData, "labor_cost") ?? "0",
+      other_cost: decimal(formData, "other_cost") ?? "0",
+      description: text(formData, "description"),
+      downtime_start: datetime(formData, "downtime_start"),
+      downtime_end: datetime(formData, "downtime_end"),
+      fuel_transaction_id: text(formData, "fuel_transaction_id"),
+      notes: text(formData, "notes"),
+    }),
+    ...lifecycle(formData, mode),
+  };
+  return save("maintenance", mode, id, body, formValues(formData), "put");
+}
+
+export async function saveScheduleAction(
+  vehicleId: string,
+  _: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  vehicleId = boundId(vehicleId);
+  try {
+    await api.put(
+      `/maintenance/vehicles/${vehicleId}/schedules`,
+      compact({
+        type_id: text(formData, "type_id"),
+        interval_km: int(formData, "interval_km"),
+        interval_days: int(formData, "interval_days"),
+        baseline_km: int(formData, "baseline_km"),
+        baseline_date: text(formData, "baseline_date"),
+        is_active: text(formData, "is_active") !== "false",
+      }),
+    );
+  } catch (error) {
+    return errorToFormState(error, formValues(formData));
+  }
+  revalidatePath(`/vehicles/${vehicleId}`);
+  revalidatePath("/maintenance");
+  redirect(`/vehicles/${vehicleId}?notice=schedule_saved`);
 }

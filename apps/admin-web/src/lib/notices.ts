@@ -34,6 +34,11 @@ export const NOTICES = {
   settlement_finalize: "تم اعتماد التسوية وترحيل المستحقات إلى حساب السائق.",
   settlement_recalculate: "تمت إعادة حساب التسوية.",
   settlement_void: "تم إلغاء التسوية وعكس قيد المستحقات.",
+  attachment_added: "تم رفع المرفق.",
+  attachment_duplicate:
+    "تم رفع المرفق. تنبيه: نفس الملف مرفوع من قبل على سجل آخر — مراجعة مطلوبة لاحتمال التكرار.",
+  attachment_deleted: "تم حذف المرفق وتسجيل السبب.",
+  schedule_saved: "تم حفظ جدول الصيانة.",
 } as const;
 
 export type NoticeCode = keyof typeof NOTICES;

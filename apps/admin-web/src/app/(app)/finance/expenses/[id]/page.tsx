@@ -3,6 +3,7 @@ import Link from "next/link";
 import { saveExpenseAction } from "@/app/(app)/finance/actions";
 import { ExpenseForm } from "@/components/finance/expense-form";
 import { DetailRow } from "@/components/finance/filters";
+import { AttachmentsPanel } from "@/components/attachments/attachments-panel";
 import { ReviewPanel } from "@/components/finance/review";
 import { Notice } from "@/components/notice";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -67,6 +68,16 @@ export default async function ExpenseDetailPage({
           </CardBody>
         </Card>
         <ReviewPanel resource="expenses" record={e} canReview={canReview} />
+      </div>
+      <div className="mt-6">
+        <AttachmentsPanel
+          ownerType="expense"
+          ownerId={e.id}
+          returnPath={`/finance/expenses/${e.id}`}
+          canWrite={can(me, "expenses:write")}
+          locked={e.status === "APPROVED" || e.status === "VOIDED"}
+          title="صورة الإيصال والمرفقات"
+        />
       </div>
       {canEdit ? (
         <Card className="mt-6">

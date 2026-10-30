@@ -76,7 +76,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "الصيانة",
     icon: "maintenance",
     permission: "maintenance:read",
-    soon: true,
   },
   { href: "/reports", label: "التقارير", icon: "reports", permission: "reports:read", soon: true },
   {

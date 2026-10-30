@@ -54,14 +54,20 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     if (!token) redirect("/login");
     headers.Authorization = `Bearer ${token}`;
   }
-  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  const isForm = options.body instanceof FormData;
+  if (options.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
 
   let res: Response;
   try {
     res = await fetch(buildUrl(path, options.query), {
       method: options.method ?? "GET",
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body:
+        options.body === undefined
+          ? undefined
+          : isForm
+            ? (options.body as FormData)
+            : JSON.stringify(options.body),
       cache: "no-store",
     });
   } catch {
@@ -97,4 +103,6 @@ export const api = {
   patch: <T>(path: string, body: unknown) => request<T>(path, { method: "PATCH", body }),
   put: <T>(path: string, body: unknown) => request<T>(path, { method: "PUT", body }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  /** Multipart upload (the browser's file is forwarded as is). */
+  upload: <T>(path: string, form: FormData) => request<T>(path, { method: "POST", body: form }),
 };

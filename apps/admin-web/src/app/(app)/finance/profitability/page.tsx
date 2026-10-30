@@ -33,12 +33,12 @@ function VehicleDetail({ v }: { v: VehiclePnl }) {
         actions={<Money value={v.net_operating_profit} strong />}
       />
       <CardBody className="space-y-4">
-        {v.warnings.filter((w) => w.code !== "MAINTENANCE_FROM_EXPENSES").length ? (
+        {v.warnings.filter((w) => w.code !== "MAINTENANCE_SOURCES").length ? (
           <Alert tone="warning">
             <p className="mb-1 font-semibold">بيانات غير مكتملة — الأرقام كما سُجلت دون تقدير:</p>
             <ul className="list-inside list-disc space-y-0.5 text-sm">
               {v.warnings
-                .filter((w) => w.code !== "MAINTENANCE_FROM_EXPENSES")
+                .filter((w) => w.code !== "MAINTENANCE_SOURCES")
                 .map((w) => (
                   <li key={w.code}>
                     {w.message}
@@ -83,7 +83,7 @@ function VehicleDetail({ v }: { v: VehiclePnl }) {
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt>صيانة</dt>
+              <dt title="سجلات الصيانة المعتمدة + مصروفات تصنيفات الصيانة">صيانة</dt>
               <dd>
                 <Money value={v.maintenance_cost} />
               </dd>
@@ -263,7 +263,7 @@ export default async function ProfitabilityPage({
                     </TD>
                     <TD className="ltr-nums">
                       {formatNumber(
-                        v.warnings.filter((w) => w.code !== "MAINTENANCE_FROM_EXPENSES").length,
+                        v.warnings.filter((w) => w.code !== "MAINTENANCE_SOURCES").length,
                       )}
                     </TD>
                   </TR>

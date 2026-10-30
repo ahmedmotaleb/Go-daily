@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
   // Trace workspace packages from the monorepo root.
   outputFileTracingRoot: path.join(__dirname, "../../"),
   poweredByHeader: false,
+  experimental: {
+    // Receipt and invoice uploads (the API caps files at 10 MB).
+    serverActions: { bodySizeLimit: "11mb" },
+  },
   reactStrictMode: true,
   turbopack: {
     root: path.join(__dirname, "../../"),

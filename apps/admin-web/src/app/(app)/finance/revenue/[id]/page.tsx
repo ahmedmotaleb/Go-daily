@@ -7,6 +7,7 @@ import {
 } from "@/app/(app)/finance/actions";
 import { DetailRow } from "@/components/finance/filters";
 import { ReceiptForm, RevenueForm } from "@/components/finance/revenue-form";
+import { AttachmentsPanel } from "@/components/attachments/attachments-panel";
 import { ReviewPanel } from "@/components/finance/review";
 import { ActionForm } from "@/components/forms/action-form";
 import { TextField } from "@/components/forms/fields";
@@ -122,6 +123,17 @@ export default async function RevenueDetailPage({
               </>
             ) : undefined
           }
+        />
+      </div>
+
+      <div className="mt-6">
+        <AttachmentsPanel
+          ownerType="revenue_entry"
+          ownerId={r.id}
+          returnPath={`/finance/revenue/${r.id}`}
+          canWrite={canWrite}
+          locked={r.status === "APPROVED" || r.status === "VOIDED"}
+          title="مستندات الإيراد"
         />
       </div>
 

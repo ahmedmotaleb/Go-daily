@@ -2,12 +2,14 @@ import { OWNERSHIP_LABELS_AR } from "@go-daily/shared";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AttachmentsPanel } from "@/components/attachments/attachments-panel";
 import { AuditTrail } from "@/components/audit-trail";
 import { Notice } from "@/components/notice";
 import { AssignmentHistory, AssignmentPanel } from "@/components/domain/assignments";
 import { ActiveBadge, ExpiryBadge } from "@/components/domain/badges";
 import { ActionForm } from "@/components/forms/action-form";
 import { TextField } from "@/components/forms/fields";
+import { VehicleSchedulesPanel } from "@/components/maintenance/schedules-panel";
 import { Alert } from "@/components/ui/alert";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -122,6 +124,17 @@ export default async function VehicleDetailPage({
           {history ? (
             <AssignmentHistory side="vehicle" items={history.items} total={history.total} />
           ) : null}
+          {can(me, "maintenance:read") ? (
+            <VehicleSchedulesPanel vehicleId={vehicle.id} canWrite={can(me, "maintenance:write")} />
+          ) : null}
+          <AttachmentsPanel
+            ownerType="vehicle"
+            ownerId={vehicle.id}
+            returnPath={`/vehicles/${vehicle.id}`}
+            canWrite={canEdit}
+            locked={false}
+            title="مستندات المركبة"
+          />
         </div>
         <div className="space-y-6">
           {can(me, "assignments:read") ? (

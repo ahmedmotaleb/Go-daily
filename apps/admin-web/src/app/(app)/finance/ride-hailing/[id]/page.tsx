@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { saveStatementAction } from "@/app/(app)/finance/actions";
 import { DetailRow } from "@/components/finance/filters";
+import { AttachmentsPanel } from "@/components/attachments/attachments-panel";
 import { ReviewPanel } from "@/components/finance/review";
 import { StatementForm } from "@/components/finance/statement-form";
 import { Notice } from "@/components/notice";
@@ -101,6 +102,16 @@ export default async function StatementDetailPage({
           </CardBody>
         </Card>
         <ReviewPanel resource="statements" record={s} canReview={canReview} />
+      </div>
+      <div className="mt-6">
+        <AttachmentsPanel
+          ownerType="ride_hailing_statement"
+          ownerId={s.id}
+          returnPath={`/finance/ride-hailing/${s.id}`}
+          canWrite={can(me, "revenue:write")}
+          locked={s.status === "APPROVED" || s.status === "VOIDED"}
+          title="كشف المنصة (ملف)"
+        />
       </div>
       {canEdit ? (
         <Card className="mt-6">

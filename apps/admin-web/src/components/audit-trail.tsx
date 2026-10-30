@@ -1,7 +1,7 @@
 import { Card, CardHeader } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import { ACTION_LABELS, FIELD_LABELS } from "@/lib/audit-labels";
+import { actionLabel, FIELD_LABELS } from "@/lib/audit-labels";
 import type { Page } from "@/lib/types";
 
 type AuditEntry = {
@@ -45,7 +45,7 @@ export async function AuditTrail({
         <ol className="divide-y divide-line">
           {data.items.map((e) => (
             <li key={e.id} className="px-5 py-3 text-sm">
-              <p className="font-medium text-ink">{ACTION_LABELS[e.action] ?? e.action}</p>
+              <p className="font-medium text-ink">{actionLabel(e.action)}</p>
               <p className="text-xs text-ink-muted">{formatDateTime(e.occurred_at)}</p>
               {describeChanges(e.changes) ? (
                 <p className="mt-1 text-xs text-ink-muted">الحقول: {describeChanges(e.changes)}</p>

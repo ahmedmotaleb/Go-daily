@@ -34,6 +34,42 @@ export const ACTION_LABELS: Record<string, string> = {
   "assignment.created": "تسجيل تكليف",
   "assignment.ended": "إنهاء تكليف",
   "assignment.corrected": "تصحيح تكليف",
+  "attachment.uploaded": "رفع مرفق",
+  "attachment.deleted": "حذف مرفق",
+  "maintenance_schedule.saved": "حفظ جدول صيانة",
+  "driver_ledger.posted": "قيد في حساب السائق",
+  "driver_ledger.voided": "إلغاء قيد في حساب السائق",
+  "revenue_receipt.added": "تسجيل تحصيل",
+  "revenue_receipt.voided": "إلغاء تحصيل",
+  "compensation_plan.created": "إضافة خطة أجر",
+  "compensation_plan.closed": "إغلاق خطة أجر",
+  "driver_settlement.finalized": "اعتماد التسوية",
+  "driver_settlement.recalculated": "إعادة حساب التسوية",
+};
+
+/** Records whose actions are `<entity>.<verb>` with the shared review lifecycle. */
+const ENTITY_LABELS: Record<string, string> = {
+  fuel_transaction: "سجل وقود",
+  expense: "مصروف",
+  revenue_entry: "إيراد",
+  ride_hailing_statement: "كشف منصة",
+  driver_settlement: "تسوية سائق",
+  maintenance_record: "سجل صيانة",
+  maintenance_type: "نوع صيانة",
+  fuel_type: "نوع وقود",
+  expense_category: "تصنيف مصروف",
+  ride_hailing_platform: "منصة نقل ذكي",
+  operation_type: "نوع تشغيل",
+  vehicle_type: "نوع مركبة",
+};
+
+const VERB_LABELS: Record<string, string> = {
+  created: "إضافة",
+  updated: "تعديل",
+  approved: "اعتماد",
+  rejected: "رفض",
+  voided: "إلغاء",
+  corrected: "تصحيح",
 };
 
 /** Unknown fields fall back to their key. */
@@ -84,8 +120,18 @@ export const FIELD_LABELS: Record<string, string> = {
   window_start: "بداية فترة التشغيل",
   window_end: "نهاية فترة التشغيل",
   operating_days: "أيام التشغيل",
+  type_id: "النوع",
+  interval_km: "كل (كم)",
+  interval_days: "كل (يوم)",
+  baseline_km: "آخر تنفيذ معروف (كم)",
+  baseline_date: "تاريخ آخر تنفيذ معروف",
 };
 
 export function actionLabel(action: string): string {
-  return ACTION_LABELS[action] ?? action;
+  const known = ACTION_LABELS[action];
+  if (known) return known;
+  const [entity, verb] = action.split(".");
+  const entityLabel = entity ? ENTITY_LABELS[entity] : undefined;
+  const verbLabel = verb ? VERB_LABELS[verb] : undefined;
+  return entityLabel && verbLabel ? `${verbLabel} ${entityLabel}` : action;
 }

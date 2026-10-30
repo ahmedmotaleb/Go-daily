@@ -377,7 +377,7 @@ quantity - unit - unit price - total - date/time - odometer -
 station/vendor - receipt attachment reference - GPS location when
 captured by authorized driver app - notes - creator - timestamps
 
-Implement: - \[ \] driver entry - \[x\] admin/accountant entry - \[ \]
+Implement: - \[x\] driver entry - \[x\] admin/accountant entry - \[x\]
 receipt upload architecture - \[x\] edit/correction workflow - \[x\]
 audit trail - \[x\] filters/reports - \[x\] validation - \[x\] CNG and
 gasoline can both be recorded for the same vehicle/day - \[x\] oil is

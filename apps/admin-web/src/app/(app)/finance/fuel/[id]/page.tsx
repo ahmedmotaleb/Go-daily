@@ -3,6 +3,7 @@ import Link from "next/link";
 import { saveFuelAction } from "@/app/(app)/finance/actions";
 import { DetailRow } from "@/components/finance/filters";
 import { FuelForm } from "@/components/finance/fuel-form";
+import { AttachmentsPanel } from "@/components/attachments/attachments-panel";
 import { ReviewPanel } from "@/components/finance/review";
 import { Notice } from "@/components/notice";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -105,6 +106,16 @@ export default async function FuelDetailPage({
           </CardBody>
         </Card>
         <ReviewPanel resource="fuel" record={tx} canReview={canReview} />
+      </div>
+      <div className="mt-6">
+        <AttachmentsPanel
+          ownerType="fuel_transaction"
+          ownerId={tx.id}
+          returnPath={`/finance/fuel/${tx.id}`}
+          canWrite={can(me, "fuel:write")}
+          locked={tx.status === "APPROVED" || tx.status === "VOIDED"}
+          title="صورة الإيصال والمرفقات"
+        />
       </div>
       {canEdit ? (
         <Card className="mt-6">
