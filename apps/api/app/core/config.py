@@ -66,6 +66,20 @@ class Settings(BaseSettings):
     gps_retention_days: int = 180
     gps_max_batch_points: int = 500
 
+    # Attachments (receipts, statements, invoices). Objects are private: they
+    # are only served through the API after a permission check.
+    storage_backend: Literal["local", "s3"] = "local"
+    storage_local_root: str = "./var/attachments"
+    storage_s3_bucket: str | None = None
+    storage_s3_prefix: str = ""
+    storage_s3_region: str | None = None
+    # For S3-compatible services (Cloudflare R2, MinIO, DigitalOcean Spaces...).
+    storage_s3_endpoint_url: str | None = None
+    # Leave unset to use the standard AWS credential chain (env, role, profile).
+    storage_s3_access_key_id: str | None = None
+    storage_s3_secret_access_key: SecretStr | None = None
+    attachment_max_bytes: int = 10 * 1024 * 1024
+
     # Optional bootstrap admin (used only by `python -m app.cli bootstrap-admin`).
     bootstrap_admin_phone: str | None = None
     bootstrap_admin_password: SecretStr | None = None

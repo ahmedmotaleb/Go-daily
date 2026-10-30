@@ -19,6 +19,7 @@ from app.models.finance import (
     RevenueReceipt,
     RideHailingStatement,
 )
+from app.models.maintenance import MaintenanceRecord
 from app.models.user import User
 from app.schemas.finance import (
     ExpenseCategoryOut,
@@ -33,6 +34,7 @@ from app.schemas.finance import (
     StatementOut,
     UserRef,
 )
+from app.schemas.maintenance import MaintenanceTypeOut, RecordOut
 from app.services import finance_common as fc
 from app.services import revenue as revenue_service
 from app.services import ride_hailing as ride_hailing_service
@@ -100,7 +102,6 @@ def fuel_outs(db: Session, records: Sequence[FuelTransaction]) -> list[FuelOut]:
             vendor=r.vendor,
             payment_method=r.payment_method,
             paid_by=r.paid_by,
-            receipt_attachment_id=r.receipt_attachment_id,
             latitude=r.latitude,
             longitude=r.longitude,
             location_accuracy_m=r.location_accuracy_m,
@@ -126,7 +127,6 @@ def expense_outs(db: Session, records: Sequence[Expense]) -> list[ExpenseOut]:
             vendor=r.vendor,
             payment_method=r.payment_method,
             paid_by=r.paid_by,
-            receipt_attachment_id=r.receipt_attachment_id,
         )
         for r in records
     ]
@@ -214,7 +214,6 @@ def statement_outs(db: Session, records: Sequence[RideHailingStatement]) -> list
             platform_payout=fc.money(r.platform_payout),
             payout_recipient=r.payout_recipient,
             statement_reference=r.statement_reference,
-            attachment_id=r.attachment_id,
             revenue_entry_id=revenue_ids.get(r.id),
         )
         for r in records
@@ -269,3 +268,34 @@ def settlement_outs(db: Session, records: Sequence[DriverSettlement]) -> list[Se
         )
         for s in records
     ]
+
+
+def maintenance_outs(db: Session, records: Sequence[MaintenanceRecord]) -> list[RecordOut]:
+    users = load_users(db, _review_user_ids(records))
+    corrected = fc.corrected_by_map(db, MaintenanceRecord, [r.id for r in records])
+    out = []
+    for r in records:
+        hours = None
+        if r.downtime_start and r.downtime_end:
+            hours = round((r.downtime_end - r.downtime_start).total_seconds() / 3600, 1)
+        out.append(
+            RecordOut(
+                **_review(r, users, corrected),
+                id=r.id,
+                vehicle=Ref(id=r.vehicle.id, name=r.vehicle.internal_code),
+                type=MaintenanceTypeOut.model_validate(r.type),
+                performed_on=r.performed_on,
+                odometer_km=r.odometer_km,
+                vendor=r.vendor,
+                parts_cost=fc.money(r.parts_cost),
+                labor_cost=fc.money(r.labor_cost),
+                other_cost=fc.money(r.other_cost),
+                total_cost=fc.money(r.total_cost),
+                description=r.description,
+                downtime_start=r.downtime_start,
+                downtime_end=r.downtime_end,
+                downtime_hours=hours,
+                fuel_transaction_id=r.fuel_transaction_id,
+            )
+        )
+    return out

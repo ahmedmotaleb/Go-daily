@@ -122,7 +122,6 @@ class FuelFields(BaseModel):
     vendor: ShortText | None = None
     payment_method: PaymentMethod = PaymentMethod.CASH
     paid_by: PaidBy = PaidBy.COMPANY
-    receipt_attachment_id: uuid.UUID | None = None
     notes: Notes | None = None
 
     @model_validator(mode="after")
@@ -175,7 +174,6 @@ class FuelOut(ReviewOut):
     vendor: str | None
     payment_method: PaymentMethod
     paid_by: PaidBy
-    receipt_attachment_id: uuid.UUID | None
     latitude: float | None
     longitude: float | None
     location_accuracy_m: float | None
@@ -249,7 +247,6 @@ class ExpenseCreate(BaseModel):
     vendor: ShortText | None = None
     payment_method: PaymentMethod = PaymentMethod.CASH
     paid_by: PaidBy = PaidBy.COMPANY
-    receipt_attachment_id: uuid.UUID | None = None
     notes: Notes | None = None
     approve_now: bool = False
 
@@ -283,7 +280,6 @@ class ExpenseOut(ReviewOut):
     vendor: str | None
     payment_method: PaymentMethod
     paid_by: PaidBy
-    receipt_attachment_id: uuid.UUID | None
 
 
 class ExpenseCategoryTotal(BaseModel):
@@ -447,7 +443,6 @@ class StatementFields(BaseModel):
     cash_collected: MoneyOrZero = Decimal("0")
     payout_recipient: ReceivedBy = ReceivedBy.DRIVER
     statement_reference: Reference | None = None
-    attachment_id: uuid.UUID | None = None
     notes: Notes | None = None
 
     @model_validator(mode="after")
@@ -489,7 +484,6 @@ class StatementOut(ReviewOut):
     platform_payout: Decimal
     payout_recipient: ReceivedBy
     statement_reference: str | None
-    attachment_id: uuid.UUID | None
     revenue_entry_id: uuid.UUID | None
 
 

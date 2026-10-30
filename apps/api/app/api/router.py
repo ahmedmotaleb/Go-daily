@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     assignments,
+    attachments,
     audit,
     auth,
     dashboard,
@@ -12,6 +13,7 @@ from app.api.routes import (
     drivers,
     expenses,
     fuel,
+    maintenance,
     operations,
     profitability,
     revenue,
@@ -42,3 +44,5 @@ api_router.include_router(revenue.router)
 api_router.include_router(ride_hailing.router)
 api_router.include_router(driver_finance.router)
 api_router.include_router(profitability.router)
+api_router.include_router(attachments.router)
+api_router.include_router(maintenance.router)

@@ -40,6 +40,7 @@ from app.models.finance import (
     SettlementStatus,
 )
 from app.models.fleet import Vehicle
+from app.models.maintenance import MaintenanceRecord
 from app.models.operations import OperationType
 from app.models.shift import OperationSession, SessionStatus, Shift, ShiftStatus
 from app.services import finance_common as fc
@@ -152,7 +153,7 @@ def _add_revenue(db: Session, r: _Range, acc: _Acc) -> None:
 
 
 def _add_costs(db: Session, r: _Range, acc: _Acc) -> None:
-    """Approved fuel/consumables and general expenses."""
+    """Approved fuel/consumables, maintenance records and general expenses."""
     for tx in db.scalars(
         select(FuelTransaction).where(
             FuelTransaction.status == RecordStatus.APPROVED,
@@ -167,6 +168,14 @@ def _add_costs(db: Session, r: _Range, acc: _Acc) -> None:
             a.fuel_records += 1
         else:
             a.consumables += tx.total_amount
+    for record in db.scalars(
+        select(MaintenanceRecord).where(
+            MaintenanceRecord.status == RecordStatus.APPROVED,
+            MaintenanceRecord.performed_on >= r.date_from,
+            MaintenanceRecord.performed_on <= r.date_to,
+        )
+    ).all():
+        acc[record.vehicle_id].maintenance += record.total_cost
     for ex in db.scalars(
         select(Expense).where(
             Expense.status == RecordStatus.APPROVED,
@@ -292,6 +301,13 @@ def _add_pending(db: Session, r: _Range, acc: _Acc) -> None:
             RevenueEntry.occurred_on <= r.date_to,
         )
         .group_by(RevenueEntry.vehicle_id),
+        select(MaintenanceRecord.vehicle_id, func.count())
+        .where(
+            MaintenanceRecord.status == RecordStatus.SUBMITTED,
+            MaintenanceRecord.performed_on >= r.date_from,
+            MaintenanceRecord.performed_on <= r.date_to,
+        )
+        .group_by(MaintenanceRecord.vehicle_id),
         select(RideHailingStatement.vehicle_id, func.count())
         .where(
             RideHailingStatement.status == RecordStatus.SUBMITTED,
@@ -432,10 +448,11 @@ def _vehicle_result(
         )
     if unstated_days:
         warn("RIDE_HAILING_WITHOUT_STATEMENT", "أيام نقل ذكي بدون كشف منصة", unstated_days)
-    warn(
-        "MAINTENANCE_FROM_EXPENSES",
-        "تكلفة الصيانة محسوبة من مصروفات تصنيفات الصيانة فقط",
-    )
+    if a.maintenance:
+        warn(
+            "MAINTENANCE_SOURCES",
+            "الصيانة = سجلات الصيانة + مصروفات تصنيفات الصيانة؛ لا تُسجَّل الفاتورة في الموضعين",
+        )
 
     return {
         "vehicle": {"id": vehicle.id, "name": vehicle.internal_code},

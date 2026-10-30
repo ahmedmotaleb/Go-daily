@@ -1,6 +1,7 @@
 """ORM models. Import every model module here so Alembic sees all tables."""
 
 from app.models.assignment import AssignmentRole, DriverVehicleAssignment
+from app.models.attachment import Attachment, AttachmentKind, AttachmentOwner
 from app.models.audit import AuditLog
 from app.models.base import Base
 from app.models.driver import CompensationMethod, Driver, DriverCompensationPlan, EmploymentStatus
@@ -30,6 +31,7 @@ from app.models.finance import (
 )
 from app.models.fleet import OwnershipStatus, Vehicle, VehicleType
 from app.models.idempotency import IdempotencyRecord
+from app.models.maintenance import MaintenanceRecord, MaintenanceSchedule, MaintenanceType
 from app.models.operations import (
     OperationKind,
     OperationType,
@@ -61,6 +63,9 @@ from app.models.user import AuthSession, ClientType, User
 
 __all__ = [
     "AssignmentRole",
+    "Attachment",
+    "AttachmentKind",
+    "AttachmentOwner",
     "AuditLog",
     "AuthSession",
     "Base",
@@ -86,6 +91,9 @@ __all__ = [
     "LedgerEntryType",
     "LedgerSource",
     "LegDirection",
+    "MaintenanceRecord",
+    "MaintenanceSchedule",
+    "MaintenanceType",
     "OperationKind",
     "OperationSession",
     "OperationType",

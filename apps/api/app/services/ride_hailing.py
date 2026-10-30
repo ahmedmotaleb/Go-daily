@@ -194,7 +194,7 @@ def _new(
     if db.get(Vehicle, data.vehicle_id) is None:
         raise field_error("vehicle_id", "المركبة غير موجودة")
     statement = RideHailingStatement(
-        **data.model_dump(include=set(AUDITED) | {"attachment_id"}),
+        **data.model_dump(include=set(AUDITED)),
         status=RecordStatus.SUBMITTED,
         created_by_id=actor.id,
         corrects_id=corrects.id if corrects else None,
@@ -308,9 +308,7 @@ def update(
     fc.ensure_editable(statement)
     if db.get(RideHailingPlatform, data.platform_id) is None:
         raise field_error("platform_id", "المنصة غير موجودة")
-    changes = apply_changes(
-        statement, data.model_dump(include=set(AUDITED) | {"attachment_id"}), AUDITED
-    )
+    changes = apply_changes(statement, data.model_dump(include=set(AUDITED)), AUDITED)
     db.flush()
     _validate(db, statement)
     fc.resubmit_if_rejected(statement)

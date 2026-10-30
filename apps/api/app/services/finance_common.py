@@ -26,10 +26,13 @@ from app.models.finance import (
     RideHailingStatement,
 )
 from app.models.fleet import Vehicle
+from app.models.maintenance import MaintenanceRecord
 from app.models.shift import OperationSession, Shift
 from app.models.user import User
 
-type Reviewable = FuelTransaction | Expense | RevenueEntry | RideHailingStatement
+type Reviewable = (
+    FuelTransaction | Expense | RevenueEntry | RideHailingStatement | MaintenanceRecord
+)
 
 CENT = Decimal("0.01")
 CLOCK_SKEW = timedelta(minutes=5)

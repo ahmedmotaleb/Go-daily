@@ -10,17 +10,20 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, Request, status
+from fastapi import APIRouter, Header, Request, UploadFile, status
 from sqlalchemy import or_, select
 
 from app.api.deps import CurrentDriver, CurrentDriverUser, DbSession
 from app.api.presenters import session_out, shift_out
+from app.api.routes.attachments import read_limited
 from app.core.errors import NotFoundError, PermissionDenied
 from app.core.time import local_today, utcnow
 from app.models.assignment import DriverVehicleAssignment
+from app.models.attachment import AttachmentOwner
 from app.models.driver import Driver
 from app.models.finance import FuelTransaction
 from app.models.shift import OperationSession, Shift, ShiftSource, ShiftStatus
+from app.schemas.attachment import AttachmentOut, DuplicateRef, UploadResult
 from app.schemas.common import PageParams
 from app.schemas.driver_app import (
     DriverCatalogOut,
@@ -44,6 +47,7 @@ from app.schemas.shift import (
     ShiftOut,
     ShiftStart,
 )
+from app.services import attachments as attachments_service
 from app.services import fuel as fuel_service
 from app.services import idempotency
 from app.services import operations as ops_service
@@ -326,3 +330,48 @@ def my_fuel(driver: CurrentDriver, db: DbSession) -> list[DriverFuelOut]:
         .limit(20)
     ).all()
     return [_fuel_out(tx) for tx in rows]
+
+
+@router.post(
+    "/fuel/{tx_id}/receipt", response_model=UploadResult, status_code=status.HTTP_201_CREATED
+)
+async def upload_fuel_receipt(
+    tx_id: uuid.UUID,
+    file: UploadFile,
+    driver: CurrentDriver,
+    user: CurrentDriverUser,
+    db: DbSession,
+) -> UploadResult:
+    """Photo of the receipt for the driver's own entry, before office review."""
+    tx = db.get(FuelTransaction, tx_id)
+    if tx is None or tx.driver_id != driver.id:
+        raise NotFoundError("سجل الوقود غير موجود")
+    data = await read_limited(file)
+    attachment, duplicates = attachments_service.upload(
+        db,
+        actor=user,
+        owner_type=AttachmentOwner.FUEL_TRANSACTION,
+        owner_id=tx.id,
+        data=data,
+        filename=file.filename,
+    )
+    return UploadResult(
+        attachment=AttachmentOut(
+            id=attachment.id,
+            owner_type=attachment.owner_type,
+            owner_id=attachment.owner_id,
+            kind=attachment.kind,
+            original_filename=attachment.original_filename,
+            content_type=attachment.content_type,
+            size_bytes=attachment.size_bytes,
+            sha256=attachment.sha256,
+            uploaded_by=None,
+            created_at=attachment.created_at,
+            deleted_at=None,
+            delete_reason=None,
+        ),
+        duplicates=[
+            DuplicateRef(attachment_id=d.id, owner_type=d.owner_type, owner_id=d.owner_id)
+            for d in duplicates
+        ],
+    )

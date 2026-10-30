@@ -196,7 +196,6 @@ def _new(
         vendor=data.vendor,
         payment_method=data.payment_method,
         paid_by=data.paid_by,
-        receipt_attachment_id=data.receipt_attachment_id,
         notes=data.notes,
         source=source,
         status=RecordStatus.SUBMITTED,

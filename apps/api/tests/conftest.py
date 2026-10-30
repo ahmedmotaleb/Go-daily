@@ -40,6 +40,7 @@ from sqlalchemy.engine import Connection  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.core.db import engine, get_db  # noqa: E402
+from app.core.storage import LocalStorage  # noqa: E402
 from app.main import create_app  # noqa: E402
 
 
@@ -98,3 +99,11 @@ def client(db: Session) -> Iterator[TestClient]:
     app.dependency_overrides[get_db] = _get_db
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def _isolated_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LocalStorage:
+    """Attachments go to a per-test temporary directory, never ./var."""
+    storage = LocalStorage(tmp_path / "attachments")
+    monkeypatch.setattr("app.services.attachments.get_storage", lambda: storage)
+    return storage

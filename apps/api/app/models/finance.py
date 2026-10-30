@@ -135,7 +135,6 @@ class FuelTransaction(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Base):
     paid_by: Mapped[PaidBy] = mapped_column(
         enum_column_type(PaidBy, "paid_by"), default=PaidBy.COMPANY
     )
-    receipt_attachment_id: Mapped[uuid.UUID | None]
     # Only when captured by the authorised driver app at entry time.
     latitude: Mapped[float | None]
     longitude: Mapped[float | None]
@@ -200,7 +199,6 @@ class Expense(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Base):
     paid_by: Mapped[PaidBy] = mapped_column(
         enum_column_type(PaidBy, "paid_by"), default=PaidBy.COMPANY
     )
-    receipt_attachment_id: Mapped[uuid.UUID | None]
     corrects_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("expenses.id"))
 
     vehicle: Mapped[Vehicle] = relationship(lazy="joined")
@@ -353,7 +351,6 @@ class RideHailingStatement(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Bas
         enum_column_type(ReceivedBy, "received_by"), default=ReceivedBy.DRIVER
     )
     statement_reference: Mapped[str | None] = mapped_column(String(100))
-    attachment_id: Mapped[uuid.UUID | None]
     corrects_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ride_hailing_statements.id"))
 
     platform: Mapped[RideHailingPlatform] = relationship(lazy="joined")
