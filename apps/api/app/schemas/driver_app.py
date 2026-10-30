@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
@@ -60,6 +61,25 @@ class DriverRouteOut(BaseModel):
     operation_type_id: uuid.UUID
 
 
+class DriverFuelTypeOut(BaseModel):
+    id: uuid.UUID
+    code: str
+    name_ar: str
+    default_unit: str
+
+
 class DriverCatalogOut(BaseModel):
     operation_types: list[OperationTypeOut]
     routes: list[DriverRouteOut]
+    fuel_types: list[DriverFuelTypeOut] = []
+
+
+class DriverFuelOut(BaseModel):
+    id: uuid.UUID
+    fuel_type: str
+    quantity: Decimal
+    unit: str
+    total_amount: Decimal
+    occurred_at: datetime
+    status: str
+    paid_by: str

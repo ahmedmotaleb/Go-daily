@@ -50,6 +50,8 @@ class Permission(StrEnum):
     EXPENSES_APPROVE = "expenses:approve"
     REVENUE_READ = "revenue:read"
     REVENUE_WRITE = "revenue:write"
+    # Approve revenue entries and ride-hailing statements.
+    REVENUE_APPROVE = "revenue:approve"
     SETTLEMENTS_READ = "settlements:read"
     SETTLEMENTS_WRITE = "settlements:write"
     SETTLEMENTS_FINALIZE = "settlements:finalize"
@@ -109,6 +111,7 @@ _ACCOUNTANT = frozenset(
         P.EXPENSES_APPROVE,
         P.REVENUE_READ,
         P.REVENUE_WRITE,
+        P.REVENUE_APPROVE,
         P.SETTLEMENTS_READ,
         P.SETTLEMENTS_WRITE,
         P.SETTLEMENTS_FINALIZE,

@@ -131,3 +131,10 @@ def register_error_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=_error_body("internal_error", "حدث خطأ غير متوقع"),
         )
+
+
+def field_error(field: str, message: str, *, code: str = "validation_error") -> ValidationFailed:
+    """A 422 tied to one input field (shown next to it in the admin web)."""
+    return ValidationFailed(
+        message, code=code, details={"fields": [{"loc": [field], "msg": message, "type": code}]}
+    )

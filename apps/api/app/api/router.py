@@ -8,8 +8,14 @@ from app.api.routes import (
     auth,
     dashboard,
     driver_app,
+    driver_finance,
     drivers,
+    expenses,
+    fuel,
     operations,
+    profitability,
+    revenue,
+    ride_hailing,
     route_events,
     shifts,
     tracking,
@@ -30,3 +36,9 @@ api_router.include_router(dashboard.router)
 api_router.include_router(driver_app.router)
 api_router.include_router(tracking.router)
 api_router.include_router(route_events.router)
+api_router.include_router(fuel.router)
+api_router.include_router(expenses.router)
+api_router.include_router(revenue.router)
+api_router.include_router(ride_hailing.router)
+api_router.include_router(driver_finance.router)
+api_router.include_router(profitability.router)

@@ -165,16 +165,36 @@ Driver 1─* DriverCompensationPlan (versioned by effective dates)
   - Staff may backdate up to 7 days. The driver app always uses server time.
 - **Odometer and GPS distance** are kept separate. Shifts report `odometer_distance_km` only; GPS distance comes from the tracking phase.
 
-## 7. Observability
+
+## 7. Financial model (Tasks 14-19)
+
+```text
+FuelType(category FUEL|CONSUMABLE) 1─* FuelTransaction ─┐
+ExpenseCategory(pnl_group)          1─* Expense         ├─ vehicle, driver?, shift?
+RevenueEntry (kind) 1─* RevenueReceipt (cash|electronic, held by DRIVER|COMPANY)
+RideHailingPlatform 1─* RideHailingStatement ──approve──▶ RevenueEntry (SYSTEM)
+Driver 1─* DriverLedgerEntry (signed; balance = company owes driver)
+Driver 1─* DriverSettlement (DRAFT → FINALIZED → VOIDED, frozen details)
+```
+
+- **One lifecycle for financial records.** Fuel, expenses, revenue and statements are SUBMITTED, then APPROVED or REJECTED. A rejected record can be edited and resubmitted. Approved records are never edited: a correction voids the original and creates a replacement linked by `corrects_id`, both kept and audited. Nothing financial is deleted. Totals count APPROVED records only, and pending records are reported as such.
+- **Money** is `Numeric(14,2)` end to end, crosses the API as decimal strings, and is quantised with ROUND_HALF_UP for display.
+- **No double counting.** `RevenueEntry` is the only revenue source for reports. Ride-hailing revenue can only be generated from an approved platform statement (at most one live entry per statement, enforced by a partial unique index). Platform commission is recorded as `fees_withheld` on that entry. Money received is a receipt, never a second revenue row.
+- **Driver custody.** Receipts held by the driver post a `CASH_COLLECTED` debit to the driver account. A cash handover is a credit. Costs paid by the driver become a `REIMBURSEMENT` credit once approved. Voiding the source voids its ledger entry; a source posts at most one live entry (partial unique index).
+- **Settlements** compute compensation from the versioned plans in force, freeze the calculation (plan terms, inputs, lines) when finalised, and post a single `EARNING` entry. Finalised settlements of one driver cannot overlap (exclusion constraint). A plan change never touches a finalised settlement; redoing one means voiding it with a reason.
+- **Vehicle P&L** uses approved records only. Amounts with a service period (contracts, statements, settlement earnings) are spread over it by days. Driver earnings are split across vehicles by driving minutes, and costs across operation types by session minutes. Missing inputs produce warnings, never estimates.
+- **Platforms are not scraped or integrated.** Statements are entered manually from what the platform provides.
+
+## 8. Observability
 
 - JSON logs (one object per line) with a request ID. The ID is taken from `X-Request-ID` or generated, and echoed in the response.
 - Liveness is `GET /health`. Readiness is `GET /ready`, which runs `SELECT 1` against the database and returns 503 on failure.
 
-## 8. Local infrastructure
+## 9. Local infrastructure
 
 `compose.yaml` runs `postgres`, a one-shot `migrate` job, `api` and `admin-web`. Production images run as non-root users and include health checks. Dockerfiles accept an optional BuildKit secret `extra_ca` for building behind TLS-intercepting proxies. The secret is never stored in an image layer.
 
-## 9. Decision log
+## 10. Decision log
 
 | Date | Decision | Reason |
 | --- | --- | --- |
@@ -185,3 +205,6 @@ Driver 1─* DriverCompensationPlan (versioned by effective dates)
 | 2026-10-29 | National IDs encrypted with Fernet plus an HMAC blind index | Personal data protection: the database alone does not reveal IDs, and uniqueness still works. `DATA_ENCRYPTION_KEY` is required outside dev and test. |
 | 2026-10-29 | `btree_gist` exclusion constraints for assignment and compensation overlap | Race-safe enforcement in the database, on top of friendly service-level errors. |
 | 2026-10-30 | Partial unique indexes for "one active shift" | Simple, portable, and race-safe. |
+| 2026-10-30 | Void-and-replace corrections for financial records | Approved figures stay reproducible. Every change is a new, linked, audited row instead of an overwrite. |
+| 2026-10-30 | Single revenue ledger with receipts and `fees_withheld` | Cash vs electronic, outstanding amounts and platform commission come from one place, so revenue is never counted twice. |
+| 2026-10-30 | Driver custody tracked in the driver ledger | Microbus drivers collect fares and pay fuel in cash. The ledger shows what each driver holds or is owed without mixing custody into revenue. |

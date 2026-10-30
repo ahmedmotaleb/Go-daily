@@ -26,3 +26,8 @@ def local_day_bounds_utc(day: date) -> tuple[datetime, datetime]:
     start_local = datetime.combine(day, time.min, tzinfo=tz)
     end_local = datetime.combine(day + timedelta(days=1), time.min, tzinfo=tz)
     return start_local.astimezone(UTC), end_local.astimezone(UTC)
+
+
+def to_local_date(value: datetime) -> date:
+    """Business day (local timezone) of an instant."""
+    return value.astimezone(get_settings().tz).date()

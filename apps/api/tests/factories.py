@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import itertools
 import uuid
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -13,11 +13,18 @@ from sqlalchemy.orm import Session
 from app.core.permissions import UserRole
 from app.core.security import hash_password
 from app.core.text import plate_key
-from app.core.time import utcnow
+from app.core.time import local_day_bounds_utc, utcnow
 from app.models.assignment import DriverVehicleAssignment
-from app.models.driver import Driver, EmploymentStatus
+from app.models.driver import (
+    CompensationMethod,
+    Driver,
+    DriverCompensationPlan,
+    EmploymentStatus,
+)
+from app.models.finance import ExpenseCategory, FuelType, RideHailingPlatform
 from app.models.fleet import Vehicle, VehicleType
 from app.models.operations import OperationType, RouteDefinition, RouteStop
+from app.models.shift import OperationSession, SessionStatus, Shift, ShiftStatus
 from app.models.user import User
 
 DEFAULT_PASSWORD = "Str0ng-pass-123"
@@ -163,3 +170,83 @@ def make_driver_account(
     vehicle = vehicle or make_vehicle(db, current_odometer_km=50_000)
     assign(db, driver, vehicle)
     return driver, user, auth(login(client, user)), vehicle
+
+
+def local_noon(day: date) -> datetime:
+    """08:00 local time on `day`, as a UTC instant (safe inside the business day)."""
+    return local_day_bounds_utc(day)[0] + timedelta(hours=8)
+
+
+def make_completed_shift(
+    db: Session,
+    driver: Driver,
+    vehicle: Vehicle,
+    *,
+    day: date,
+    minutes: int = 480,
+    start_odometer_km: int | None = 1_000,
+    end_odometer_km: int | None = 1_100,
+    operation_code: str | None = "FIXED_ROUTE",
+) -> Shift:
+    """A finished shift (and one operation session) inserted directly."""
+    started = local_noon(day)
+    ended = started + timedelta(minutes=minutes)
+    shift = Shift(
+        driver_id=driver.id,
+        vehicle_id=vehicle.id,
+        status=ShiftStatus.COMPLETED,
+        started_at=started,
+        ended_at=ended,
+        start_odometer_km=start_odometer_km,
+        end_odometer_km=end_odometer_km,
+    )
+    db.add(shift)
+    db.flush()
+    if operation_code:
+        db.add(
+            OperationSession(
+                shift_id=shift.id,
+                operation_type_id=uuid.UUID(operation_type_id(db, operation_code)),
+                status=SessionStatus.COMPLETED,
+                started_at=started,
+                ended_at=ended,
+            )
+        )
+    db.commit()
+    return shift
+
+
+def make_plan(
+    db: Session,
+    driver: Driver,
+    method: CompensationMethod,
+    *,
+    effective_from: date,
+    effective_to: date | None = None,
+    **amounts: object,
+) -> DriverCompensationPlan:
+    plan = DriverCompensationPlan(
+        driver_id=driver.id,
+        method=method,
+        effective_from=effective_from,
+        effective_to=effective_to,
+        **amounts,
+    )
+    db.add(plan)
+    db.commit()
+    return plan
+
+
+def make_platform(db: Session, name: str | None = None) -> RideHailingPlatform:
+    platform = RideHailingPlatform(name=name or f"منصة {next(_code_seq)}")
+    db.add(platform)
+    db.commit()
+    return platform
+
+
+def fuel_type_id(db: Session, code: str) -> str:
+    return str(db.scalar(select(FuelType.id).where(FuelType.code == code)))
+
+
+def expense_category_id(db: Session, code: str) -> str:
+    return str(db.scalar(select(ExpenseCategory.id).where(ExpenseCategory.code == code)))

@@ -22,12 +22,12 @@ Phases follow the master task list ([`GO_DAILY_CLAUDE_MASTER_TASKS.md`](GO_DAILY
 | 11 | Live fleet map & route replay | ✅ | Provider-neutral map (Leaflet impl), live polling, replay, stops, gaps, GPS vs odometer distance |
 | 12 | Geofences & fixed-route loop detection | ✅ | Debounced engine, idempotent events, audited admin corrections |
 | 13 | School route operations | ✅ | Scheduled runs, GPS-evidenced completion, review/missed states, audited corrections |
-| 14 | Ride-hailing operations | ⬜ | |
-| 15 | Fuel / CNG / oil ledger | ⬜ | |
-| 16 | General expenses | ⬜ | |
-| 17 | Collections & revenue | ⬜ | |
-| 18 | Driver financial account & settlement | ⬜ | |
-| 19 | Vehicle profitability | ⬜ | |
+| 14 | Ride-hailing operations | 🟡 | API complete and tested. Manual statement entry (no scraping), approval generates revenue + custody receipts, reconciliation vs recorded shifts/time/distance. Admin web pending. |
+| 15 | Fuel / CNG / oil ledger | 🟡 | API complete and tested. Extensible types (CNG, gasoline, diesel, oil); oil kept out of fuel figures; driver-app and staff entry; review/correction/audit. Admin web pending. |
+| 16 | General expenses | 🟡 | API complete and tested. Configurable categories with P&L grouping; review/correction/audit; driver-paid costs reimbursed via the driver account. Admin web pending. |
+| 17 | Collections & revenue | 🟡 | API complete and tested. Single revenue ledger with receipts (cash/electronic, driver/company), outstanding amounts, contract periods. Admin web pending. |
+| 18 | Driver financial account & settlement | 🟡 | API complete and tested. Signed driver ledger (custody, advances, payments, adjustments), statements, settlements frozen at finalisation. Admin web pending. |
+| 19 | Vehicle profitability | 🟡 | API complete and tested. Per-vehicle P&L from approved records with explicit allocation rules and incomplete-data warnings. Admin web pending. |
 | 20 | Audit & exception detection engine | ⬜ | |
 | 21 | Maintenance | ⬜ | |
 | 22 | Notifications | ⬜ | |

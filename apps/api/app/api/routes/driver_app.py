@@ -19,10 +19,13 @@ from app.core.errors import NotFoundError, PermissionDenied
 from app.core.time import local_today, utcnow
 from app.models.assignment import DriverVehicleAssignment
 from app.models.driver import Driver
+from app.models.finance import FuelTransaction
 from app.models.shift import OperationSession, Shift, ShiftSource, ShiftStatus
 from app.schemas.common import PageParams
 from app.schemas.driver_app import (
     DriverCatalogOut,
+    DriverFuelOut,
+    DriverFuelTypeOut,
     DriverMeOut,
     DriverRouteOut,
     DriverSessionStart,
@@ -30,6 +33,7 @@ from app.schemas.driver_app import (
     DriverShiftStart,
     DriverVehicleOut,
 )
+from app.schemas.finance import DriverFuelCreate
 from app.schemas.operations import OperationTypeOut
 from app.schemas.shift import (
     SessionEnd,
@@ -40,6 +44,7 @@ from app.schemas.shift import (
     ShiftOut,
     ShiftStart,
 )
+from app.services import fuel as fuel_service
 from app.services import idempotency
 from app.services import operations as ops_service
 from app.services import shifts as shifts_service
@@ -106,6 +111,12 @@ def catalog(_: CurrentDriver, db: DbSession) -> DriverCatalogOut:
         routes=[
             DriverRouteOut(id=r.id, name=r.name, operation_type_id=r.operation_type_id)
             for r in routes
+        ],
+        fuel_types=[
+            DriverFuelTypeOut(
+                id=t.id, code=t.code, name_ar=t.name_ar, default_unit=t.default_unit.value
+            )
+            for t in fuel_service.list_types(db)
         ],
     )
 
@@ -263,3 +274,55 @@ def end_session(
             db, actor=user, session_id=session_id, data=SessionEnd(), source=ShiftSource.DRIVER_APP
         )
     )
+
+
+def _fuel_out(tx: FuelTransaction) -> DriverFuelOut:
+    return DriverFuelOut(
+        id=tx.id,
+        fuel_type=tx.fuel_type.name_ar,
+        quantity=tx.quantity,
+        unit=tx.unit.value,
+        total_amount=tx.total_amount,
+        occurred_at=tx.occurred_at,
+        status=tx.status.value,
+        paid_by=tx.paid_by.value,
+    )
+
+
+@router.post("/fuel", response_model=DriverFuelOut, status_code=status.HTTP_201_CREATED)
+def record_fuel(
+    body: DriverFuelCreate,
+    request: Request,
+    driver: CurrentDriver,
+    user: CurrentDriverUser,
+    db: DbSession,
+    idempotency_key: IdempotencyKey = None,
+) -> Any:
+    """Fuel/oil entry during the active shift; reviewed by the office before it counts."""
+
+    def action() -> DriverFuelOut:
+        tx = fuel_service.create_from_driver(db, actor=user, driver=driver, data=body)
+        return _fuel_out(tx)
+
+    result, _ = idempotency.run_idempotent(
+        db,
+        user=user,
+        key=idempotency_key,
+        method="POST",
+        path=request.url.path,
+        body=body.model_dump(mode="json"),
+        status_code=201,
+        action=action,
+    )
+    return result
+
+
+@router.get("/fuel", response_model=list[DriverFuelOut])
+def my_fuel(driver: CurrentDriver, db: DbSession) -> list[DriverFuelOut]:
+    rows = db.scalars(
+        select(FuelTransaction)
+        .where(FuelTransaction.driver_id == driver.id)
+        .order_by(FuelTransaction.occurred_at.desc())
+        .limit(20)
+    ).all()
+    return [_fuel_out(tx) for tx in rows]

@@ -524,3 +524,29 @@ def prune_old_points(db: Session, *, older_than_days: int) -> int:
     result = db.execute(delete(GpsPoint).where(GpsPoint.shift_id.in_(finished)))
     db.commit()
     return int(result.rowcount or 0)  # type: ignore[attr-defined]
+
+
+def gps_distance_km(db: Session, shift_ids: list[uuid.UUID]) -> dict[uuid.UUID, float]:
+    """Distance from consecutive VALID points per shift (gaps are not bridged)."""
+    if not shift_ids:
+        return {}
+    settings = get_settings()
+    rows = db.execute(
+        select(
+            GpsPoint.shift_id,
+            GpsPoint.recorded_at,
+            GpsPoint.latitude,
+            GpsPoint.longitude,
+            GpsPoint.accuracy_m,
+            GpsPoint.speed_mps,
+        )
+        .where(GpsPoint.shift_id.in_(shift_ids), GpsPoint.quality == PointQuality.VALID)
+        .order_by(GpsPoint.shift_id, GpsPoint.recorded_at)
+    ).all()
+    tracks: dict[uuid.UUID, list[TrackPoint]] = {sid: [] for sid in shift_ids}
+    for sid, at, lat, lng, acc, spd in rows:
+        tracks[sid].append(TrackPoint(at, lat, lng, acc, spd))
+    return {
+        sid: recorded_distance_m(track, max_gap_seconds=settings.gps_gap_seconds) / 1000
+        for sid, track in tracks.items()
+    }
