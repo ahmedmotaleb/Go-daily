@@ -159,6 +159,41 @@ def _store(db: Session, info: RuleInfo, outcome: RuleResult) -> int:
     return new
 
 
+_COORDINATE_KEYS = frozenset({"lat", "lng", "latitude", "longitude"})
+
+
+def _without_coordinates(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: _without_coordinates(v) for k, v in value.items() if k not in _COORDINATE_KEYS}
+    if isinstance(value, list):
+        return [_without_coordinates(v) for v in value]
+    return value
+
+
+def redact_old_evidence(db: Session, *, older_than_days: int) -> int:
+    """Remove coordinates from the evidence of closed cases past GPS retention.
+
+    Raw points are deleted after the retention period; closed cases must not
+    keep the same locations indefinitely. Times, durations and distances stay,
+    so the review record remains readable. Open cases keep their evidence.
+    """
+    cutoff = utcnow() - timedelta(days=older_than_days)
+    cases = db.scalars(
+        select(OperationalException).where(
+            OperationalException.status.in_(CLOSED),
+            OperationalException.occurred_at < cutoff,
+        )
+    ).all()
+    changed = 0
+    for case in cases:
+        cleaned = _without_coordinates(case.evidence)
+        if cleaned != case.evidence:
+            case.evidence = {**cleaned, "coordinates_removed": True}
+            changed += 1
+    db.commit()
+    return changed
+
+
 def last_run(db: Session) -> ExceptionRun | None:
     return db.scalars(
         select(ExceptionRun).order_by(ExceptionRun.started_at.desc()).limit(1)

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.core.errors import DomainError
-from app.services.exceptions import run_detection
+from app.services.exceptions import redact_old_evidence, run_detection
 from app.services.idempotency import prune
 from app.services.notifications import generate as generate_notifications
 from app.services.tracking import prune_old_points
@@ -78,7 +78,9 @@ def cmd_prune_gps(args: argparse.Namespace) -> int:
     days = args.older_than_days or get_settings().gps_retention_days
     with SessionLocal() as db:
         deleted = prune_old_points(db, older_than_days=days)
+        redacted = redact_old_evidence(db, older_than_days=days)
     print(f"Deleted {deleted} GPS points older than {days} days.")
+    print(f"Removed coordinates from {redacted} closed review cases older than {days} days.")
     return 0
 
 

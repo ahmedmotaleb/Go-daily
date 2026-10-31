@@ -107,7 +107,6 @@ The suite also passed when run across local midnight (00:02 Cairo time), which f
 - No two-factor authentication.
 - The lockout message reveals that an account exists.
 - The S3 backend is tested against a mocked S3, not a real bucket.
-- Exception evidence keeps stop coordinates after raw GPS points are pruned.
 - In-process HTTP metrics are per worker.
 
 ## 5. External services and configuration still required
@@ -130,7 +129,7 @@ The suite also passed when run across local midnight (00:02 Cairo time), which f
 - **Location data:**
   - GPS is collected only during an authorised work shift, after an in-app disclosure, with a visible ongoing notification;
   - the server refuses points outside the shift window;
-  - raw points are pruned after `GPS_RETENTION_DAYS` (180);
+  - raw points are pruned after `GPS_RETENTION_DAYS` (180), and closed review cases lose their coordinates after the same period;
   - accountants no longer have live-location access.
 
   Publish a driver privacy notice that matches these facts and the retention period.

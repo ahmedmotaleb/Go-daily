@@ -104,7 +104,7 @@ Run these from the server's scheduler (cron, systemd timer or the hosting platfo
 | --- | --- | --- |
 | `python -m app.cli detect-exceptions` | hourly | Runs the review rules over the last 3 days (`--days N` to change). Re-running never duplicates cases. Exit code 1 if a rule failed. |
 | `python -m app.cli generate-notifications` | hourly, after `detect-exceptions` | Creates in-app notifications from the current state and clears those whose cause is gone. Exit code 1 if a generator failed. |
-| `python -m app.cli prune-gps` | daily | Deletes raw GPS points of finished shifts older than `GPS_RETENTION_DAYS`. |
+| `python -m app.cli prune-gps` | daily | Deletes raw GPS points of finished shifts older than `GPS_RETENTION_DAYS`, and removes coordinates from closed review cases older than that. |
 | `python -m app.cli prune-idempotency` | daily | Deletes expired idempotency records. |
 
 With Docker: `docker compose run --rm api python -m app.cli detect-exceptions`.

@@ -73,6 +73,11 @@ Reviewed 2026-10-30 against the Task 25 checklist. Each area lists what is in pl
 - Values are scrubbed by key, even when passed by mistake: passwords and hashes, tokens and authorisation headers, cookies, idempotency keys, encryption and storage secrets, national IDs, phone numbers and coordinates (`test_logs_scrub_sensitive_and_personal_fields`).
 - Unhandled errors return a generic Arabic message, and details go only to the log. Validation errors never repeat the submitted values (`test_validation_errors_do_not_echo_input`).
 
+## Location data retention
+
+- Raw GPS points of finished shifts are deleted after `GPS_RETENTION_DAYS` (default 180) by `python -m app.cli prune-gps`.
+- The same job removes coordinates from the evidence of **closed** review cases older than that period. Times, durations and distances stay, so the review record remains readable. Open cases keep their evidence until they are reviewed (`test_old_closed_cases_lose_their_coordinates`).
+
 ## Audit integrity
 
 - `audit_logs` is append-only, enforced by PostgreSQL triggers that block `UPDATE`, `DELETE` and `TRUNCATE`.
@@ -92,6 +97,5 @@ Reviewed 2026-10-30 against the Task 25 checklist. Each area lists what is in pl
 | Web CSP allows `'unsafe-inline'` scripts | Next.js inline bootstrap scripts need nonces, which would make every page dynamic, and the app is already authenticated and dynamic | Add nonce-based CSP via the Next.js proxy when convenient |
 | Login throttle is per API process | No shared store (Redis) is part of the stack | Edge proxy rate limit (documented in DEPLOYMENT.md) |
 | No second factor for admins | Not in scope for v1 | TOTP for `SUPER_ADMIN`/`ADMIN` |
-| Exception evidence keeps stop coordinates after raw GPS points are pruned | Reviewers need the evidence | Purge or blur evidence coordinates of closed cases after the GPS retention period |
 | The lockout message shows that an account exists | After 5 failures a real account gets "temporarily locked" while an unknown number keeps getting "wrong credentials" | Return the generic message while locked (keeping the audit entry), or lock by phone number whether or not it exists |
 | Sessions are not bound to a device | Simpler mobile re-login | Device binding for driver sessions if tokens leak in practice |

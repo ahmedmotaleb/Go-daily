@@ -754,3 +754,38 @@ def test_cli_detect_exceptions(
     _duplicate_pair(db)
     assert cli.main(["detect-exceptions", "--days", "2"]) == 0
     assert "new" in capsys.readouterr().out
+
+
+def test_old_closed_cases_lose_their_coordinates(db: Session) -> None:
+    def case(status: ExceptionStatus, days_ago: int) -> OperationalException:
+        exc = OperationalException(
+            rule_code="LONG_STOP",
+            severity=rules.LOW,
+            label=rules.U,
+            summary="توقف طويل",
+            evidence={
+                "stops": [{"start": "x", "minutes": 60, "lat": 30.0444, "lng": 31.2357}],
+                "threshold_minutes": 45,
+            },
+            occurred_at=utcnow() - timedelta(days=days_ago),
+            dedupe_key=f"TEST:{uuid.uuid4()}",
+            status=status,
+        )
+        db.add(exc)
+        db.commit()
+        return exc
+
+    old_closed = case(ExceptionStatus.DISMISSED, 200)
+    old_open = case(ExceptionStatus.OPEN, 200)
+    recent_closed = case(ExceptionStatus.EXPLAINED, 10)
+
+    assert engine.redact_old_evidence(db, older_than_days=180) == 1
+    db.refresh(old_closed)
+    assert old_closed.evidence["stops"] == [{"start": "x", "minutes": 60}]
+    assert old_closed.evidence["threshold_minutes"] == 45
+    assert old_closed.evidence["coordinates_removed"] is True
+    db.refresh(old_open)
+    db.refresh(recent_closed)
+    assert "lat" in old_open.evidence["stops"][0]  # still under review
+    assert "lat" in recent_closed.evidence["stops"][0]  # within retention
+    assert engine.redact_old_evidence(db, older_than_days=180) == 0  # idempotent
