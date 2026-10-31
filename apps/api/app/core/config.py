@@ -1,0 +1,154 @@
+"""Application settings loaded from environment variables.
+
+All configuration comes from the environment (or a local `.env` file in
+development). Never hardcode credentials here.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from typing import Literal
+from zoneinfo import ZoneInfo
+
+from pydantic import Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=(".env", "../../.env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+        # `VAR=` (as compose passes unset values) means "not set", not "".
+        env_ignore_empty=True,
+    )
+
+    app_name: str = "Go Daily API"
+    app_env: Literal["development", "test", "staging", "production"] = "development"
+    app_timezone: str = "Africa/Cairo"
+    app_currency: str = "EGP"
+
+    database_url: str = Field(
+        default="postgresql+psycopg://godaily:godaily@localhost:5432/godaily",
+        description="SQLAlchemy URL. Use the psycopg (v3) driver.",
+    )
+    database_pool_size: int = 5
+    database_max_overflow: int = 10
+    database_echo: bool = False
+
+    # Comma-separated list of allowed browser origins.
+    cors_origins: str = "http://localhost:3000"
+
+    log_level: str = "INFO"
+    # Bearer token for GET /metrics (Prometheus). Unset = endpoint disabled.
+    metrics_token: SecretStr | None = None
+    log_json: bool = True
+
+    # Opaque session tokens (see docs/ARCHITECTURE.md -> Authentication).
+    session_ttl_hours_admin: int = 12
+    session_ttl_hours_driver: int = 24 * 30
+    session_idle_timeout_hours: int = 72
+    login_max_failed_attempts: int = 5
+    login_lockout_minutes: int = 15
+    # Login attempts per client IP per window (all accounts). The admin web
+    # logs users in from its server, so this must cover the whole office.
+    login_rate_limit: int = 60
+    login_rate_window_seconds: int = 300
+
+    # Fernet key (urlsafe base64, 32 bytes) for encrypting sensitive personal
+    # data such as national IDs. Required in staging/production.
+    data_encryption_key: SecretStr | None = None
+
+    # Show "expiring soon" warnings this many days before a document expires.
+    expiry_warning_days: int = 30
+
+    # GPS tracking (see docs/ARCHITECTURE.md -> Tracking).
+    gps_max_accuracy_m: float = 100.0
+    gps_max_speed_kmh: float = 200.0
+    gps_gap_seconds: int = 300
+    gps_stop_min_seconds: int = 180
+    gps_stop_radius_m: float = 60.0
+    tracking_online_seconds: int = 120
+    tracking_stale_seconds: int = 600
+    gps_retention_days: int = 180
+    gps_max_batch_points: int = 500
+
+    # Attachments (receipts, statements, invoices). Objects are private: they
+    # are only served through the API after a permission check.
+    storage_backend: Literal["local", "s3"] = "local"
+    storage_local_root: str = "./var/attachments"
+    storage_s3_bucket: str | None = None
+    storage_s3_prefix: str = ""
+    storage_s3_region: str | None = None
+    # For S3-compatible services (Cloudflare R2, MinIO, DigitalOcean Spaces...).
+    storage_s3_endpoint_url: str | None = None
+    # Leave unset to use the standard AWS credential chain (env, role, profile).
+    storage_s3_access_key_id: str | None = None
+    storage_s3_secret_access_key: SecretStr | None = None
+    attachment_max_bytes: int = 10 * 1024 * 1024
+
+    # Exception detection (Task 20). Thresholds are review hints, not verdicts.
+    exception_lookback_days: int = 3
+    exception_gps_disabled_minutes: int = 5
+    exception_gps_gap_minutes: int = 15
+    exception_gps_gap_moved_m: float = 1000.0
+    exception_long_stop_minutes: int = 45
+    # Corridor around the straight lines joining a route's stops (not roads).
+    exception_route_corridor_m: float = 2000.0
+    exception_route_min_minutes: int = 5
+    # "lat,lng,radius_km;lat,lng,radius_km". Empty disables the operating-area rule.
+    exception_operating_areas: str = ""
+    exception_outside_area_minutes: int = 5
+    exception_moved_between_shifts_km: int = 5
+    exception_max_avg_speed_kmh: float = 120.0
+    exception_odometer_tolerance_pct: float = 25.0
+    exception_odometer_tolerance_km: float = 5.0
+    exception_odometer_min_gps_coverage_pct: float = 80.0
+    exception_fuel_ratio: float = 1.6
+    exception_fuel_min_week_km: int = 150
+    exception_fuel_history_weeks: int = 8
+    exception_fuel_distance_m: float = 1000.0
+    exception_fuel_outside_shift_minutes: int = 60
+    exception_duplicate_window_minutes: int = 60
+    exception_revenue_ratio: float = 2.0
+    exception_revenue_min_statements: int = 5
+
+    # Notifications (Task 22). In-app is always on. Extra channels are
+    # comma-separated names registered in app/services/notification_channels.py.
+    notification_channels: str = ""
+    notification_channel_min_severity: Literal["INFO", "WARNING", "CRITICAL"] = "CRITICAL"
+    # Financial records waiting longer than this are summarised for approvers.
+    notification_pending_review_hours: int = 24
+
+    # Optional bootstrap admin (used only by `python -m app.cli bootstrap-admin`).
+    bootstrap_admin_phone: str | None = None
+    bootstrap_admin_password: SecretStr | None = None
+    bootstrap_admin_name: str = "مدير النظام"
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalise_db_url(cls, value: str) -> str:
+        # Accept plain postgres URLs (e.g. from hosting providers) and pin the driver.
+        if value.startswith("postgres://"):
+            value = "postgresql://" + value[len("postgres://") :]
+        if value.startswith("postgresql://"):
+            value = "postgresql+psycopg://" + value[len("postgresql://") :]
+        return value
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def tz(self) -> ZoneInfo:
+        return ZoneInfo(self.app_timezone)
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env == "production"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
