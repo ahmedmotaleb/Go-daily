@@ -42,6 +42,17 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <!-- Lets the camera app write a receipt photo into the app's private cache. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.receipts"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/receipt_paths" />
+        </provider>
+
         <!-- Exported for the system's protected boot/update broadcasts; onReceive checks the action. -->
         <receiver
             android:name=".tracking.BootReceiver"

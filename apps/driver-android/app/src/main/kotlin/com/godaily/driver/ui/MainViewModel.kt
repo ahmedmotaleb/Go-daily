@@ -1,6 +1,7 @@
 package com.godaily.driver.ui
 
 import android.app.Application
+import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -21,11 +22,14 @@ import com.godaily.driver.core.text.normalizeDigits
 import com.godaily.driver.core.text.parseOdometer
 import com.godaily.driver.core.text.parsePositiveDecimal
 import com.godaily.driver.core.tracking.TrackingStatus
+import com.godaily.driver.receipt.ReceiptPhotos
 import com.godaily.driver.sync.SyncScheduler
 import com.godaily.driver.tracking.TrackingController
 import com.godaily.driver.tracking.TrackingMonitor
+import java.io.IOException
 import java.time.Instant
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,7 +67,11 @@ data class UiState(
     val message: String? = null,
     val dialogError: String? = null,
     val loginError: String? = null,
+    /** Fuel entry saved but its receipt photo did not upload: offer a retry. */
+    val receiptRetry: ReceiptRetry? = null,
 )
+
+data class ReceiptRetry(val entryId: String, val photo: Uri)
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val c = app.container
@@ -211,9 +219,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(dialog = Dialog.RecordFuel, dialogError = null) }
     }
 
-    fun closeDialog() = _state.update { it.copy(dialog = null, dialogError = null) }
+    fun closeDialog() {
+        if (_state.value.dialog == Dialog.RecordFuel) ReceiptPhotos.clearCache(getApplication<Application>())
+        _state.update { it.copy(dialog = null, dialogError = null, receiptRetry = null) }
+    }
 
-    fun recordFuel(fuelTypeId: String?, quantity: String, total: String, odometer: String, paidByDriver: Boolean) {
+    fun showDialogError(message: String) = _state.update { it.copy(dialogError = message) }
+
+    fun recordFuel(
+        fuelTypeId: String?,
+        quantity: String,
+        total: String,
+        odometer: String,
+        paidByDriver: Boolean,
+        receipt: Uri?,
+    ) {
         if (fuelTypeId == null) {
             _state.update { it.copy(dialogError = "اختر نوع الوقود أو الزيت") }
             return
@@ -228,8 +248,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val key = fuelKey ?: UUID.randomUUID().toString().also { fuelKey = it }
+        // Only a fix the tracking service recorded in the last two minutes:
+        // where the phone is now (the station), never an older or guessed one.
+        val position = TrackingMonitor.position.value?.freshAt(System.currentTimeMillis())
         busy {
-            try {
+            val entry = try {
                 c.api.recordFuel(
                     FuelEntryRequest(
                         fuelTypeId = fuelTypeId,
@@ -237,13 +260,50 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         totalAmount = (amount as DecimalInput.Valid).value,
                         odometerKm = (odometerKm as? OdometerInput.Valid)?.km,
                         paidBy = if (paidByDriver) "DRIVER" else "COMPANY",
+                        latitude = position?.latitude,
+                        longitude = position?.longitude,
+                        locationAccuracyM = position?.accuracyM,
                     ),
                     key,
                 )
-                fuelKey = null
-                _state.update { it.copy(dialog = null, message = "تم تسجيل الوقود — بانتظار مراجعة الإدارة") }
             } catch (e: ApiError) {
                 _state.update { it.copy(dialogError = e.message) }
+                return@busy
+            }
+            fuelKey = null
+            if (receipt == null) {
+                closeDialog()
+                _state.update { it.copy(message = "تم تسجيل الوقود — بانتظار مراجعة الإدارة") }
+            } else {
+                uploadReceipt(entry.id, receipt)
+            }
+        }
+    }
+
+    /** The entry is saved; try its receipt photo again. */
+    fun retryReceipt() {
+        val retry = _state.value.receiptRetry ?: return
+        busy { uploadReceipt(retry.entryId, retry.photo) }
+    }
+
+    private suspend fun uploadReceipt(entryId: String, photo: Uri) {
+        try {
+            val result = c.api.uploadFuelReceipt(entryId, ReceiptPhotos.prepare(getApplication<Application>(), photo))
+            closeDialog()
+            val note = if (result.possibleDuplicate) " (الصورة مطابقة لإيصال سابق وستراجعها الإدارة)" else ""
+            _state.update { it.copy(message = "تم تسجيل الوقود وإرفاق الإيصال — بانتظار مراجعة الإدارة$note") }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            val reason = when (e) {
+                is ApiError -> e.message
+                is IOException -> e.message
+                else -> null
+            } ?: "تعذر رفع الصورة"
+            _state.update {
+                it.copy(
+                    receiptRetry = ReceiptRetry(entryId, photo),
+                    dialogError = "تم حفظ سجل الوقود، لكن لم تُرفع صورة الإيصال: $reason",
+                )
             }
         }
     }

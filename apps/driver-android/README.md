@@ -2,9 +2,9 @@
 
 Native Android app for drivers: log in, see the assigned vehicle and today's
 shifts, start and end a shift, switch the current operation, record fuel or
-oil purchases during the shift (reviewed by the office before they count),
-and record the vehicle's location automatically for the whole work shift.
-It does nothing else.
+oil purchases during the shift with a photo of the receipt (reviewed by the
+office before they count), and record the vehicle's location automatically
+for the whole work shift. It does nothing else.
 
 - Kotlin, Jetpack Compose (Material 3), Arabic RTL UI
 - minSdk 26 (Android 8.0), targetSdk 36
@@ -14,7 +14,7 @@ It does nothing else.
 
 | Part | What it is | Verified where |
 |---|---|---|
-| `core/` | Pure Kotlin/JVM: API client, offline sync engine, tracking state machine, adaptive sampling, input parsing | **Unit-tested** (58 tests) locally and in CI (`./gradlew -p core test`) |
+| `core/` | Pure Kotlin/JVM: API client, offline sync engine, tracking state machine, adaptive sampling, input parsing | **Unit-tested** (65 tests) locally and in CI (`./gradlew -p core test`) |
 | `app/` | Android app: Compose UI, foreground location service, SQLite queue, WorkManager sync, Keystore token storage | **Compiles and passes Android lint in CI** (`:app:assembleDebug :app:lintDebug`); no instrumented tests yet |
 | On-device behaviour | Background tracking, reboot recovery, OEM battery killers | **Not verified**: needs real phones (see "Device test plan") |
 
@@ -129,6 +129,15 @@ switch / no fixes / offline / backlog       ▼
   bodies carry the token, password and location).
 - IDs used in URL paths are validated so they cannot change the request path.
 - No national ID or other sensitive driver data is stored on the phone.
+- Fuel entries: the receipt photo comes from the camera (written to the app's
+  private cache through a `FileProvider`) or the system photo picker; neither
+  needs a camera or storage permission. Photos are shrunk to 1600 px and
+  re-encoded as JPEG before upload, which also drops EXIF metadata such as a
+  location the camera embedded. Cached photos are deleted when the dialog
+  closes. If the upload fails the entry is kept and the driver can retry.
+- A fuel entry carries the phone's position only if the tracking service
+  recorded a fix in the last two minutes (so only during a shift); otherwise
+  none is sent. The dialog tells the driver this.
 
 ## Reliability scenarios (Task 29)
 

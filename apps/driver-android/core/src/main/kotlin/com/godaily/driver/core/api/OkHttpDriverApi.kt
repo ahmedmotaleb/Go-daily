@@ -17,6 +17,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
@@ -104,6 +105,26 @@ class OkHttpDriverApi(
         )
 
     override suspend fun myFuel(): List<FuelEntry> = get("driver/fuel", ListSerializer(FuelEntry.serializer()))
+
+    override suspend fun uploadFuelReceipt(
+        entryId: String,
+        image: ByteArray,
+        contentType: String,
+    ): ReceiptUploadResult {
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("file", "receipt.${extensionFor(contentType)}", image.toRequestBody(contentType.toMediaType()))
+            .build()
+        return execute(build("driver/fuel/${segment(entryId)}/receipt").post(body)) {
+            decode(it, ReceiptUploadResult.serializer())
+        }
+    }
+
+    private fun extensionFor(contentType: String) = when (contentType) {
+        "image/png" -> "png"
+        "image/webp" -> "webp"
+        else -> "jpg"
+    }
 
     override suspend fun uploadPoints(batch: PointBatch): PointBatchResult =
         post("driver/tracking/points", batch, PointBatch.serializer(), PointBatchResult.serializer())

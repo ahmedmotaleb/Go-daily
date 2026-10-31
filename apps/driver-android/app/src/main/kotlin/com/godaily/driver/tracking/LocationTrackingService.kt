@@ -22,6 +22,7 @@ import com.godaily.driver.core.api.TrackingEventType
 import com.godaily.driver.core.sync.UploadScheduler
 import com.godaily.driver.core.tracking.AdaptiveSampler
 import com.godaily.driver.core.tracking.FixDeduplicator
+import com.godaily.driver.core.tracking.LastPosition
 import com.godaily.driver.core.tracking.LocationFix
 import com.godaily.driver.core.tracking.SamplingConfig
 import com.godaily.driver.core.tracking.toGpsPoint
@@ -169,7 +170,9 @@ class LocationTrackingService : LifecycleService() {
         if (!dedupe.accept(fix)) return
         val point = fix.toGpsPoint(UUID.randomUUID().toString()) ?: return
         c.pointQueue.enqueue(shift, point)
-        TrackingMonitor.fixReceived(System.currentTimeMillis())
+        val now = System.currentTimeMillis()
+        TrackingMonitor.fixReceived(now)
+        TrackingMonitor.positionRecorded(LastPosition(point.latitude, point.longitude, point.accuracyM, now))
         sampler.onFix(fix)?.let(::subscribe)
         maybeUpload()
     }

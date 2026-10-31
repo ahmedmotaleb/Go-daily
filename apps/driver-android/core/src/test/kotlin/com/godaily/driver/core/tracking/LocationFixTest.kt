@@ -65,3 +65,18 @@ class LocationFixTest {
         assertTrue(dedupe.accept(base.copy(timeMillis = base.timeMillis + 1)))
     }
 }
+
+class LastPositionTest {
+    private val fix = LastPosition(30.0444, 31.2357, 10.0, atMillis = 1_000_000)
+
+    @Test
+    fun `a recent fix describes where the phone is`() {
+        org.junit.jupiter.api.Assertions.assertEquals(fix, fix.freshAt(1_000_000 + 60_000))
+    }
+
+    @Test
+    fun `an old fix or one from the future is not used`() {
+        org.junit.jupiter.api.Assertions.assertNull(fix.freshAt(1_000_000 + 121_000))
+        org.junit.jupiter.api.Assertions.assertNull(fix.freshAt(999_000))
+    }
+}

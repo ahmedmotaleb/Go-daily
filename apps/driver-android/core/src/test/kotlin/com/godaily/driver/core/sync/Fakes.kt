@@ -12,6 +12,7 @@ import com.godaily.driver.core.api.LoginRequest
 import com.godaily.driver.core.api.LoginResponse
 import com.godaily.driver.core.api.PointBatch
 import com.godaily.driver.core.api.PointBatchResult
+import com.godaily.driver.core.api.ReceiptUploadResult
 import com.godaily.driver.core.api.RejectedPoint
 import com.godaily.driver.core.api.ServerTrackingStatus
 import com.godaily.driver.core.api.Session
@@ -170,6 +171,8 @@ class FakeDriverApi : DriverApi {
     override suspend fun trackingStatus(): ServerTrackingStatus = error("unused")
     override suspend fun recordFuel(request: FuelEntryRequest, idempotencyKey: String): FuelEntry = error("unused")
     override suspend fun myFuel(): List<FuelEntry> = error("unused")
+    override suspend fun uploadFuelReceipt(entryId: String, image: ByteArray, contentType: String): ReceiptUploadResult =
+        error("unused")
 }
 
 fun offline() = ApiError.Network(IOException("offline"))

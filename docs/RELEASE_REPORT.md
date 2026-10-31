@@ -16,7 +16,7 @@ The backend, admin web and the driver app's logic are complete for Tasks 01–32
 | Frontend lint passes | ✅ | ESLint + Prettier check, locally and in CI |
 | TypeScript typecheck passes | ✅ | `next typegen && tsc`, locally and in CI |
 | Frontend production build passes | ✅ | `next build` (standalone), locally and in CI; Docker images build in CI |
-| Android build/tests pass | ✅ (debug) | `core`: 58 JVM tests, locally and in CI. `app`: `assembleDebug` + Android lint in CI. A signed release build needs the production keystore (not in the repository) |
+| Android build/tests pass | ✅ (debug) | `core`: 65 JVM tests, locally and in CI. `app`: `assembleDebug` + Android lint in CI. A signed release build needs the production keystore (not in the repository) |
 | Alembic migrations apply from a clean DB | ✅ | Fresh database → `upgrade head` (11 revisions), `alembic check` clean; every test run also builds the schema from migrations |
 | Upgrade path from an existing DB | ✅ | Database at `0006` with users, vehicles, drivers, a completed shift and audit rows → upgraded through `0007`–`0011` with data intact; new features (exception detection, notifications) ran on it |
 | Authentication / RBAC | ✅ | `test_auth`, `test_users_rbac`, route-generated RBAC matrix (`test_security`: every route × every role); browser: login, wrong password, user creation, deactivation, logout |
@@ -65,7 +65,7 @@ The backend, admin web and the driver app's logic are complete for Tasks 01–32
 | API (pytest, PostgreSQL 16) | **276 passed** in 27 files: auth 20, exceptions 22, shifts 16, users/RBAC 15, phone/security 15, security matrix 14, vehicles 13, revenue 12, notifications 11, assignments 11, reports 10, integrity 10, geofence 10, settlements 10, costs 10, drivers 10, tracking 9, observability 9, driver app 8, attachments 8, operations 7, maintenance 6, route events 5, health 5, scenarios 4, CLI 4, dashboard 2 | Local and CI (`API (lint, types, tests)`) |
 | API static checks | ruff, ruff format, mypy strict: clean | Local and CI |
 | Admin web | 27 vitest tests; ESLint, Prettier, `tsc`, production build: clean | Local and CI |
-| Driver app core | 58 JVM tests (API client 13, sync engine 11, reliability 2, backoff 4, digits 4, sampler 7, location fix 5, tracking status 12) | Local and CI |
+| Driver app core | 65 JVM tests (API client 15, sync engine 11, reliability 2, backoff 4, digits 4, sampler 7, location fix 5, last position 2, receipt image 3, tracking status 12) | Local and CI |
 | Driver app module | `assembleDebug` + Android lint | CI only (the sandbox cannot reach Google's Maven repository) |
 | Docker images | API and admin web build | CI |
 | Dependency audit | pip-audit (119 runtime packages) and `pnpm audit --prod`: no known vulnerabilities | Local, 2026-10-30 |
@@ -99,7 +99,6 @@ The suite also passed when run across local midnight (00:02 Cairo time), which f
 ## 4. Known limitations
 
 - **Driver app not device-tested.** Background tracking, reboot recovery, Android 13+ task-manager stops and vendor battery killers (Xiaomi, Oppo, Huawei…) need the device test plan in `apps/driver-android/README.md`.
-- The driver app does not yet attach a receipt photo or the phone's location to fuel entries. The API supports both; the office can attach receipts in the web.
 - Route deviation uses straight lines between route stops, not road geometry. The corridor is generous (2 km) and the rule says so in its evidence.
 - Fuel consumption is compared weekly in cost per km against the vehicle's own history (price changes affect it). It is a review hint, not a measurement.
 - No PDF reports: reliable Arabic PDF rendering was not verified, so CSV is offered instead.

@@ -211,6 +211,48 @@ class OkHttpDriverApiTest {
     }
 
     @Test
+    fun `fuel entries carry the phone's position only when one is given`() = runTest {
+        val entryJson = """{"id":"f2","fuel_type":"بنزين","quantity":"20.000","unit":"LITER",
+            "total_amount":"300.00","occurred_at":"2026-03-01T06:30:00Z","status":"SUBMITTED","paid_by":"DRIVER"}"""
+        respond(201, entryJson)
+        api.recordFuel(
+            FuelEntryRequest(
+                fuelTypeId = "t2", quantity = "20", totalAmount = "300",
+                latitude = 30.0444, longitude = 31.2357, locationAccuracyM = 12.0,
+            ),
+            "fuel-2",
+        )
+        val withPosition = GoDailyJson.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonObject
+        assertEquals("30.0444", withPosition["latitude"]!!.jsonPrimitive.content)
+        assertEquals("12.0", withPosition["location_accuracy_m"]!!.jsonPrimitive.content)
+
+        respond(201, entryJson)
+        api.recordFuel(FuelEntryRequest(fuelTypeId = "t2", quantity = "20", totalAmount = "300"), "fuel-3")
+        val without = GoDailyJson.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonObject
+        assertTrue("latitude" !in without && "longitude" !in without) // omitted, not invented
+    }
+
+    @Test
+    fun `receipt photos are uploaded as multipart to the entry`() = runTest {
+        respond(
+            201,
+            """{"attachment":{"id":"a1","kind":"FUEL_RECEIPT","content_type":"image/jpeg","size_bytes":4},
+               "duplicates":[{"id":"a0","owner_type":"fuel_transaction"}]}""",
+        )
+        val result = api.uploadFuelReceipt("f1", byteArrayOf(1, 2, 3, 4))
+        assertEquals("a1", result.attachment.id)
+        assertTrue(result.possibleDuplicate)
+        val req = server.takeRequest()
+        assertEquals("/api/v1/driver/fuel/f1/receipt", req.url.encodedPath)
+        assertEquals("Bearer gd_test-token", req.headers["Authorization"])
+        assertTrue(req.headers["Content-Type"]!!.startsWith("multipart/form-data"))
+        val body = req.body!!.utf8()
+        assertTrue("name=\"file\"; filename=\"receipt.jpg\"" in body)
+        assertTrue("Content-Type: image/jpeg" in body)
+        assertThrows<IllegalArgumentException> { api.uploadFuelReceipt("../../users", byteArrayOf(1)) }
+    }
+
+    @Test
     fun `catalog includes fuel types and tolerates older servers without them`() = runTest {
         respond(
             200,

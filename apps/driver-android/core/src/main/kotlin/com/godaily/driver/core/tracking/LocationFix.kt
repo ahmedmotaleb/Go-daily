@@ -68,3 +68,22 @@ class FixDeduplicator {
         return true
     }
 }
+
+/** The latest fix the tracking service recorded, kept in memory only. */
+data class LastPosition(
+    val latitude: Double,
+    val longitude: Double,
+    val accuracyM: Double?,
+    val atMillis: Long,
+) {
+    /**
+     * This position if it is recent enough to describe where the phone is
+     * now (e.g. at the fuel station); otherwise null. Nothing is guessed.
+     */
+    fun freshAt(nowMillis: Long, maxAgeMillis: Long = MAX_AGE_MILLIS): LastPosition? =
+        takeIf { nowMillis - atMillis in 0..maxAgeMillis }
+
+    companion object {
+        const val MAX_AGE_MILLIS = 120_000L
+    }
+}

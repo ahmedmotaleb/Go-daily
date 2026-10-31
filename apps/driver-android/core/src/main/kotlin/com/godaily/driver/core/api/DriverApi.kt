@@ -32,6 +32,9 @@ interface DriverApi {
 
     suspend fun myFuel(): List<FuelEntry>
 
+    /** Photo of the receipt for one of the driver's own fuel entries (JPEG, PNG or WebP). */
+    suspend fun uploadFuelReceipt(entryId: String, image: ByteArray, contentType: String = "image/jpeg"): ReceiptUploadResult
+
     suspend fun uploadPoints(batch: PointBatch): PointBatchResult
 
     suspend fun uploadEvents(request: TrackingEventsRequest): TrackingEventsResult

@@ -97,7 +97,23 @@ data class FuelEntryRequest(
     @SerialName("paid_by") val paidBy: String = "DRIVER",
     @SerialName("payment_method") val paymentMethod: String = "CASH",
     val notes: String? = null,
+    /** Where the phone was when the entry was made (latest in-shift fix), if recent. */
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    @SerialName("location_accuracy_m") val locationAccuracyM: Double? = null,
 )
+
+@Serializable
+data class UploadedAttachment(val id: String)
+
+/** Answer to a receipt upload; `duplicates` lists earlier files with identical bytes. */
+@Serializable
+data class ReceiptUploadResult(
+    val attachment: UploadedAttachment,
+    val duplicates: List<kotlinx.serialization.json.JsonObject> = emptyList(),
+) {
+    val possibleDuplicate: Boolean get() = duplicates.isNotEmpty()
+}
 
 @Serializable
 data class FuelEntry(

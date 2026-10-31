@@ -1,5 +1,10 @@
 package com.godaily.driver.ui.screens
 
+import android.content.ActivityNotFoundException
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -19,15 +25,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.godaily.driver.core.api.DriverCatalog
 import com.godaily.driver.core.api.Shift
+import com.godaily.driver.receipt.ReceiptPhotos
 import com.godaily.driver.ui.MainViewModel
 import com.godaily.driver.ui.UiState
 
@@ -201,12 +210,27 @@ fun OperationDialog(state: UiState, vm: MainViewModel) {
 
 @Composable
 fun FuelDialog(state: UiState, vm: MainViewModel) {
+    val retry = state.receiptRetry
+    if (retry != null) {
+        ReceiptRetryDialog(state, vm)
+        return
+    }
+    val context = LocalContext.current
     val types = state.catalog?.fuelTypes.orEmpty()
     var typeId by remember { mutableStateOf(types.firstOrNull()?.id) }
     var quantity by remember { mutableStateOf("") }
     var total by remember { mutableStateOf("") }
     var odometer by remember { mutableStateOf("") }
     var paidByDriver by remember { mutableStateOf(true) }
+    // Saveable: the activity can be recreated while the camera app is open.
+    var receipt by rememberSaveable { mutableStateOf<Uri?>(null) }
+    var pendingCapture by rememberSaveable { mutableStateOf<Uri?>(null) }
+    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        if (saved) receipt = pendingCapture
+    }
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) receipt = uri
+    }
 
     AlertDialog(
         onDismissRequest = vm::closeDialog,
@@ -246,15 +270,62 @@ fun FuelDialog(state: UiState, vm: MainViewModel) {
                 Text("من دفع؟", fontWeight = FontWeight.SemiBold)
                 Choice("دفعت أنا (يُضاف لحسابي بعد المراجعة)", paidByDriver) { paidByDriver = true }
                 Choice("دفعت الشركة", !paidByDriver) { paidByDriver = false }
+
+                Text("صورة الإيصال (اختياري)", fontWeight = FontWeight.SemiBold)
+                if (receipt == null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            val target = ReceiptPhotos.newCaptureUri(context)
+                            pendingCapture = target
+                            try {
+                                takePicture.launch(target)
+                            } catch (_: ActivityNotFoundException) {
+                                vm.showDialogError("لا يوجد تطبيق كاميرا؛ اختر صورة من المعرض")
+                            }
+                        }) { Text("تصوير") }
+                        OutlinedButton(onClick = {
+                            pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }) { Text("اختيار صورة") }
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("✓ تم إرفاق صورة الإيصال", modifier = Modifier.weight(1f))
+                        TextButton(onClick = { receipt = null }) { Text("إزالة") }
+                    }
+                }
+                Text(
+                    "يُرفق موقع المركبة الحالي من تتبع الوردية إن كان حديثًا (آخر دقيقتين).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 DialogError(state.dialogError)
             }
         },
         confirmButton = {
             Button(
-                onClick = { vm.recordFuel(typeId, quantity, total, odometer, paidByDriver) },
+                onClick = { vm.recordFuel(typeId, quantity, total, odometer, paidByDriver, receipt) },
                 enabled = !state.busy,
             ) { Text("حفظ") }
         },
         dismissButton = { TextButton(onClick = vm::closeDialog) { Text("إلغاء") } },
+    )
+}
+
+/** The fuel entry is saved; only its receipt photo is missing. */
+@Composable
+private fun ReceiptRetryDialog(state: UiState, vm: MainViewModel) {
+    AlertDialog(
+        onDismissRequest = vm::closeDialog,
+        title = { Text("صورة الإيصال") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DialogError(state.dialogError)
+                Text("يمكنك إعادة المحاولة الآن، أو الإغلاق وتسليم الإيصال للمكتب لإرفاقه.")
+            }
+        },
+        confirmButton = {
+            Button(onClick = vm::retryReceipt, enabled = !state.busy) { Text("إعادة رفع الصورة") }
+        },
+        dismissButton = { TextButton(onClick = vm::closeDialog) { Text("إغلاق") } },
     )
 }

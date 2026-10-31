@@ -1,5 +1,6 @@
 package com.godaily.driver.tracking
 
+import com.godaily.driver.core.tracking.LastPosition
 import com.godaily.driver.core.tracking.TrackingStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +20,14 @@ object TrackingMonitor {
 
     val status = MutableStateFlow<TrackingStatus?>(null)
 
+    // Latest recorded in-shift fix, in memory only (attached to fuel entries if recent).
+    private val _position = MutableStateFlow<LastPosition?>(null)
+    val position: StateFlow<LastPosition?> = _position
+
+    fun positionRecorded(position: LastPosition) {
+        _position.value = position
+    }
+
     fun serviceStarted(now: Long, intervalMillis: Long) =
         _service.update { ServiceInfo(running = true, sinceMillis = now, intervalMillis = intervalMillis) }
 
@@ -26,5 +35,8 @@ object TrackingMonitor {
 
     fun fixReceived(now: Long) = _service.update { it.copy(lastFixAtMillis = now) }
 
-    fun serviceStopped() = _service.update { ServiceInfo() }
+    fun serviceStopped() {
+        _service.update { ServiceInfo() }
+        _position.value = null
+    }
 }
