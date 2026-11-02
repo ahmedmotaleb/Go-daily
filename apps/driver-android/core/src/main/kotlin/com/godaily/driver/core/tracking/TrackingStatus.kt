@@ -25,13 +25,19 @@ data class TrackingSignals(
     val expectedIntervalMillis: Long,
 )
 
-/** The headline state shown to the driver (and mirrored in the notification). */
+/**
+ * The headline state shown to the driver (and mirrored in the notification).
+ * Each level has one short Arabic label; see [com.godaily.driver.core.text.ArabicText.level].
+ */
 enum class TrackingLevel {
-    /** No active shift: location is not collected. */
+    /** No active shift (never started or ended): location is not collected. */
     IDLE,
 
     /** Recording and uploading normally. */
     ACTIVE,
+
+    /** Recording, online, and catching up on points saved while offline. */
+    UPLOADING,
 
     /** Recording, but no internet: points are queued on the phone. */
     OFFLINE_RECORDING,
@@ -39,8 +45,11 @@ enum class TrackingLevel {
     /** Service running but no recent location fix (tunnel, indoors, weak GPS). */
     WEAK_SIGNAL,
 
-    /** Cannot record: permission revoked or system location switched off. */
-    BLOCKED,
+    /** The phone's location switch is off: nothing can be recorded. */
+    LOCATION_OFF,
+
+    /** Location permission is missing or was revoked: nothing can be recorded. */
+    PERMISSION_REQUIRED,
 
     /** Shift is active but the tracking service is not running. */
     STOPPED,
@@ -72,6 +81,13 @@ data class StatusParams(
     val backlogAgeMillis: Long = 10 * 60_000,
     /** ...or more points than this waiting at all. */
     val backlogPoints: Int = 2_000,
+    /**
+     * "Uploading" means catching up, not the normal batching: the service
+     * flushes every 45 s or 60 points, so anything older or larger than this
+     * is a backlog from an offline period being sent.
+     */
+    val catchUpAgeMillis: Long = 90_000,
+    val catchUpPoints: Int = 120,
 )
 
 /** Derives the driver-visible status. Pure: same signals, same status. */
@@ -96,12 +112,17 @@ fun evaluateTracking(s: TrackingSignals, params: StatusParams = StatusParams()):
     if (!s.batteryOptimizationExempt) issues += TrackingIssue.BATTERY_OPTIMIZED
     if (!s.notificationsAllowed) issues += TrackingIssue.NOTIFICATIONS_BLOCKED
 
+    val catchingUp = s.pendingPoints > 0 && (
+        s.pendingPoints >= params.catchUpPoints ||
+            (oldest != null && s.nowMillis - oldest >= params.catchUpAgeMillis)
+        )
     val level = when {
-        TrackingIssue.LOCATION_PERMISSION_DENIED in issues ||
-            TrackingIssue.LOCATION_DISABLED in issues -> TrackingLevel.BLOCKED
+        TrackingIssue.LOCATION_PERMISSION_DENIED in issues -> TrackingLevel.PERMISSION_REQUIRED
+        TrackingIssue.LOCATION_DISABLED in issues -> TrackingLevel.LOCATION_OFF
         TrackingIssue.SERVICE_NOT_RUNNING in issues -> TrackingLevel.STOPPED
         TrackingIssue.NO_RECENT_FIX in issues -> TrackingLevel.WEAK_SIGNAL
         TrackingIssue.OFFLINE in issues -> TrackingLevel.OFFLINE_RECORDING
+        catchingUp -> TrackingLevel.UPLOADING
         else -> TrackingLevel.ACTIVE
     }
     return TrackingStatus(level, issues, s.pendingPoints, s.lastFixAtMillis)

@@ -5,13 +5,28 @@ import com.godaily.driver.core.tracking.TrackingLevel
 
 /** Driver-facing Arabic copy for tracking states. Plain, short, no blame. */
 object ArabicText {
+    /** Short headline: the same words in the app, the notification and the pilot test plan. */
     fun level(level: TrackingLevel): String = when (level) {
-        TrackingLevel.IDLE -> "التتبع متوقف — لا توجد وردية نشطة"
-        TrackingLevel.ACTIVE -> "تتبع الوردية يعمل"
-        TrackingLevel.OFFLINE_RECORDING -> "لا يوجد إنترنت — يتم تسجيل الموقع وسيُرسل عند عودة الاتصال"
-        TrackingLevel.WEAK_SIGNAL -> "إشارة الموقع ضعيفة — لا توجد قراءات حديثة"
-        TrackingLevel.BLOCKED -> "التتبع متوقف — الموقع غير متاح للتطبيق"
-        TrackingLevel.STOPPED -> "التتبع متوقف — اضغط لإعادة تشغيله"
+        TrackingLevel.IDLE -> "الوردية منتهية"
+        TrackingLevel.ACTIVE -> "التتبع يعمل"
+        TrackingLevel.UPLOADING -> "جاري رفع المواقع"
+        TrackingLevel.OFFLINE_RECORDING -> "تسجيل بدون إنترنت"
+        TrackingLevel.WEAK_SIGNAL -> "إشارة الموقع ضعيفة"
+        TrackingLevel.LOCATION_OFF -> "الموقع غير متاح"
+        TrackingLevel.PERMISSION_REQUIRED -> "صلاحية الموقع مطلوبة"
+        TrackingLevel.STOPPED -> "التتبع متوقف"
+    }
+
+    /** One sentence under the headline saying what is happening and what to do. */
+    fun detail(level: TrackingLevel): String = when (level) {
+        TrackingLevel.IDLE -> "لا يُجمع الموقع خارج الوردية."
+        TrackingLevel.ACTIVE -> "يُسجَّل موقع الوردية ويُرسل تلقائيًا."
+        TrackingLevel.UPLOADING -> "عاد الاتصال، ويتم إرسال المواقع المحفوظة على الهاتف."
+        TrackingLevel.OFFLINE_RECORDING -> "لا يوجد إنترنت. يُسجَّل الموقع على الهاتف ويُرسل عند عودة الاتصال."
+        TrackingLevel.WEAK_SIGNAL -> "لا توجد قراءات موقع حديثة. قد تكون في مكان مغلق أو الإشارة ضعيفة."
+        TrackingLevel.LOCATION_OFF -> "خدمة الموقع في الهاتف مغلقة. افتحها لاستمرار التتبع."
+        TrackingLevel.PERMISSION_REQUIRED -> "اسمح للتطبيق بالوصول إلى الموقع لاستمرار تتبع الوردية."
+        TrackingLevel.STOPPED -> "توجد وردية نشطة لكن التتبع لا يعمل. أعد تشغيله."
     }
 
     fun issue(issue: TrackingIssue): String = when (issue) {

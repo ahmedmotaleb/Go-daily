@@ -39,11 +39,31 @@ class TrackingStatusTest {
     }
 
     @Test
-    fun `permission or location switch problems block tracking`() {
-        assertEquals(TrackingLevel.BLOCKED, evaluateTracking(healthy.copy(locationPermission = false)).level)
+    fun `missing permission and location switched off are told apart`() {
+        assertEquals(
+            TrackingLevel.PERMISSION_REQUIRED,
+            evaluateTracking(healthy.copy(locationPermission = false)).level,
+        )
         val off = evaluateTracking(healthy.copy(locationEnabled = false, online = false))
-        assertEquals(TrackingLevel.BLOCKED, off.level)
+        assertEquals(TrackingLevel.LOCATION_OFF, off.level)
         assertTrue(TrackingIssue.OFFLINE in off.issues)
+        // Permission comes first: switching location on alone would not help.
+        val both = evaluateTracking(healthy.copy(locationPermission = false, locationEnabled = false))
+        assertEquals(TrackingLevel.PERMISSION_REQUIRED, both.level)
+    }
+
+    @Test
+    fun `catching up after an offline period shows uploading`() {
+        // Normal batching (a few points, under a minute old) is plain "active".
+        assertEquals(TrackingLevel.ACTIVE, evaluateTracking(healthy).level)
+        val afterOffline = healthy.copy(pendingPoints = 40, oldestPendingAtMillis = now - 5 * 60_000)
+        assertEquals(TrackingLevel.UPLOADING, evaluateTracking(afterOffline).level)
+        val manyPoints = healthy.copy(pendingPoints = 500, oldestPendingAtMillis = now - 30_000)
+        assertEquals(TrackingLevel.UPLOADING, evaluateTracking(manyPoints).level)
+        // Still offline: recording, not uploading.
+        assertEquals(TrackingLevel.OFFLINE_RECORDING, evaluateTracking(afterOffline.copy(online = false)).level)
+        // A real problem outranks the upload.
+        assertEquals(TrackingLevel.STOPPED, evaluateTracking(afterOffline.copy(serviceRunning = false)).level)
     }
 
     @Test
@@ -134,10 +154,30 @@ class TrackingStatusTest {
 
     @Test
     fun `every state and issue has Arabic copy`() {
-        TrackingLevel.entries.forEach { assertTrue(ArabicText.level(it).isNotBlank()) }
+        TrackingLevel.entries.forEach {
+            assertTrue(ArabicText.level(it).isNotBlank())
+            assertTrue(ArabicText.detail(it).isNotBlank())
+        }
         TrackingIssue.entries.forEach { assertTrue(ArabicText.issue(it).isNotBlank()) }
         assertEquals("كل النقاط مُرسلة", ArabicText.pending(0))
         assertEquals("5 نقاط بانتظار الإرسال", ArabicText.pending(5))
         assertEquals("120 نقطة بانتظار الإرسال", ArabicText.pending(120))
+    }
+
+    @Test
+    fun `driver headlines use the pilot plan's exact words`() {
+        // U01: these labels appear in the app, the notification and DEVICE_PILOT_TEST_PLAN.md.
+        val expected = mapOf(
+            TrackingLevel.ACTIVE to "التتبع يعمل",
+            TrackingLevel.OFFLINE_RECORDING to "تسجيل بدون إنترنت",
+            TrackingLevel.UPLOADING to "جاري رفع المواقع",
+            TrackingLevel.LOCATION_OFF to "الموقع غير متاح",
+            TrackingLevel.PERMISSION_REQUIRED to "صلاحية الموقع مطلوبة",
+            TrackingLevel.STOPPED to "التتبع متوقف",
+            TrackingLevel.IDLE to "الوردية منتهية",
+        )
+        expected.forEach { (level, label) -> assertEquals(label, ArabicText.level(level)) }
+        // Every headline is distinct, so a tester can tell states apart.
+        assertEquals(TrackingLevel.entries.size, TrackingLevel.entries.map { ArabicText.level(it) }.toSet().size)
     }
 }

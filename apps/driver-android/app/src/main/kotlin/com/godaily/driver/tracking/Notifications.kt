@@ -44,10 +44,12 @@ object Notifications {
 
     /** The ongoing notification required for a location foreground service. */
     fun tracking(context: Context, status: TrackingStatus?): Notification {
-        val text = status?.let { ArabicText.level(it.level) } ?: ArabicText.level(
-            com.godaily.driver.core.tracking.TrackingLevel.ACTIVE,
-        )
-        val detail = status?.let { "$text\n${ArabicText.pending(it.pendingPoints)}" } ?: text
+        val level = status?.level ?: com.godaily.driver.core.tracking.TrackingLevel.ACTIVE
+        val text = ArabicText.level(level)
+        val detail = buildString {
+            append(text).append('\n').append(ArabicText.detail(level))
+            status?.let { append('\n').append(ArabicText.pending(it.pendingPoints)) }
+        }
         return NotificationCompat.Builder(context, CHANNEL_TRACKING)
             .setSmallIcon(R.drawable.ic_stat_tracking)
             .setContentTitle(context.getString(R.string.notification_tracking_title))

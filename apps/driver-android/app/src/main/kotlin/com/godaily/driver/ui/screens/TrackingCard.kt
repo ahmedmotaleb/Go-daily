@@ -30,7 +30,7 @@ import com.godaily.driver.ui.theme.Brand
 
 /**
  * Always-visible tracking state: the driver can tell at a glance whether
- * the shift is being recorded, recorded offline, blocked or stopped.
+ * the shift is being recorded, recorded offline, uploading, blocked or stopped.
  */
 @Composable
 fun TrackingCard(
@@ -41,10 +41,11 @@ fun TrackingCard(
 ) {
     val level = status?.level ?: TrackingLevel.IDLE
     val (container, content) = when (level) {
-        TrackingLevel.ACTIVE -> Brand.Lime100 to Brand.Forest800
+        TrackingLevel.ACTIVE, TrackingLevel.UPLOADING -> Brand.Lime100 to Brand.Forest800
         TrackingLevel.IDLE -> Brand.Neutral100 to Brand.Neutral600
         TrackingLevel.OFFLINE_RECORDING, TrackingLevel.WEAK_SIGNAL -> Brand.WarningSoft to Brand.Warning
-        TrackingLevel.BLOCKED, TrackingLevel.STOPPED -> Brand.DangerSoft to Brand.Danger
+        TrackingLevel.LOCATION_OFF, TrackingLevel.PERMISSION_REQUIRED, TrackingLevel.STOPPED ->
+            Brand.DangerSoft to Brand.Danger
     }
     val context = LocalContext.current
     Card(
@@ -59,6 +60,10 @@ fun TrackingCard(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
+            // Problem states are explained by the issue rows below, each with its fix.
+            if (level in DETAIL_LEVELS) {
+                Text(ArabicText.detail(level), color = content, style = MaterialTheme.typography.bodyMedium)
+            }
             if (status != null) {
                 if (level != TrackingLevel.IDLE) {
                     Text("آخر موقع: ${formatTimeMillis(status.lastFixAtMillis)}", color = content)
@@ -71,6 +76,13 @@ fun TrackingCard(
         }
     }
 }
+
+private val DETAIL_LEVELS = setOf(
+    TrackingLevel.IDLE,
+    TrackingLevel.ACTIVE,
+    TrackingLevel.UPLOADING,
+    TrackingLevel.OFFLINE_RECORDING,
+)
 
 @Composable
 private fun IssueRow(

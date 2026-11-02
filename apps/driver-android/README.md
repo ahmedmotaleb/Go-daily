@@ -108,11 +108,13 @@ switch / no fixes / offline / backlog       ▼
   end time when it receives the request (the app cannot backdate).
 - **Expired login.** Tracking of an active shift continues and points stay
   queued; they upload after the driver logs in again.
-- **Driver-visible status** (`core/.../TrackingStatus.kt`): *active*,
-  *offline but recording*, *weak GPS signal*, *blocked* (permission or
-  location switch), *stopped* (service not running during a shift), *idle*.
-  Each problem has Arabic copy and, where possible, a button that opens the
-  right settings screen.
+- **Driver-visible status** (`core/.../TrackingStatus.kt`): التتبع يعمل
+  (active), جاري رفع المواقع (catching up after being offline), تسجيل بدون
+  إنترنت (offline but recording), إشارة الموقع ضعيفة (no recent fix), الموقع
+  غير متاح (location switch off), صلاحية الموقع مطلوبة (permission missing),
+  التتبع متوقف (service not running during a shift), الوردية منتهية (no
+  shift). Each has a one-line explanation; each problem has Arabic copy and,
+  where possible, a button that opens the right settings screen.
 - **Problems reach management.** Permission denied/granted, location
   switched off/on, GPS signal lost/restored, battery optimisation on,
   background permission missing, sync backlog, service restarted, tracking
@@ -143,18 +145,18 @@ switch / no fixes / offline / backlog       ▼
 
 | Scenario | What the app does | Verified by |
 | --- | --- | --- |
-| App process killed or restarted | Queue, in-flight batch id, pending shift end and work context are on disk (SQLite, preferences). A new process resumes the same batch with its original id. The service restarts if Android allows it; otherwise the driver gets a "tap to resume" notification | `SyncReliabilityTest` (restart mid-backlog); device plan 7–8 |
-| Device reboot during a shift | `BootReceiver` restarts tracking if "Allow all the time" was granted; otherwise a notification asks the driver to open the app | Device plan 7 |
-| Internet lost and back | Every fix goes to SQLite first. Uploads back off with jitter; a validated network clears the backoff. The status shows *offline but recording* | `SyncEngineTest`, `BackoffTest`, `TrackingStatusTest`; device plan 3 |
+| App process killed or restarted | Queue, in-flight batch id, pending shift end and work context are on disk (SQLite, preferences). A new process resumes the same batch with its original id. The service restarts if Android allows it; otherwise the driver gets a "tap to resume" notification | `SyncReliabilityTest` (restart mid-backlog); pilot plan P05–P06 |
+| Device reboot during a shift | `BootReceiver` restarts tracking if "Allow all the time" was granted; otherwise a notification asks the driver to open the app | Pilot plan P06 |
+| Internet lost and back | Every fix goes to SQLite first. Uploads back off with jitter; a validated network clears the backoff. The status shows *تسجيل بدون إنترنت*, then *جاري رفع المواقع* while the backlog goes out | `SyncEngineTest`, `BackoffTest`, `TrackingStatusTest`; pilot plan P07 |
 | Answer lost after the server stored a batch | The batch is resent with the same id; the server answers from its record (no duplicates) | `SyncEngineTest`, `SyncReliabilityTest` (seeded long-shift simulation: every fix exactly once, in order); API `test_tracking.py` |
-| Temporary GPS loss | Status *weak GPS signal*; `GPS_SIGNAL_LOST`/`RESTORED` events; gaps stay gaps on the server | `TrackingStatusTest`; device plan 6 |
-| Permission denied or revoked, location switched off | Status *blocked* with a button to the right settings screen; events for management; the server's exception engine raises "مراجعة مطلوبة" for long interruptions | `TrackingStatusTest`; API `test_exceptions.py`; device plan 4–5 |
-| Battery optimisation / power save | Warning shown to the driver and sent as an event; power save doubles the interval but never stops tracking | `AdaptiveSamplerTest`, `TrackingStatusTest`; device plan (OEM phones) |
-| Large offline queue | Uploaded in batches of ≤ 500, at most a few batches per run, so the app stays responsive; a backlog warning goes to management | `SyncEngineTest` (huge backlog); device plan 10 |
+| Temporary GPS loss | Status *إشارة الموقع ضعيفة*; `GPS_SIGNAL_LOST`/`RESTORED` events; gaps stay gaps on the server | `TrackingStatusTest`; pilot plan P14 |
+| Permission denied or revoked, location switched off | Status *صلاحية الموقع مطلوبة* or *الموقع غير متاح*, with a button to the right settings screen; events for management; the server's exception engine raises "مراجعة مطلوبة" for long interruptions | `TrackingStatusTest`; API `test_exceptions.py`; pilot plan P10–P11 |
+| Battery optimisation / power save | Warning shown to the driver and sent as an event; power save doubles the interval but never stops tracking | `AdaptiveSamplerTest`, `TrackingStatusTest`; pilot plan P12–P13 |
+| Large offline queue | Uploaded in batches of ≤ 500, at most a few batches per run, so the app stays responsive; a backlog warning goes to management | `SyncEngineTest` (huge backlog); pilot plan P08 |
 | Two uploads at once (service flush and WorkManager) | One sync at a time per process (`Syncer` mutex); requests are idempotent anyway | Code review; `SyncEngineTest` replay cases |
-| Shift ended with unsynced fixes | Tracking stops at once; the end request (odometer, idempotency key) is stored and sent after the remaining fixes; the server accepts fixes from inside the shift window after the shift has ended | `SyncEngineTest`, `SyncReliabilityTest`; API `test_late_sync_after_shift_end_is_accepted`; device plan 9 |
+| Shift ended with unsynced fixes | Tracking stops at once; the end request (odometer, idempotency key) is stored and sent after the remaining fixes; the server accepts fixes from inside the shift window after the shift has ended | `SyncEngineTest`, `SyncReliabilityTest`; API `test_late_sync_after_shift_end_is_accepted`; pilot plan P17 |
 
-Failures are never hidden. The driver sees one of *active*, *offline but recording*, *weak GPS signal*, *blocked*, *stopped* or *idle*. Management sees device events on the shift timeline, the live map's tracking state, "tracking interrupted" notifications and review cases from the exception engine.
+Failures are never hidden. The driver sees one headline at a time, in the app and in the notification: *التتبع يعمل*, *جاري رفع المواقع*, *تسجيل بدون إنترنت*, *إشارة الموقع ضعيفة*, *الموقع غير متاح*, *صلاحية الموقع مطلوبة*, *التتبع متوقف* or *الوردية منتهية* (pinned in `TrackingStatusTest`). Management sees device events on the shift timeline, the live map's tracking state, "tracking interrupted" notifications and review cases from the exception engine.
 
 ## Android power management — known limitations
 
@@ -185,7 +187,7 @@ fixed from inside the app:
 - **Force-stop / swipe-away "stop" in the task manager** (Android 13+ lets
   users stop foreground services) stops tracking until the app is opened
   again. The gap is visible to management on the shift timeline, and the app
-  shows *stopped*.
+  shows *التتبع متوقف*.
 - **Doze / power save.** Low battery or power-save mode doubles the sampling
   interval (never stops it). Deep Doze can still delay fixes on some devices.
 - **GPS quality** depends on the phone and surroundings (tunnels, garages,
@@ -193,26 +195,12 @@ fixed from inside the app:
 - **Clock.** Point times come from the location fix; the server rejects
   points stamped in the future and flags implausible jumps.
 
-## Device test plan (not yet executed)
+## Device pilot test plan
 
-Run on at least one stock-Android phone and one aggressive-OEM phone
-(e.g. Xiaomi), with the debug build against a staging API:
-
-1. Log in; deny location; confirm *Start shift* routes to the disclosure and
-   the permission prompt.
-2. Start a shift; confirm the notification, points on the admin live map
-   within ~1 minute, and the *active* state.
-3. Airplane mode for 10 minutes while driving; confirm *offline but
-   recording*, then automatic upload and no duplicate points after
-   reconnecting.
-4. Revoke location in system settings mid-shift; confirm *blocked* in the
-   app and a `PERMISSION_DENIED` event on the shift timeline.
-5. Switch location off; confirm *blocked* and `LOCATION_DISABLED`.
-6. Park for 5+ minutes; confirm the interval drops to 60 s and the replay
-   shows a stop, not a gap.
-7. Reboot mid-shift with and without "Allow all the time".
-8. Swipe the app away; stop it from the Android 13+ task manager.
-9. End the shift offline; confirm tracking stops immediately and the end and
-   remaining points arrive when back online.
-10. Leave 3,000+ points queued (long offline drive); confirm the backlog
-    drains over several runs without the app freezing.
+The on-device checks (locked screen, background, swipe-away, process death,
+reboot, offline and recovery, duplicate retries, GPS off, permission revoked,
+battery saver and vendor battery killers, poor accuracy, long shift, low
+battery, ending a shift with unsynced points) are in
+[`docs/DEVICE_PILOT_TEST_PLAN.md`](../../docs/DEVICE_PILOT_TEST_PLAN.md),
+with a results log per phone. **Not yet executed**: the release gate stays
+open until it has been run on real phones.

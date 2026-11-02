@@ -98,7 +98,7 @@ The suite also passed when run across local midnight (00:02 Cairo time), which f
 
 ## 4. Known limitations
 
-- **Driver app not device-tested.** Background tracking, reboot recovery, Android 13+ task-manager stops and vendor battery killers (Xiaomi, Oppo, Huawei…) need the device test plan in `apps/driver-android/README.md`.
+- **Driver app not device-tested.** Background tracking, reboot recovery, Android 13+ task-manager stops and vendor battery killers (Xiaomi, Oppo, Huawei…) need the device pilot test plan in [`DEVICE_PILOT_TEST_PLAN.md`](DEVICE_PILOT_TEST_PLAN.md).
 - Route deviation uses straight lines between route stops, not road geometry. The corridor is generous (2 km) and the rule says so in its evidence.
 - Fuel consumption is compared weekly in cost per km against the vehicle's own history (price changes affect it). It is a review hint, not a measurement.
 - No PDF reports: reliable Arabic PDF rendering was not verified, so CSV is offered instead.
@@ -152,7 +152,7 @@ The suite also passed when run across local midnight (00:02 Cairo time), which f
 
 1. **Before the pilot:**
    - deploy to a staging environment following DEPLOYMENT.md;
-   - run the driver-app device test plan on at least one stock-Android phone and one aggressive-OEM phone (e.g. Xiaomi);
+   - run [`DEVICE_PILOT_TEST_PLAN.md`](DEVICE_PILOT_TEST_PLAN.md) on at least one stock-Android phone and one aggressive-OEM phone (e.g. Xiaomi);
    - fix what it finds;
    - publish the drivers' privacy notice.
 2. **Pilot vehicles:** one fixed-route/school microbus and one ride-hailing vehicle, each with its regular driver, for at least 5–10 real shifts.

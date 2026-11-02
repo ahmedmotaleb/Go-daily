@@ -198,7 +198,7 @@ All jobs are safe to repeat. They exit non-zero on failure, so alert on that.
    - grant precise location and "Allow all the time";
    - exempt the app from battery optimisation, and on Xiaomi, Oppo or Huawei also enable vendor autostart (see https://dontkillmyapp.com);
    - keep notifications on.
-4. Run the device test plan in `apps/driver-android/README.md` before the pilot.
+4. Run the device pilot test plan in [`DEVICE_PILOT_TEST_PLAN.md`](DEVICE_PILOT_TEST_PLAN.md) before the pilot.
 
 ## 12. Rollout and rollback
 
