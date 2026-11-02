@@ -29,6 +29,7 @@ from app.schemas.tracking import (
     GapOut,
     GpsQualityOut,
     LivePosition,
+    OdometerReconciliationOut,
     PointBatchIn,
     PointBatchResult,
     RejectedPoint,
@@ -40,7 +41,7 @@ from app.schemas.tracking import (
     TrackingState,
     TrackPointOut,
 )
-from app.services import gps_quality, route_events, school_runs
+from app.services import gps_quality, odometer_reconciliation, route_events, school_runs
 from app.services.track_analysis import TrackPoint, find_gaps, find_stops, recorded_distance_m
 
 WINDOW_TOLERANCE = timedelta(minutes=2)
@@ -543,6 +544,9 @@ def shift_track(db: Session, shift_id: uuid.UUID) -> ShiftTrackOut:
                 )
             )
         ),
+        odometer_reconciliation=OdometerReconciliationOut.model_validate(
+            asdict(odometer_reconciliation.reconcile(shift, track, settings))
+        ),
     )
 
 
@@ -558,11 +562,11 @@ def prune_old_points(db: Session, *, older_than_days: int) -> int:
     return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
-def gps_distance_km(db: Session, shift_ids: list[uuid.UUID]) -> dict[uuid.UUID, float]:
-    """Distance from consecutive VALID points per shift (gaps are not bridged)."""
+def valid_tracks(db: Session, shift_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[TrackPoint]]:
+    """VALID points per shift in recording order, loaded in one query."""
+    tracks: dict[uuid.UUID, list[TrackPoint]] = {sid: [] for sid in shift_ids}
     if not shift_ids:
-        return {}
-    settings = get_settings()
+        return tracks
     rows = db.execute(
         select(
             GpsPoint.shift_id,
@@ -575,10 +579,15 @@ def gps_distance_km(db: Session, shift_ids: list[uuid.UUID]) -> dict[uuid.UUID, 
         .where(GpsPoint.shift_id.in_(shift_ids), GpsPoint.quality == PointQuality.VALID)
         .order_by(GpsPoint.shift_id, GpsPoint.recorded_at)
     ).all()
-    tracks: dict[uuid.UUID, list[TrackPoint]] = {sid: [] for sid in shift_ids}
     for sid, at, lat, lng, acc, spd in rows:
         tracks[sid].append(TrackPoint(at, lat, lng, acc, spd))
+    return tracks
+
+
+def gps_distance_km(db: Session, shift_ids: list[uuid.UUID]) -> dict[uuid.UUID, float]:
+    """Distance from consecutive VALID points per shift (gaps are not bridged)."""
+    settings = get_settings()
     return {
         sid: recorded_distance_m(track, max_gap_seconds=settings.gps_gap_seconds) / 1000
-        for sid, track in tracks.items()
+        for sid, track in valid_tracks(db, shift_ids).items()
     }

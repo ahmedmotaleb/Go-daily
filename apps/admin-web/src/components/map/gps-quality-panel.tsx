@@ -50,7 +50,7 @@ export function GpsQualityPanel({ quality }: { quality: GpsQuality }) {
         {facts.map(([k, v]) => (
           <div key={k} className="flex justify-between gap-2 border-b border-line py-1">
             <dt className="text-ink-muted">{k}</dt>
-            <dd className="ltr-nums">{v}</dd>
+            <dd>{v}</dd>
           </div>
         ))}
       </dl>
@@ -69,9 +69,9 @@ export function GpsQualityPanel({ quality }: { quality: GpsQuality }) {
             {quality.checks.map((c) => (
               <TR key={c.code}>
                 <TD>{CHECK_AR[c.code]}</TD>
-                <TD className="ltr-nums">{withUnit(c.value, c.unit)}</TD>
-                <TD className="ltr-nums text-ink-muted">{thresholdText(c, "excellent")}</TD>
-                <TD className="ltr-nums text-ink-muted">{thresholdText(c, "good")}</TD>
+                <TD>{withUnit(c.value, c.unit)}</TD>
+                <TD className="text-ink-muted">{thresholdText(c, "excellent")}</TD>
+                <TD className="text-ink-muted">{thresholdText(c, "good")}</TD>
                 <TD>
                   <Badge tone={GRADE_TONE[c.grade]}>{GRADE_AR[c.grade]}</Badge>
                 </TD>

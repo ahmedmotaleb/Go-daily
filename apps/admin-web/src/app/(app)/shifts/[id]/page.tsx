@@ -44,6 +44,20 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+/** A reading, with the first-entered value underneath when it was corrected. */
+function OdometerValue({ value, original }: { value: number | null; original: number | null }) {
+  return (
+    <>
+      <span className="ltr-nums">{formatNumber(value)}</span>
+      {original !== null ? (
+        <span className="block text-xs font-normal text-ink-muted">
+          مصححة؛ الأصلية <span className="ltr-nums">{formatNumber(original)}</span>
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 export default async function ShiftDetailPage({ params, searchParams }: PageProps<"/shifts/[id]">) {
   const me = await requirePermission("shifts:read");
   const { id } = await params;
@@ -100,11 +114,21 @@ export default async function ShiftDetailPage({ params, searchParams }: PageProp
           <Stat label="النهاية" value={formatDateTime(shift.ended_at ?? shift.planned_end_at)} />
           <Stat
             label="عداد البداية"
-            value={<span className="ltr-nums">{formatNumber(shift.start_odometer_km)}</span>}
+            value={
+              <OdometerValue
+                value={shift.start_odometer_km}
+                original={shift.original_start_odometer_km}
+              />
+            }
           />
           <Stat
             label="عداد النهاية"
-            value={<span className="ltr-nums">{formatNumber(shift.end_odometer_km)}</span>}
+            value={
+              <OdometerValue
+                value={shift.end_odometer_km}
+                original={shift.original_end_odometer_km}
+              />
+            }
           />
           <Stat
             label="المسافة حسب العداد"

@@ -195,6 +195,9 @@ export type Shift = {
   ended_at: string | null;
   start_odometer_km: number | null;
   end_odometer_km: number | null;
+  // First-entered readings, set when staff corrected them (null = never corrected).
+  original_start_odometer_km: number | null;
+  original_end_odometer_km: number | null;
   odometer_distance_km: number | null;
   duration_minutes: number | null;
   assignment_override_reason: string | null;
@@ -285,6 +288,28 @@ export type ShiftTrack = {
   stops: { start: string; end: string; seconds: number; latitude: number; longitude: number }[];
   timeline: { at: string; kind: string; label: string; until: string | null }[];
   quality: GpsQuality;
+  odometer_reconciliation: OdometerReconciliation;
+};
+
+export type ReconciliationStatus =
+  "WITHIN_TOLERANCE" | "REVIEW" | "MISSING_ODOMETER" | "INSUFFICIENT_GPS" | "NOT_COMPLETED";
+
+export type OdometerReconciliation = {
+  status: ReconciliationStatus;
+  odometer_km: number | null;
+  gps_km: number | null;
+  difference_km: number | null;
+  abs_difference_km: number | null;
+  difference_pct: number | null;
+  allowed_km: number | null;
+  gps_coverage_pct: number | null;
+  tolerance_pct: number;
+  tolerance_km: number;
+  min_gps_coverage_pct: number;
+  missing: ("ODOMETER" | "GPS")[];
+  odometer_corrected: boolean;
+  original_start_odometer_km: number | null;
+  original_end_odometer_km: number | null;
 };
 
 export type QualityGrade = "EXCELLENT" | "GOOD" | "NEEDS_REVIEW" | "INSUFFICIENT";

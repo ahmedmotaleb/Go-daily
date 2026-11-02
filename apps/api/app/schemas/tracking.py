@@ -10,6 +10,7 @@ from pydantic import AwareDatetime, BaseModel, Field
 
 from app.models.tracking import PointQuality, PointSource, TrackingEventType
 from app.services.gps_quality import QualityGrade
+from app.services.odometer_reconciliation import ReconciliationStatus
 
 
 class PointIn(BaseModel):
@@ -182,6 +183,24 @@ class GpsQualityOut(BaseModel):
     partial: bool
 
 
+class OdometerReconciliationOut(BaseModel):
+    status: ReconciliationStatus
+    odometer_km: int | None
+    gps_km: float | None
+    difference_km: float | None
+    abs_difference_km: float | None
+    difference_pct: float | None
+    allowed_km: float | None
+    gps_coverage_pct: float | None
+    tolerance_pct: float
+    tolerance_km: float
+    min_gps_coverage_pct: float
+    missing: list[Literal["ODOMETER", "GPS"]]
+    odometer_corrected: bool
+    original_start_odometer_km: int | None
+    original_end_odometer_km: int | None
+
+
 class ShiftTrackOut(BaseModel):
     shift_id: uuid.UUID
     vehicle_id: uuid.UUID
@@ -196,3 +215,4 @@ class ShiftTrackOut(BaseModel):
     stops: list[StopOut]
     timeline: list[TimelineItem]
     quality: GpsQualityOut
+    odometer_reconciliation: OdometerReconciliationOut

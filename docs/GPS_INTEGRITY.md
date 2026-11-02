@@ -1,4 +1,4 @@
-# Go Daily — GPS integrity evidence and quality score (U02, U03)
+# Go Daily — GPS integrity, quality score and odometer reconciliation (U02–U04)
 
 Go Daily records evidence when tracking is interrupted or GPS data looks unusual, and turns it into review cases. A case is a reason to look, never a conclusion. Phones restart, lose signal, run out of battery and have wrong clocks for ordinary reasons. Cases use only the labels **مراجعة مطلوبة** (review required) or **حالة غير معتادة** (unusual case). No rule, summary or label says theft, fraud or tampering, and a test (`test_no_rule_accuses_anyone`) keeps it that way.
 
@@ -78,3 +78,24 @@ A low grade means the GPS record is weak for that shift: distances and route che
 Old shifts whose raw points were deleted after `GPS_RETENTION_DAYS` show "بيانات غير كافية".
 
 Tests: `tests/test_gps_quality.py` (each grade, worst-check rule, stale points, insufficient data), `tests/test_tracking.py` (the API returns the quality with its checks), `src/lib/gps-quality.test.ts` (labels).
+
+## GPS vs odometer reconciliation (U04)
+
+For each **completed** shift Go Daily compares the odometer distance (end − start reading) with the GPS distance (sum of consecutive valid points; gaps longer than `GPS_GAP_SECONDS` are not bridged). One function does this (`app/services/odometer_reconciliation.py`) for the shift page, the report and the review rule, so they always agree.
+
+| Result | When |
+| --- | --- |
+| ضمن الحد المسموح | Both distances available and the difference is within the allowance |
+| فرق يحتاج مراجعة | Both available, GPS coverage sufficient, difference beyond the allowance. Raises a `GPS_ODOMETER_MISMATCH` review case |
+| قراءة العداد ناقصة | A start or end reading is missing |
+| تغطية GPS غير كافية | Fewer than 2 valid points, or coverage below `EXCEPTION_ODOMETER_MIN_GPS_COVERAGE_PCT` (80 %) |
+| الوردية لم تنتهِ | The shift is still running (not compared) |
+
+Missing data is never treated as a difference: the numbers are still shown, but no review case is raised and the page says the comparison is not meaningful.
+
+- **Figures:** odometer km, GPS km, signed difference (odometer − GPS), absolute difference, difference as a percentage of the odometer distance, the allowance and the GPS coverage.
+- **Allowance:** the larger of `EXCEPTION_ODOMETER_TOLERANCE_KM` (5 km) and `EXCEPTION_ODOMETER_TOLERANCE_PCT` (25 %) of the larger distance. Both are environment settings.
+- **Corrections:** staff correct readings on the shift page with a required reason. Each correction is an audit entry with the old and new value. The reading as first entered is kept in `original_start_odometer_km` / `original_end_odometer_km` and is never overwritten by later corrections. The shift page shows "مصححة؛ الأصلية …" under a corrected reading, and the report has a "قراءة مصححة" column. Migration 0013 recovered the originals of shifts corrected earlier from their first audit entry.
+- **Where:** the shift GPS card (*مطابقة العداد مع GPS*), the report *مطابقة العداد وGPS* (`gps_odometer`, with counts by result and CSV export), and review cases.
+
+Tests: `tests/test_odometer_reconciliation.py` (each result, missing vs suspicious, the rule only for real differences, corrections keep the first reading and are audited, report), `tests/test_shifts.py::test_odometer_correction_is_audited`.

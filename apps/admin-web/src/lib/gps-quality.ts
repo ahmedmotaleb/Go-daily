@@ -1,5 +1,5 @@
 import type { Tone } from "@/components/ui/badge";
-import type { GpsQuality, QualityCheck, QualityGrade } from "@/lib/types";
+import type { GpsQuality, QualityCheck, QualityGrade, ReconciliationStatus } from "@/lib/types";
 
 export const GRADE_AR: Record<QualityGrade, string> = {
   EXCELLENT: "ممتاز",
@@ -44,10 +44,15 @@ export function withUnit(value: number, unit: string): string {
   return `${shown} ${UNIT_AR[unit] ?? unit}`;
 }
 
-/** The rule a check passed or failed, e.g. "≥ 95 ٪" or "≤ 10 دقيقة". */
+/**
+ * The rule a check passed or failed, in words ("95 ٪ أو أكثر", "30 دقيقة أو أقل").
+ * Words, not ≥/≤: those glyphs are mirrored in right-to-left text and would
+ * show the opposite comparison.
+ */
 export function thresholdText(check: QualityCheck, which: "excellent" | "good"): string {
-  const sign = check.higher_is_better ? "≥" : "≤";
-  return `${sign} ${withUnit(check[which], check.unit)}`;
+  const limit = check[which];
+  if (!check.higher_is_better && limit === 0) return "لا شيء";
+  return `${withUnit(limit, check.unit)} ${check.higher_is_better ? "أو أكثر" : "أو أقل"}`;
 }
 
 /** Seconds as a short Arabic duration for sync delays. */
@@ -56,4 +61,29 @@ export function delayText(seconds: number | null): string {
   if (seconds < 60) return `${Math.round(seconds)} ثانية`;
   if (seconds < 3600) return `${Math.round(seconds / 60)} دقيقة`;
   return `${(seconds / 3600).toFixed(1)} ساعة`;
+}
+
+export const RECONCILIATION_AR: Record<ReconciliationStatus, string> = {
+  WITHIN_TOLERANCE: "ضمن الحد المسموح",
+  REVIEW: "فرق يحتاج مراجعة",
+  MISSING_ODOMETER: "قراءة العداد ناقصة",
+  INSUFFICIENT_GPS: "تغطية GPS غير كافية",
+  NOT_COMPLETED: "الوردية لم تنتهِ",
+};
+
+export const RECONCILIATION_TONE: Record<ReconciliationStatus, Tone> = {
+  WITHIN_TOLERANCE: "success",
+  REVIEW: "warning",
+  MISSING_ODOMETER: "neutral",
+  INSUFFICIENT_GPS: "neutral",
+  NOT_COMPLETED: "neutral",
+};
+
+/** Odometer minus GPS, in words: no minus sign to drift in right-to-left text. */
+export function signedKm(value: number | null): string {
+  if (value === null) return "—";
+  const km = `${Math.abs(value).toFixed(1)} كم`;
+  if (value > 0) return `العداد أكثر بـ ${km}`;
+  if (value < 0) return `العداد أقل بـ ${km}`;
+  return "لا فرق";
 }

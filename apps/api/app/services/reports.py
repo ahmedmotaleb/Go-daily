@@ -45,6 +45,7 @@ from app.services import driver_ledger, profitability, ride_hailing, route_event
 from app.services import finance_common as fc
 from app.services import revenue as revenue_service
 from app.services.exception_rules import RULE_INFO
+from app.services.odometer_reconciliation import reconcile
 
 ColumnType = Literal["text", "number", "money", "date", "datetime", "minutes", "km"]
 
@@ -377,27 +378,49 @@ def school_runs(db: Session, f: Filters) -> ReportResult:
     )
 
 
+RECONCILIATION_AR = {
+    "WITHIN_TOLERANCE": "ضمن الحد المسموح",
+    "REVIEW": "فرق يحتاج مراجعة",
+    "MISSING_ODOMETER": "قراءة العداد ناقصة",
+    "INSUFFICIENT_GPS": "تغطية GPS غير كافية",
+    "NOT_COMPLETED": "الوردية لم تنتهِ",
+}
+
+
 def gps_odometer(db: Session, f: Filters) -> ReportResult:
+    settings = get_settings()
     shifts = [s for s in _shifts(db, f) if s.status is ShiftStatus.COMPLETED]
-    gps = tracking.gps_distance_km(db, [s.id for s in shifts])
+    tracks = tracking.valid_tracks(db, [s.id for s in shifts])
     rows: list[dict[str, Any]] = []
+    by_status: dict[str, int] = dict.fromkeys(RECONCILIATION_AR, 0)
     for s in shifts:
         if s.started_at is None:
             continue
-        odo = s.odometer_distance_km
-        g = round(gps.get(s.id, 0.0), 2)
-        diff = round(odo - g, 2) if odo is not None else None
+        rec = reconcile(s, tracks.get(s.id, []), settings)
+        by_status[rec.status.value] += 1
         rows.append(
             {
                 "day": to_local_date(s.started_at),
                 "vehicle": s.vehicle.internal_code,
                 "driver": s.driver.full_name,
-                "odometer_km": odo,
-                "gps_km": g,
-                "difference_km": diff,
-                "difference_pct": round(100 * diff / odo, 1) if diff is not None and odo else None,
+                "odometer_km": rec.odometer_km,
+                "gps_km": rec.gps_km,
+                "difference_km": rec.difference_km,
+                "difference_pct": rec.difference_pct,
+                "allowed_km": rec.allowed_km,
+                "gps_coverage_pct": rec.gps_coverage_pct,
+                "status": RECONCILIATION_AR[rec.status.value],
+                "corrected": "نعم" if rec.odometer_corrected else "لا",
             }
         )
+    summary = Table(
+        [Column("status", "النتيجة"), Column("shifts", "عدد الورديات", "number", total=True)],
+        [
+            {"status": RECONCILIATION_AR[k], "shifts": v}
+            for k, v in by_status.items()
+            if k != "NOT_COMPLETED"
+        ],
+    )
     return ReportResult(
         Table(
             [
@@ -408,12 +431,21 @@ def gps_odometer(db: Session, f: Filters) -> ReportResult:
                 Column("gps_km", "كم GPS", "km", total=True),
                 Column("difference_km", "الفرق (كم)", "km", total=True),
                 Column("difference_pct", "الفرق (%)", "number"),
+                Column("allowed_km", "المسموح (كم)", "km"),
+                Column("gps_coverage_pct", "تغطية GPS (%)", "number"),
+                Column("status", "النتيجة"),
+                Column("corrected", "قراءة مصححة"),
             ],
             rows,
         ),
+        summaries=[("حسب النتيجة", summary)],
         notes=[
             "الفرق الموجب: العداد أكبر من GPS (غالبًا بسبب انقطاع بيانات الموقع أو قراءة خاطئة).",
-            "الفروق الكبيرة تظهر كحالات للمراجعة عند توفر تغطية GPS كافية.",
+            f"المسموح = الأكبر بين {settings.exception_odometer_tolerance_km:g} كم و"
+            f"{settings.exception_odometer_tolerance_pct:g}% من المسافة الأكبر.",
+            f"لا تُقارن الورديات التي تقل تغطية GPS فيها عن "
+            f"{settings.exception_odometer_min_gps_coverage_pct:g}%: تظهر كبيانات ناقصة لا كفرق.",
+            "القراءات المصححة تُعرض بعد التصحيح؛ القراءة الأصلية محفوظة في الوردية وسجل التدقيق.",
         ],
     )
 
@@ -1005,8 +1037,8 @@ REPORTS: list[ReportDef] = [
     ),
     ReportDef(
         "gps_odometer",
-        "فرق العداد وGPS",
-        "مسافة العداد مقابل مسافة GPS لكل وردية منتهية.",
+        "مطابقة العداد وGPS",
+        "مسافة العداد مقابل GPS لكل وردية منتهية، مع الحد المسموح وفصل البيانات الناقصة.",
         (P.SHIFTS_READ, P.TRACKING_READ),
         ("vehicle", "driver"),
         gps_odometer,

@@ -524,6 +524,11 @@ def correct_odometer(
         if end - start > MAX_SHIFT_DISTANCE_KM:
             raise ValidationFailed("المسافة غير منطقية لوردية واحدة", code="implausible_odometer")
     before = audit.snapshot(shift, SHIFT_AUDITED)
+    # Keep the first-entered readings; later corrections never overwrite them.
+    if start != shift.start_odometer_km and shift.original_start_odometer_km is None:
+        shift.original_start_odometer_km = shift.start_odometer_km
+    if end != shift.end_odometer_km and shift.original_end_odometer_km is None:
+        shift.original_end_odometer_km = shift.end_odometer_km
     shift.start_odometer_km = start
     shift.end_odometer_km = end
     if audit.diff(before, audit.snapshot(shift, SHIFT_AUDITED)):

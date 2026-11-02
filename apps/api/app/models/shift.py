@@ -50,6 +50,10 @@ class Shift(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     ended_at: Mapped[datetime | None]
     start_odometer_km: Mapped[int | None] = mapped_column(Integer)
     end_odometer_km: Mapped[int | None] = mapped_column(Integer)
+    # The readings as first entered, kept when staff correct them (U04).
+    # Null means never corrected; the audit log has every step.
+    original_start_odometer_km: Mapped[int | None] = mapped_column(Integer)
+    original_end_odometer_km: Mapped[int | None] = mapped_column(Integer)
     source: Mapped[ShiftSource] = mapped_column(
         enum_column_type(ShiftSource, "shift_source"), default=ShiftSource.ADMIN
     )

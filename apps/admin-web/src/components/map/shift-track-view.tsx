@@ -7,6 +7,7 @@ import { formatDateTime, formatNumber } from "@/lib/format";
 import type { ShiftTrack } from "@/lib/types";
 import { GpsQualityPanel } from "./gps-quality-panel";
 import { MapView } from "./map-view";
+import { OdometerReconciliationPanel } from "./odometer-reconciliation-panel";
 import type { LatLng, MapMarker, TileConfig } from "./types";
 
 const QUALITY_LABELS: Record<string, string> = {
@@ -88,6 +89,7 @@ export function ShiftTrackView({ tiles, track }: { tiles: TileConfig; track: Shi
           لا توجد نقاط GPS مسجلة لهذه الوردية. لم يتم إنشاء أي مسار تقديري.
         </p>
         <GpsQualityPanel quality={track.quality} />
+        <OdometerReconciliationPanel rec={track.odometer_reconciliation} />
       </div>
     );
   }
@@ -95,6 +97,7 @@ export function ShiftTrackView({ tiles, track }: { tiles: TileConfig; track: Shi
   return (
     <div className="space-y-4">
       <GpsQualityPanel quality={track.quality} />
+      <OdometerReconciliationPanel rec={track.odometer_reconciliation} />
       <div className="grid gap-3 sm:grid-cols-4">
         <div className="rounded-[var(--radius-control)] bg-lime-50 p-3">
           <p className="text-xs text-ink-muted">المسافة حسب GPS</p>

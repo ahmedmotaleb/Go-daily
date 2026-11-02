@@ -53,7 +53,8 @@ from app.models.tracking import (
 )
 from app.services import finance_common as fc
 from app.services import ride_hailing
-from app.services.track_analysis import TrackPoint, find_gaps, find_stops, recorded_distance_m
+from app.services.odometer_reconciliation import ReconciliationStatus, reconcile
+from app.services.track_analysis import TrackPoint, find_gaps, find_stops
 
 LIVE = (RecordStatus.SUBMITTED, RecordStatus.APPROVED)
 
@@ -1105,6 +1106,11 @@ def implausible_odometer(ctx: Context) -> RuleResult:
 
 
 def gps_odometer_mismatch(ctx: Context) -> RuleResult:
+    """Odometer and GPS distances differ beyond the tolerance (U04 reconciliation).
+
+    Only shifts with both readings and enough GPS coverage are compared;
+    missing data is never treated as a difference.
+    """
     s = ctx.settings
     result = RuleResult()
     for shift in ctx.completed():
@@ -1112,31 +1118,12 @@ def gps_odometer_mismatch(ctx: Context) -> RuleResult:
             continue
         key = f"GPS_ODOMETER_MISMATCH:{shift.id}"
         result.scopes.add(key)
-        odometer = shift.odometer_distance_km
-        if odometer is None:
+        rec = reconcile(shift, ctx.track(shift.id), s)
+        if rec.status is not ReconciliationStatus.REVIEW:
             continue
-        track = ctx.track(shift.id)
-        total = (shift.ended_at - shift.started_at).total_seconds()
-        if total <= 0 or len(track) < 2:
-            continue
-        gaps = find_gaps(
-            track,
-            window_start=shift.started_at,
-            window_end=shift.ended_at,
-            max_gap_seconds=s.gps_gap_seconds,
-        )
-        coverage = 100 * (1 - sum(g.seconds for g in gaps) / total)
-        # Without enough GPS the comparison would rest on missing data.
-        if coverage < s.exception_odometer_min_gps_coverage_pct:
-            continue
-        gps_km = recorded_distance_m(track, max_gap_seconds=s.gps_gap_seconds) / 1000
-        diff = odometer - gps_km
-        allowed = max(
-            s.exception_odometer_tolerance_km,
-            s.exception_odometer_tolerance_pct / 100 * max(odometer, gps_km),
-        )
-        if abs(diff) <= allowed:
-            continue
+        assert rec.odometer_km is not None and rec.gps_km is not None  # noqa: S101
+        assert rec.difference_km is not None  # noqa: S101
+        diff, odometer, gps_km = rec.difference_km, rec.odometer_km, rec.gps_km
         direction = "أكبر" if diff > 0 else "أقل"
         big = abs(diff) > 50 and abs(diff) > 0.5 * max(odometer, gps_km)
         result.candidates.append(
@@ -1149,12 +1136,14 @@ def gps_odometer_mismatch(ctx: Context) -> RuleResult:
                 ),
                 evidence={
                     "odometer_km": odometer,
-                    "gps_km": round(gps_km, 2),
-                    "difference_km": round(diff, 2),
-                    "allowed_km": round(allowed, 2),
-                    "gps_coverage_pct": round(coverage, 1),
-                    "tolerance_pct": s.exception_odometer_tolerance_pct,
-                    "tolerance_km": s.exception_odometer_tolerance_km,
+                    "gps_km": gps_km,
+                    "difference_km": diff,
+                    "difference_pct": rec.difference_pct,
+                    "allowed_km": rec.allowed_km,
+                    "gps_coverage_pct": rec.gps_coverage_pct,
+                    "tolerance_pct": rec.tolerance_pct,
+                    "tolerance_km": rec.tolerance_km,
+                    "odometer_corrected": rec.odometer_corrected,
                 },
                 occurred_at=shift.started_at,
                 occurred_until=shift.ended_at,
