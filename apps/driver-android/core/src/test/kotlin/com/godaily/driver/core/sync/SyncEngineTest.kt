@@ -31,7 +31,8 @@ class SyncEngineTest {
     private val events = InMemoryEventQueue()
     private val ends = InMemoryShiftEndStore()
     private var batchSeq = 0
-    private val engine = SyncEngine(api, points, events, ends, newBatchId = { "b${batchSeq++}" })
+    private val now = Instant.parse("2026-03-01T08:00:00Z")
+    private val engine = SyncEngine(api, points, events, ends, newBatchId = { "b${batchSeq++}" }, clock = { now })
 
     @Test
     fun `uploads the queue in batches of at most 500 and empties it`() = runTest {
@@ -43,6 +44,9 @@ class SyncEngineTest {
         assertEquals(0, points.pendingCount())
         // Oldest first, in recording order.
         assertEquals("p-0", api.uploadedBatches.first().points.first().clientPointId)
+        // Every batch carries the phone's clock and the remaining backlog.
+        assertEquals(listOf(now, now, now), api.uploadedBatches.map { it.device?.deviceTime })
+        assertEquals(listOf(1_200, 700, 200), api.uploadedBatches.map { it.device?.pendingPoints })
     }
 
     @Test

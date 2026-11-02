@@ -75,6 +75,7 @@ Reviewed 2026-10-30 against the Task 25 checklist. Each area lists what is in pl
 
 ## Location data retention
 
+- Points recorded outside a shift are refused and never stored. For integrity review only their count and time range are kept (`docs/GPS_INTEGRITY.md`).
 - Raw GPS points of finished shifts are deleted after `GPS_RETENTION_DAYS` (default 180) by `python -m app.cli prune-gps`.
 - The same job removes coordinates from the evidence of **closed** review cases older than that period. Times, durations and distances stay, so the review record remains readable. Open cases keep their evidence until they are reviewed (`test_old_closed_cases_lose_their_coordinates`).
 

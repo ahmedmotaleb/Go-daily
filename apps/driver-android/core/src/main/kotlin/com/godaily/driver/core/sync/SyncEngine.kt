@@ -8,6 +8,7 @@ import com.godaily.driver.core.api.PointBatch
 import com.godaily.driver.core.api.Shift
 import com.godaily.driver.core.api.TrackingEvent
 import com.godaily.driver.core.api.TrackingEventsRequest
+import java.time.Instant
 import java.util.UUID
 
 enum class SyncOutcome {
@@ -54,6 +55,7 @@ class SyncEngine(
     private val newBatchId: () -> String = { UUID.randomUUID().toString() },
     /** Caps one run so a huge backlog is spread over several runs. */
     private val maxBatchesPerRun: Int = 20,
+    private val clock: () -> Instant = Instant::now,
 ) {
     private class Progress {
         var outcome = SyncOutcome.COMPLETE
@@ -115,7 +117,8 @@ class SyncEngine(
             val batch = points.inFlightBatch()
                 ?: points.claimBatch(newBatchId(), PointBatch.MAX_POINTS)
                 ?: return
-            val info = device().copy(pendingPoints = points.pendingCount())
+            // Stamped at each attempt: lets the server spot a phone clock that is off.
+            val info = device().copy(pendingPoints = points.pendingCount(), deviceTime = clock())
             try {
                 val result = api.uploadPoints(PointBatch(batch.batchId, batch.shiftId, batch.points, info))
                 points.acknowledge(batch.batchId)

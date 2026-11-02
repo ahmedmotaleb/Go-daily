@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -82,26 +83,36 @@ def _quality(point: Any, prev: tuple[datetime, float, float] | None) -> PointQua
     return PointQuality.VALID
 
 
+@dataclass
+class _Partition:
+    rejected: list[RejectedPoint] = field(default_factory=list)
+    candidates: list[Any] = field(default_factory=list)
+    # Times only: locations from outside the shift are never kept.
+    outside_times: list[datetime] = field(default_factory=list)
+    future_seconds: list[int] = field(default_factory=list)
+
+
 def _partition(
     data: PointBatchIn, window_start: datetime, window_end: datetime, now: datetime
-) -> tuple[list[RejectedPoint], list[Any]]:
+) -> _Partition:
     """Split points into rejected (future / outside the shift) and storable candidates."""
-    rejected: list[RejectedPoint] = []
-    candidates = []
+    out = _Partition()
     for p in data.points:
         if p.recorded_at > now + WINDOW_TOLERANCE:
-            rejected.append(
+            out.rejected.append(
                 RejectedPoint(client_point_id=p.client_point_id, reason="future_timestamp")
             )
+            out.future_seconds.append(int((p.recorded_at - now).total_seconds()))
         elif not (window_start <= p.recorded_at <= window_end):
             # Never store locations from outside the work shift.
-            rejected.append(
+            out.rejected.append(
                 RejectedPoint(client_point_id=p.client_point_id, reason="outside_shift")
             )
+            out.outside_times.append(p.recorded_at)
         else:
-            candidates.append(p)
-    candidates.sort(key=lambda p: p.recorded_at)
-    return rejected, candidates
+            out.candidates.append(p)
+    out.candidates.sort(key=lambda p: p.recorded_at)
+    return out
 
 
 def _refresh_derived(db: Session, shift_id: uuid.UUID, inserted_rows: list[dict[str, Any]]) -> None:
@@ -142,7 +153,8 @@ def ingest_points(db: Session, *, driver: Driver, data: PointBatchIn) -> PointBa
     window_start = shift.started_at - WINDOW_TOLERANCE
     window_end = (shift.ended_at or now) + WINDOW_TOLERANCE
 
-    rejected, candidates = _partition(data, window_start, window_end, now)
+    part = _partition(data, window_start, window_end, now)
+    rejected, candidates = part.rejected, part.candidates
 
     prev: tuple[datetime, float, float] | None = None
     if candidates:
@@ -222,6 +234,14 @@ def ingest_points(db: Session, *, driver: Driver, data: PointBatchIn) -> PointBa
         app_version=data.device.app_version if data.device else None,
         battery_level=data.device.battery_level if data.device else None,
         pending_points=data.device.pending_points if data.device else None,
+        device_time=data.device.device_time if data.device else None,
+        first_recorded_at=candidates[0].recorded_at if candidates else None,
+        last_recorded_at=candidates[-1].recorded_at if candidates else None,
+        rejected_outside_shift=len(part.outside_times),
+        outside_shift_first_at=min(part.outside_times, default=None),
+        outside_shift_last_at=max(part.outside_times, default=None),
+        rejected_future=len(part.future_seconds),
+        future_max_seconds=max(part.future_seconds, default=None),
     )
     db.add(batch)
     db.commit()

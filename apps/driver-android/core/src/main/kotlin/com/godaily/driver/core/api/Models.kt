@@ -222,6 +222,8 @@ data class DeviceInfo(
     @SerialName("app_version") val appVersion: String? = null,
     @SerialName("battery_level") val batteryLevel: Int? = null,
     @SerialName("pending_points") val pendingPoints: Int? = null,
+    /** The phone's clock when sending; the server compares it with its own. */
+    @SerialName("device_time") @Serializable(InstantSerializer::class) val deviceTime: Instant? = null,
 )
 
 @Serializable

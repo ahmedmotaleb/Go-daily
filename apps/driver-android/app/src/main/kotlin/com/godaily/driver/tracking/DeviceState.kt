@@ -9,6 +9,7 @@ import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
+import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
@@ -45,6 +46,14 @@ class DeviceState(context: Context) {
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
             caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
+
+    /**
+     * Android's count of boots since the phone was set up (null if the
+     * vendor does not provide it). A change between two tracking starts in
+     * one shift shows the phone restarted; nothing else about the phone is sent.
+     */
+    fun bootCount(): Int? =
+        Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1).takeIf { it >= 0 }
 
     fun power(): PowerState {
         val battery = context.getSystemService(BatteryManager::class.java)

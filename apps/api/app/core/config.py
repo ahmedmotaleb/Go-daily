@@ -93,6 +93,11 @@ class Settings(BaseSettings):
     exception_gps_disabled_minutes: int = 5
     exception_gps_gap_minutes: int = 15
     exception_gps_gap_moved_m: float = 1000.0
+    # GPS integrity (U02).
+    exception_tracking_interrupted_minutes: int = 10
+    exception_late_upload_hours: int = 12
+    exception_clock_skew_minutes: int = 5
+    exception_backwards_minutes: int = 2
     exception_long_stop_minutes: int = 45
     # Corridor around the straight lines joining a route's stops (not roads).
     exception_route_corridor_m: float = 2000.0

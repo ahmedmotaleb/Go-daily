@@ -132,7 +132,10 @@ class LocationTrackingService : LifecycleService() {
         shiftId = active
         val first = c.shiftState.markTrackingStarted(active)
         lifecycleScope.launch {
-            c.health.record(if (first) TrackingEventType.TRACKING_STARTED else TrackingEventType.SERVICE_RESTARTED)
+            c.health.record(
+                if (first) TrackingEventType.TRACKING_STARTED else TrackingEventType.SERVICE_RESTARTED,
+                details = c.device.bootCount()?.let { mapOf("boot_count" to it.toString()) },
+            )
         }
         sampler.onPowerChanged(c.device.power())
         TrackingMonitor.serviceStarted(System.currentTimeMillis(), sampler.config.intervalMillis)

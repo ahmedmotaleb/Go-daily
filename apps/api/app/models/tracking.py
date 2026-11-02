@@ -141,7 +141,23 @@ class GpsUploadBatch(UUIDPrimaryKeyMixin, Base):
     app_version: Mapped[str | None] = mapped_column(String(40))
     battery_level: Mapped[int | None] = mapped_column(Integer)
     pending_points: Mapped[int | None] = mapped_column(Integer)
+    # Integrity evidence (U02). Times only: locations from outside the shift
+    # are never stored, not even as evidence.
+    # The phone's clock when it sent the batch (compared with received_at).
+    device_time: Mapped[datetime | None]
+    # Range of the batch's in-shift points, to spot batches going back in time.
+    first_recorded_at: Mapped[datetime | None]
+    last_recorded_at: Mapped[datetime | None]
+    rejected_outside_shift: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0")
+    )
+    outside_shift_first_at: Mapped[datetime | None]
+    outside_shift_last_at: Mapped[datetime | None]
+    rejected_future: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    # How far ahead of the server clock the most future point was.
+    future_max_seconds: Mapped[int | None] = mapped_column(Integer)
 
     __table_args__ = (
         Index("uq_gps_batches_driver_client", "driver_id", "client_batch_id", unique=True),
+        Index("ix_gps_batches_shift_received", "shift_id", "received_at"),
     )

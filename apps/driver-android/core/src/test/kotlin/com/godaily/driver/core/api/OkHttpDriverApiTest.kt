@@ -130,7 +130,8 @@ class OkHttpDriverApiTest {
             accuracyM = 8.0,
             source = PointSource.FUSED,
         )
-        val result = api.uploadPoints(PointBatch("b1", "s1", listOf(point), DeviceInfo("1.0", 80, 1)))
+        val device = DeviceInfo("1.0", 80, 1, deviceTime = Instant.parse("2026-03-01T06:31:00Z"))
+        val result = api.uploadPoints(PointBatch("b1", "s1", listOf(point), device))
         assertEquals(1, result.accepted)
         val body = GoDailyJson.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonObject
         val sent = body["points"]!!.toString()
@@ -139,6 +140,7 @@ class OkHttpDriverApiTest {
         assertTrue("\"source\":\"FUSED\"" in sent)
         assertTrue("\"is_mock\":false" in sent)
         assertEquals("80", body["device"]!!.jsonObject["battery_level"]!!.jsonPrimitive.content)
+        assertEquals("2026-03-01T06:31:00Z", body["device"]!!.jsonObject["device_time"]!!.jsonPrimitive.content)
     }
 
     @Test

@@ -28,6 +28,8 @@ class DeviceInfo(BaseModel):
     app_version: str | None = Field(default=None, max_length=40)
     battery_level: int | None = Field(default=None, ge=0, le=100)
     pending_points: int | None = Field(default=None, ge=0)
+    # The phone's clock when sending; compared with the server's to spot clock changes.
+    device_time: AwareDatetime | None = None
 
 
 class PointBatchIn(BaseModel):

@@ -19,7 +19,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, aliased
@@ -44,7 +44,13 @@ from app.models.finance import (
 )
 from app.models.operations import RouteDefinition
 from app.models.shift import SessionStatus, Shift, ShiftStatus
-from app.models.tracking import GpsPoint, PointQuality, TrackingEvent, TrackingEventType
+from app.models.tracking import (
+    GpsPoint,
+    GpsUploadBatch,
+    PointQuality,
+    TrackingEvent,
+    TrackingEventType,
+)
 from app.services import finance_common as fc
 from app.services import ride_hailing
 from app.services.track_analysis import TrackPoint, find_gaps, find_stops, recorded_distance_m
@@ -98,6 +104,7 @@ class Context:
         self.end = end
         self._shifts: list[Shift] | None = None
         self._tracks: dict[uuid.UUID, list[GpsPoint]] = {}
+        self._batches: dict[uuid.UUID, list[GpsUploadBatch]] | None = None
 
     def shifts(self) -> list[Shift]:
         """Started shifts that overlap the window (active or completed)."""
@@ -157,6 +164,21 @@ class Context:
                 ).all()
             )
         return self._tracks[shift_id]
+
+    def batches(self) -> dict[uuid.UUID, list[GpsUploadBatch]]:
+        """Upload batches of the window's shifts, in the order the server received them."""
+        if self._batches is None:
+            ids = [s.id for s in self.shifts()]
+            grouped: dict[uuid.UUID, list[GpsUploadBatch]] = defaultdict(list)
+            if ids:
+                for b in self.db.scalars(
+                    select(GpsUploadBatch)
+                    .where(GpsUploadBatch.shift_id.in_(ids))
+                    .order_by(GpsUploadBatch.received_at, GpsUploadBatch.id)
+                ):
+                    grouped[b.shift_id].append(b)
+            self._batches = dict(grouped)
+        return self._batches
 
     def track(self, shift_id: uuid.UUID) -> list[TrackPoint]:
         return [
@@ -276,6 +298,7 @@ def gps_disabled(ctx: Context) -> RuleResult:
                     evidence={
                         "event": ev.event_type.value,
                         "disabled_at": _iso(ev.occurred_at),
+                        "reported_at": _iso(ev.received_at),
                         "restored_at": _iso(restored.occurred_at if restored else None),
                         "minutes": minutes,
                         "shift_still_active": shift.ended_at is None,
@@ -382,6 +405,361 @@ def mock_location(ctx: Context) -> RuleResult:
                 occurred_at=first,
                 occurred_until=last,
                 dedupe_key=f"MOCK_LOCATION:{shift_id}",
+                **_shift_links(shift),
+            )
+        )
+    return result
+
+
+# --- GPS integrity (U02) ------------------------------------------------------
+# Each finding is evidence for a reviewer, never a conclusion: a phone can
+# restart, lose internet or have a wrong clock for ordinary reasons.
+
+
+def _boot_count(ev: TrackingEvent) -> int | None:
+    raw = (ev.details or {}).get("boot_count")
+    try:
+        return int(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+@dataclass
+class _Interruption:
+    event: TrackingEvent
+    start: datetime
+    restarted_at: datetime | None
+    detected_by: str
+    reboot: bool | None
+
+
+def _interruptions(
+    shift: Shift, events: list[TrackingEvent], times: list[datetime]
+) -> list[_Interruption]:
+    """Walk a shift's start/stop/restart events and work out each tracking outage.
+
+    The outage starts at an explicit "service stopped" event when the phone
+    sent one (a killed process cannot), otherwise at the last point before
+    the restart. A changed boot counter between two starts means a reboot.
+    """
+    assert shift.started_at is not None  # noqa: S101
+    found: list[_Interruption] = []
+    pending_stop: TrackingEvent | None = None
+    last_boot: int | None = None
+    for ev in events:
+        if ev.event_type is TrackingEventType.TRACKING_STOPPED:
+            # "shift_ended" is the normal end of tracking, not an interruption.
+            if (ev.details or {}).get("reason") == "service_stopped":
+                pending_stop = ev
+            continue
+        boot = _boot_count(ev)
+        if ev.event_type is TrackingEventType.SERVICE_RESTARTED:
+            before = [t for t in times if t < ev.occurred_at]
+            if pending_stop is not None:
+                start, how = pending_stop.occurred_at, "stop_event"
+            elif before:
+                start, how = before[-1], "last_point"
+            else:
+                start, how = shift.started_at, "shift_start"
+            reboot = None if boot is None or last_boot is None else boot != last_boot
+            found.append(_Interruption(ev, start, ev.occurred_at, how, reboot))
+            pending_stop = None
+        if boot is not None:
+            last_boot = boot
+    if pending_stop is not None:
+        # Stopped and never restarted: lost until points resume or the shift ends.
+        after = [t for t in times if t > pending_stop.occurred_at]
+        found.append(
+            _Interruption(
+                pending_stop,
+                pending_stop.occurred_at,
+                after[0] if after else None,
+                "stop_event",
+                None,
+            )
+        )
+    return found
+
+
+def tracking_interrupted(ctx: Context) -> RuleResult:
+    """Tracking service stopped or restarted during a shift, with the time lost."""
+    s = ctx.settings
+    result = RuleResult()
+    shifts = {sh.id: sh for sh in ctx.shifts()}
+    if not shifts:
+        return result
+    events = ctx.db.scalars(
+        select(TrackingEvent)
+        .where(
+            TrackingEvent.shift_id.in_(shifts),
+            TrackingEvent.event_type.in_(
+                (
+                    TrackingEventType.TRACKING_STARTED,
+                    TrackingEventType.SERVICE_RESTARTED,
+                    TrackingEventType.TRACKING_STOPPED,
+                )
+            ),
+        )
+        .order_by(TrackingEvent.occurred_at)
+    ).all()
+    by_shift: dict[uuid.UUID, list[TrackingEvent]] = defaultdict(list)
+    for ev in events:
+        if ev.shift_id:
+            by_shift[ev.shift_id].append(ev)
+    now = utcnow()
+    for shift_id, shift_events in by_shift.items():
+        shift = shifts[shift_id]
+        if shift.started_at is None:
+            continue
+        times = [p.recorded_at for p in ctx.points(shift_id)]
+        for it in _interruptions(shift, shift_events, times):
+            key = f"TRACKING_INTERRUPTED:{it.event.id}"
+            result.scopes.add(key)
+            never_restarted = it.event.event_type is TrackingEventType.TRACKING_STOPPED
+            end = it.restarted_at or shift.ended_at or now
+            minutes = _minutes(it.start, end) if end > it.start else 0
+            if minutes < s.exception_tracking_interrupted_minutes:
+                continue
+            if never_restarted:
+                summary = f"توقف التتبع أثناء الوردية ولم يُستأنف لمدة {minutes} دقيقة"
+            elif it.reboot:
+                summary = f"توقف التتبع {minutes} دقيقة بسبب إعادة تشغيل الهاتف على الأرجح"
+            else:
+                summary = f"توقف التتبع {minutes} دقيقة ثم أعيد تشغيله أثناء الوردية"
+            result.candidates.append(
+                Candidate(
+                    rule_code="TRACKING_INTERRUPTED",
+                    severity=MEDIUM if never_restarted or minutes >= 60 else LOW,
+                    summary=summary,
+                    evidence={
+                        "event": it.event.event_type.value,
+                        "stopped_at": _iso(it.start),
+                        "restarted_at": _iso(None if never_restarted else it.restarted_at),
+                        "minutes": minutes,
+                        "detected_by": it.detected_by,
+                        "device_time": _iso(it.event.occurred_at),
+                        "reported_at": _iso(it.event.received_at),
+                        "reboot_detected": it.reboot,
+                        "shift_still_active": shift.ended_at is None,
+                        "threshold_minutes": s.exception_tracking_interrupted_minutes,
+                    },
+                    occurred_at=it.start,
+                    occurred_until=end,
+                    dedupe_key=key,
+                    **_shift_links(shift),
+                )
+            )
+    return result
+
+
+def impossible_jumps(ctx: Context) -> RuleResult:
+    """Points the server flagged because reaching them needed an impossible speed."""
+    s = ctx.settings
+    result = RuleResult()
+    for shift in ctx.shifts():
+        key = f"IMPOSSIBLE_JUMP:{shift.id}"
+        result.scopes.add(key)
+        prev: GpsPoint | None = None
+        jumps: list[dict[str, Any]] = []
+        jump_times: list[datetime] = []
+        for p in ctx.points(shift.id):
+            if p.quality is PointQuality.IMPLAUSIBLE_SPEED:
+                jump_times.append(p.recorded_at)
+                if prev is not None:
+                    seconds = (p.recorded_at - prev.recorded_at).total_seconds()
+                    dist = haversine_m(prev.latitude, prev.longitude, p.latitude, p.longitude)
+                    jumps.append(
+                        {
+                            "at": _iso(p.recorded_at),
+                            "distance_m": round(dist),
+                            "seconds": round(seconds),
+                            "speed_kmh": round(dist / seconds * 3.6) if seconds > 0 else None,
+                        }
+                    )
+            elif p.quality is PointQuality.VALID:
+                prev = p
+        if not jump_times:
+            continue
+        speeds = [j["speed_kmh"] for j in jumps if j["speed_kmh"] is not None]
+        result.candidates.append(
+            Candidate(
+                rule_code="IMPOSSIBLE_JUMP",
+                severity=MEDIUM if len(jump_times) >= 3 else LOW,
+                summary=(
+                    f"قفزات غير ممكنة في الموقع: {len(jump_times)} نقطة تتطلب سرعة أعلى من "
+                    f"{round(s.gps_max_speed_kmh)} كم/س (لم تُحسب في المسافة)"
+                ),
+                evidence={
+                    "points": len(jump_times),
+                    "first": _iso(jump_times[0]),
+                    "last": _iso(jump_times[-1]),
+                    "max_speed_kmh": max(speeds) if speeds else None,
+                    "speed_limit_kmh": s.gps_max_speed_kmh,
+                    "examples": jumps[:5],
+                },
+                occurred_at=jump_times[0],
+                occurred_until=jump_times[-1],
+                dedupe_key=key,
+                **_shift_links(shift),
+            )
+        )
+    return result
+
+
+def late_uploads(ctx: Context) -> RuleResult:
+    """Points that reached the server long after the phone recorded them."""
+    s = ctx.settings
+    result = RuleResult()
+    shifts = {sh.id: sh for sh in ctx.shifts()}
+    if not shifts:
+        return result
+    delay = GpsPoint.received_at - GpsPoint.recorded_at
+    rows = ctx.db.execute(
+        select(
+            GpsPoint.shift_id,
+            func.count(),
+            func.min(GpsPoint.recorded_at),
+            func.max(GpsPoint.recorded_at),
+            func.max(delay),
+            func.max(GpsPoint.received_at),
+        )
+        .where(
+            GpsPoint.shift_id.in_(shifts),
+            delay > timedelta(hours=s.exception_late_upload_hours),
+        )
+        .group_by(GpsPoint.shift_id)
+    ).all()
+    for shift_id in shifts:
+        result.scopes.add(f"LATE_GPS_UPLOAD:{shift_id}")
+    for shift_id, count, first, last, max_delay, last_received in rows:
+        shift = shifts[shift_id]
+        hours = round(cast("timedelta", max_delay).total_seconds() / 3600, 1)
+        result.candidates.append(
+            Candidate(
+                rule_code="LATE_GPS_UPLOAD",
+                severity=LOW,
+                summary=(
+                    f"وصلت {count} نقطة موقع بعد أكثر من {s.exception_late_upload_hours} ساعة "
+                    "من تسجيلها (قد يكون الهاتف بلا إنترنت)"
+                ),
+                evidence={
+                    "points": count,
+                    "first": _iso(first),
+                    "last": _iso(last),
+                    "max_delay_hours": hours,
+                    "last_received_at": _iso(last_received),
+                    "shift_end": _iso(shift.ended_at),
+                    "threshold_hours": s.exception_late_upload_hours,
+                },
+                occurred_at=first,
+                occurred_until=last,
+                dedupe_key=f"LATE_GPS_UPLOAD:{shift_id}",
+                **_shift_links(shift),
+            )
+        )
+    return result
+
+
+def out_of_shift_points(ctx: Context) -> RuleResult:
+    """The phone sent points recorded outside the shift (refused, not stored)."""
+    result = RuleResult()
+    batches = ctx.batches()
+    for shift in ctx.shifts():
+        key = f"OUT_OF_SHIFT_GPS:{shift.id}"
+        result.scopes.add(key)
+        hits = [b for b in batches.get(shift.id, []) if b.rejected_outside_shift > 0]
+        if not hits:
+            continue
+        count = sum(b.rejected_outside_shift for b in hits)
+        first = min(b.outside_shift_first_at or b.received_at for b in hits)
+        last = max(b.outside_shift_last_at or b.received_at for b in hits)
+        result.candidates.append(
+            Candidate(
+                rule_code="OUT_OF_SHIFT_GPS",
+                severity=LOW,
+                summary=f"أرسل الهاتف {count} نقطة موقع مسجلة خارج وقت الوردية ولم تُحفظ",
+                evidence={
+                    "points": count,
+                    "first": _iso(first),
+                    "last": _iso(last),
+                    "shift_start": _iso(shift.started_at),
+                    "shift_end": _iso(shift.ended_at),
+                    "batches": len(hits),
+                    "note": "تُحفظ الأوقات فقط؛ مواقع خارج الوردية لا تُخزن",
+                },
+                occurred_at=first,
+                occurred_until=last,
+                dedupe_key=key,
+                **_shift_links(shift),
+            )
+        )
+    return result
+
+
+def timestamp_anomalies(ctx: Context) -> RuleResult:
+    """Phone clock far from the server's, future points, or batches going back in time."""
+    s = ctx.settings
+    result = RuleResult()
+    skew_limit = s.exception_clock_skew_minutes * 60
+    back_limit = timedelta(minutes=s.exception_backwards_minutes)
+    for shift in ctx.shifts():
+        key = f"TIMESTAMP_ANOMALY:{shift.id}"
+        result.scopes.add(key)
+        batches = ctx.batches().get(shift.id, [])
+        future_points = sum(b.rejected_future for b in batches)
+        future_max = max((b.future_max_seconds or 0 for b in batches), default=0)
+        offsets: list[float] = []
+        backwards: list[float] = []
+        flagged_at: list[datetime] = []
+        newest: datetime | None = None
+        for b in batches:
+            if b.device_time is not None:
+                # Positive: the phone's clock is ahead of the server's.
+                offset = (b.device_time - b.received_at).total_seconds()
+                if abs(offset) >= skew_limit:
+                    offsets.append(offset)
+                    flagged_at.append(b.received_at)
+            if b.first_recorded_at is None or b.last_recorded_at is None:
+                continue
+            if newest is not None and b.first_recorded_at < newest - back_limit:
+                backwards.append((newest - b.first_recorded_at).total_seconds())
+                flagged_at.append(b.received_at)
+            newest = max(newest, b.last_recorded_at) if newest else b.last_recorded_at
+        if future_points:
+            flagged_at.extend(b.received_at for b in batches if b.rejected_future)
+        if not (future_points or offsets or backwards):
+            continue
+        max_offset = max(offsets, key=abs) if offsets else None
+        max_back = max(backwards) if backwards else None
+        parts: list[str] = []
+        if max_offset is not None:
+            parts.append(f"ساعة الهاتف تختلف عن الخادم بنحو {round(abs(max_offset) / 60)} دقيقة")
+        if max_back is not None:
+            parts.append(f"نقاط وصلت بأوقات تعود للخلف حتى {round(max_back / 60)} دقيقة")
+        if future_points:
+            parts.append(f"{future_points} نقطة بتاريخ مستقبلي رُفضت")
+        serious = (max_back or 0) >= 600 or abs(max_offset or 0) >= 1800 or future_max >= 1800
+        result.candidates.append(
+            Candidate(
+                rule_code="TIMESTAMP_ANOMALY",
+                severity=MEDIUM if serious else LOW,
+                summary="توقيت غير معتاد لبيانات الموقع: " + "، ".join(parts),
+                evidence={
+                    "batches": len(batches),
+                    "clock_offset_batches": len(offsets),
+                    "max_clock_offset_minutes": (
+                        round(max_offset / 60, 1) if max_offset is not None else None
+                    ),
+                    "backwards_batches": len(backwards),
+                    "max_backwards_minutes": round(max_back / 60, 1) if max_back else None,
+                    "future_points": future_points,
+                    "future_max_minutes": round(future_max / 60, 1) if future_points else None,
+                    "clock_threshold_minutes": s.exception_clock_skew_minutes,
+                    "backwards_threshold_minutes": s.exception_backwards_minutes,
+                },
+                occurred_at=min(flagged_at),
+                occurred_until=max(flagged_at),
+                dedupe_key=key,
                 **_shift_links(shift),
             )
         )
@@ -1282,6 +1660,51 @@ RULES: list[tuple[RuleInfo, Rule]] = [
             R,
         ),
         mock_location,
+    ),
+    (
+        RuleInfo(
+            "TRACKING_INTERRUPTED",
+            "توقف خدمة التتبع أثناء الوردية",
+            "توقف التتبع أو إعادة تشغيله (إغلاق التطبيق، إعادة تشغيل الهاتف) ومدة غياب التتبع.",
+            R,
+        ),
+        tracking_interrupted,
+    ),
+    (
+        RuleInfo(
+            "IMPOSSIBLE_JUMP",
+            "قفزة غير ممكنة في الموقع",
+            "نقاط تتطلب سرعة أعلى من الحد للوصول إليها من النقطة السابقة؛ لا تُحسب في المسافة.",
+            U,
+        ),
+        impossible_jumps,
+    ),
+    (
+        RuleInfo(
+            "LATE_GPS_UPLOAD",
+            "وصول متأخر لبيانات الموقع",
+            "نقاط وصلت للخادم بعد ساعات من تسجيلها؛ غالبًا بسبب انقطاع الإنترنت.",
+            U,
+        ),
+        late_uploads,
+    ),
+    (
+        RuleInfo(
+            "OUT_OF_SHIFT_GPS",
+            "نقاط موقع خارج وقت الوردية",
+            "الهاتف أرسل نقاطًا مسجلة قبل بداية الوردية أو بعد نهايتها؛ رُفضت ولم تُخزن مواقعها.",
+            U,
+        ),
+        out_of_shift_points,
+    ),
+    (
+        RuleInfo(
+            "TIMESTAMP_ANOMALY",
+            "توقيت غير معتاد لبيانات الموقع",
+            "ساعة الهاتف بعيدة عن ساعة الخادم، أو نقاط بتاريخ مستقبلي، أو دفعات تعود للخلف زمنيًا.",
+            U,
+        ),
+        timestamp_anomalies,
     ),
     (
         RuleInfo(
