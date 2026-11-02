@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import asdict
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response
@@ -31,6 +31,7 @@ def report_filters(
     route_id: uuid.UUID | None = None,
     fuel_type_id: uuid.UUID | None = None,
     category_id: uuid.UUID | None = None,
+    period: Literal["shift", "day", "week", "month"] | None = None,
 ) -> report_service.Filters:
     today = local_today()
     return report_service.Filters(
@@ -42,6 +43,7 @@ def report_filters(
         route_id=route_id,
         fuel_type_id=fuel_type_id,
         category_id=category_id,
+        period=period or "week",
     )
 
 

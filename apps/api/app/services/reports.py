@@ -44,6 +44,7 @@ from app.models.user import User
 from app.services import (
     driver_ledger,
     expected_revenue,
+    fuel_efficiency,
     profitability,
     ride_hailing,
     route_events,
@@ -105,6 +106,8 @@ class Filters:
     route_id: uuid.UUID | None = None
     fuel_type_id: uuid.UUID | None = None
     category_id: uuid.UUID | None = None
+    # Grouping for period-based reports (fuel efficiency).
+    period: fuel_efficiency.Period = "week"
 
     @property
     def start(self) -> datetime:
@@ -115,7 +118,9 @@ class Filters:
         return local_day_bounds_utc(self.date_to)[1]
 
 
-FilterName = Literal["vehicle", "driver", "operation_type", "route", "fuel_type", "category"]
+FilterName = Literal[
+    "vehicle", "driver", "operation_type", "route", "fuel_type", "category", "period"
+]
 
 
 @dataclass(frozen=True)
@@ -837,6 +842,94 @@ def fuel_report(db: Session, f: Filters) -> ReportResult:
     )
 
 
+PERIOD_AR = {"shift": "وردية", "day": "يوم", "week": "أسبوع", "month": "شهر"}
+
+
+def fuel_efficiency_report(db: Session, f: Filters) -> ReportResult:
+    """km per litre/unit, L/100 km and EGP/km by shift, day, week or month (U13)."""
+    found, unplaced = fuel_efficiency.compute(
+        db,
+        f.date_from,
+        f.date_to,
+        period=f.period,
+        vehicle_id=f.vehicle_id,
+        fuel_type_id=f.fuel_type_id,
+    )
+    rows: list[dict[str, Any]] = []
+    for r in _limit(found):
+        if r.distance_missing:
+            note = "قراءة عداد ناقصة في وردية أو أكثر"
+        elif r.distance_km == 0:
+            note = "لا توجد مسافة مسجلة"
+        elif r.mixed_fuel:
+            note = "وقود مختلط: المسافة مشتركة، كم/وحدة تقريبي؛ قارن بالتكلفة لكل كم"
+        else:
+            note = None
+        lines: list[fuel_efficiency.FuelLine | None] = list(r.fuels.values()) or [None]
+        for line in lines:
+            rows.append(
+                {
+                    "period_start": r.period_start,
+                    "vehicle": r.vehicle_code,
+                    "shifts": r.shifts,
+                    "distance_km": r.distance_km,
+                    "fuel_type": line.fuel_type if line else "—",
+                    "unit": UNIT_AR.get(line.unit.value, line.unit.value) if line else None,
+                    "quantity": line.quantity if line else None,
+                    "amount": line.amount if line else None,
+                    "km_per_unit": line.km_per_unit if line else None,
+                    "litres_per_100km": line.litres_per_100km if line else None,
+                    "egp_per_km": line.egp_per_km if line else None,
+                    "period_egp_per_km": r.egp_per_km,
+                    "note": note if line else "لا يوجد وقود معتمد في الفترة",
+                }
+            )
+    notes = [
+        APPROVED_ONLY,
+        "المسافة من قراءات العداد للورديات المنتهية؛ الوقود من أنواع «وقود» فقط "
+        "(الزيوت والمستهلكات خارج حساب الكفاءة).",
+        "الشراء ليس استهلاكًا لحظيًا: أرقام الوردية الواحدة تقريبية، والأسبوع والشهر أدق.",
+        "لا تُجمع كميات وحدات مختلفة؛ الغاز يظهر بالوحدة المسجلة (م³ أو كجم).",
+    ]
+    if unplaced:
+        notes.append(f"{unplaced} عملية شراء غير مرتبطة بوردية لا تظهر في العرض حسب الوردية.")
+    return ReportResult(
+        Table(
+            [
+                Column("period_start", f"بداية ال{PERIOD_AR[f.period]}", "date"),
+                Column("vehicle", "المركبة"),
+                Column("shifts", "الورديات", "number"),
+                Column("distance_km", "المسافة (كم)", "km"),
+                Column("fuel_type", "الوقود"),
+                Column("unit", "الوحدة"),
+                Column("quantity", "الكمية", "number"),
+                Column("amount", "التكلفة", "money", total=True),
+                Column("km_per_unit", "كم لكل وحدة", "number"),
+                Column("litres_per_100km", "لتر/100 كم", "number"),
+                Column("egp_per_km", "ج.م/كم لهذا الوقود", "number"),
+                Column("period_egp_per_km", "ج.م/كم لكل الوقود", "number"),
+                Column("note", "ملاحظة"),
+            ],
+            rows,
+        ),
+        summaries=[
+            (
+                "حسب المركبة (كل الفترة)",
+                Table(
+                    [
+                        Column("vehicle", "المركبة"),
+                        Column("distance_km", "المسافة (كم)", "km", total=True),
+                        Column("fuel_cost", "تكلفة الوقود", "money", total=True),
+                        Column("egp_per_km", "ج.م/كم", "number"),
+                    ],
+                    fuel_efficiency.vehicle_totals(found),
+                ),
+            )
+        ],
+        notes=notes,
+    )
+
+
 _LEDGER_COLUMNS = [
     ("earnings", "المستحقات", (LedgerEntryType.EARNING, LedgerEntryType.BONUS)),
     ("reimbursements", "تعويض مصروفات", (LedgerEntryType.REIMBURSEMENT,)),
@@ -1092,6 +1185,15 @@ REPORTS: list[ReportDef] = [
         (P.REVENUE_READ,),
         ("vehicle", "route"),
         expected_collection,
+    ),
+    ReportDef(
+        "fuel_efficiency",
+        "كفاءة الوقود",
+        "كم لكل لتر أو وحدة غاز، لتر/100 كم والتكلفة لكل كم "
+        "حسب الوردية أو اليوم أو الأسبوع أو الشهر.",
+        (P.FUEL_READ, P.SHIFTS_READ),
+        ("vehicle", "fuel_type", "period"),
+        fuel_efficiency_report,
     ),
     ReportDef(
         "ride_hailing",

@@ -15,12 +15,14 @@ import { fleetOptions, type Option } from "@/lib/finance-refs";
 import { formatNumber } from "@/lib/format";
 import {
   FILTER_PARAM,
+  PERIOD_LABELS,
+  PERIODS,
   REPORT_CODE,
   type Report,
   type ReportFilter,
   type ReportInfo,
 } from "@/lib/report-types";
-import { cairoToday, firstOfMonth, spDate, spUuid } from "@/lib/search";
+import { cairoToday, firstOfMonth, spDate, spEnum, spUuid } from "@/lib/search";
 import type { OperationType, Page, Route } from "@/lib/types";
 
 export const metadata: Metadata = { title: "تقرير" };
@@ -34,6 +36,7 @@ const FILTER_LABEL: Record<ReportFilter, string> = {
   route: "المسار",
   fuel_type: "نوع الوقود",
   category: "التصنيف",
+  period: "التجميع حسب",
 };
 
 async function filterOptions(
@@ -56,6 +59,7 @@ async function filterOptions(
     route: routes?.items.map((r) => ({ value: r.id, label: r.name })),
     fuel_type: fuel?.map((t) => ({ value: t.id, label: t.name_ar })),
     category: categories?.map((c) => ({ value: c.id, label: c.name_ar })),
+    period: PERIODS.map((p) => ({ value: p, label: PERIOD_LABELS[p] })),
   };
 }
 
@@ -72,7 +76,10 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/r
     date_from: spDate(sp, "date_from") ?? firstOfMonth(),
     date_to: spDate(sp, "date_to") ?? cairoToday(),
   };
-  for (const f of info.filters) query[FILTER_PARAM[f]] = spUuid(sp, FILTER_PARAM[f]);
+  for (const f of info.filters) {
+    query[FILTER_PARAM[f]] =
+      f === "period" ? spEnum(sp, "period", PERIODS) : spUuid(sp, FILTER_PARAM[f]);
+  }
   const [report, options] = await Promise.all([
     api.get<Report>(`/reports/${code}`, query),
     filterOptions(info.filters),

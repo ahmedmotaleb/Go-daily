@@ -15,7 +15,7 @@ import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 
 from sqlalchemy import or_, select
@@ -223,7 +223,9 @@ def _classify(row: DayCollection, today: date) -> None:
         max(s.collection_tolerance_amount, expected * s.collection_tolerance_pct / 100)
     )
     row.difference_pct = (
-        (row.difference * 100 / expected).quantize(Decimal("0.1")) if expected > 0 else None
+        (row.difference * 100 / expected).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        if expected > 0
+        else None
     )
     if expected == 0 and row.recorded > 0:
         row.status = CollectionStatus.NO_LOOPS

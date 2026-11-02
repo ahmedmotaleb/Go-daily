@@ -223,6 +223,22 @@ Driver 1─* DriverSettlement (DRAFT → FINALIZED → VOIDED, frozen details)
 - **Vehicle P&L** uses approved records only. Amounts with a service period (contracts, statements, settlement earnings) are spread over it by days. Driver earnings are split across vehicles by driving minutes, and costs across operation types by session minutes. Missing inputs produce warnings, never estimates.
 - **Platforms are not scraped or integrated.** Statements are entered manually from what the platform provides.
 
+### Fuel efficiency (U13)
+
+`app/services/fuel_efficiency.py` groups data per vehicle by shift, day, week (Saturday start) or month. The report is *كفاءة الوقود* (`fuel_efficiency`, with a period filter).
+
+- **Distance** is the odometer distance of completed shifts.
+- **Fuel** is approved purchases of fuel-category types (CNG, gasoline, diesel). Engine oil and other consumables are never part of efficiency.
+- **Figures:**
+  - gasoline and diesel: km per litre, L/100 km and EGP/km;
+  - CNG: km per unit in the unit it was recorded in (m³ or kg; the default unit is set on the fuel type), and EGP/km.
+  - Quantities of different units are never added together.
+- **Bi-fuel vehicles.** When a period has more than one fuel, the distance is shared and cannot be split. Per-fuel km/unit is marked approximate. The combined EGP/km (all fuel cost ÷ distance) is the comparable figure, and it is also given per vehicle for the whole range.
+- **Purchases are not consumption.** A refuel covers the driving that follows, so shift figures are indicative and weeks or months are steadier. Purchases not tied to a shift are counted, and shown in a note, in the per-shift view.
+- **Missing data.** A missing odometer reading or zero distance gives no figure, never an estimate. Ratios round half-up.
+
+Tests: `test_fuel_efficiency.py`.
+
 ### Expected collection per loop (U10)
 
 `app/services/expected_revenue.py` compares what a fixed route should have collected with what was recorded.

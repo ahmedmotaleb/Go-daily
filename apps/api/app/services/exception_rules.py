@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session, aliased
 
 from app.core.config import Settings
 from app.core.geo import haversine_m, point_to_polyline_m
-from app.core.time import local_day_bounds_utc, local_today, to_local_date, utcnow
+from app.core.time import local_day_bounds_utc, local_today, to_local_date, utcnow, week_start
 from app.models.attachment import Attachment
 from app.models.exceptions import (
     ExceptionLabel,
@@ -1157,9 +1157,7 @@ def gps_odometer_mismatch(ctx: Context) -> RuleResult:
 # --- Fuel -------------------------------------------------------------------
 
 
-def _week_start(day: date) -> date:
-    """Weeks start on Saturday (Egyptian working week)."""
-    return day - timedelta(days=(day.weekday() - 5) % 7)
+_week_start = week_start  # weeks start on Saturday (Egyptian working week)
 
 
 def _week_figures(

@@ -31,3 +31,8 @@ def local_day_bounds_utc(day: date) -> tuple[datetime, datetime]:
 def to_local_date(value: datetime) -> date:
     """Business day (local timezone) of an instant."""
     return value.astimezone(get_settings().tz).date()
+
+
+def week_start(day: date) -> date:
+    """First day of the business week; weeks start on Saturday (Egyptian working week)."""
+    return day - timedelta(days=(day.weekday() - 5) % 7)
