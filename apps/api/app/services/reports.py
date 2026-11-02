@@ -143,7 +143,9 @@ SCHOOL_STATUS_AR = {
     "SCHEDULED": "مجدولة",
     "IN_PROGRESS": "جارية",
     "COMPLETED": "مكتملة",
-    "COMPLETED_UNVERIFIED": "انتهت بدون دليل GPS",
+    "COMPLETED_LATE": "مكتملة بتأخير",
+    "INCOMPLETE": "غير مكتملة",
+    "COMPLETED_UNVERIFIED": "تحتاج مراجعة",
     "MISSED": "فائتة",
     "CANCELLED": "ملغاة",
 }
@@ -326,6 +328,16 @@ def route_loops(db: Session, f: Filters) -> ReportResult:
     )
 
 
+def _stops_text(verification: dict[str, Any] | None) -> str | None:
+    if not verification:
+        return None
+    reached = len(verification.get("reached_stops", []))
+    required = len(verification.get("required_stops", []))
+    missing = verification.get("missing_stops") or []
+    text = f"{reached}/{required}"
+    return f"{text} (لم تُدرك: {'، '.join(missing)})" if missing else text
+
+
 def school_runs(db: Session, f: Filters) -> ReportResult:
     stmt = select(SchoolRun).where(
         SchoolRun.service_date >= f.date_from, SchoolRun.service_date <= f.date_to
@@ -352,6 +364,8 @@ def school_runs(db: Session, f: Filters) -> ReportResult:
             "scheduled_start_at": r.scheduled_start_at,
             "actual_start_at": r.actual_start_at,
             "actual_end_at": r.actual_end_at,
+            "arrival_delay": (r.verification or {}).get("arrival_delay_minutes"),
+            "stops": _stops_text(r.verification),
             "status": SCHOOL_STATUS_AR.get(r.status.value, r.status.value),
         }
         for r in runs
@@ -370,6 +384,8 @@ def school_runs(db: Session, f: Filters) -> ReportResult:
                 Column("scheduled_start_at", "الموعد", "datetime"),
                 Column("actual_start_at", "البداية الفعلية", "datetime"),
                 Column("actual_end_at", "النهاية الفعلية", "datetime"),
+                Column("arrival_delay", "تأخير الوصول (دقيقة)", "number"),
+                Column("stops", "المحطات"),
                 Column("status", "الحالة"),
             ],
             rows,
@@ -383,7 +399,11 @@ def school_runs(db: Session, f: Filters) -> ReportResult:
                 ),
             )
         ],
-        notes=["الدورة تُعد مكتملة فقط بدليل GPS؛ غير ذلك يظهر كـ «انتهت بدون دليل GPS»."],
+        notes=[
+            "الدورة تُعد مكتملة فقط بدليل GPS على الوصول لكل محطاتها.",
+            "«تحتاج مراجعة»: بيانات GPS لا تكفي للحكم؛ «غير مكتملة»: GPS كافٍ ولم تُدرك كل المحطات.",
+            "تأخير الوصول موجب = بعد موعد النهاية المحدد.",
+        ],
     )
 
 

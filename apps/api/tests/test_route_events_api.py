@@ -185,6 +185,14 @@ def test_loops_are_counted_from_uploaded_gps(client: TestClient, db: Session) ->
     assert {"route_event.voided", "route_event.manual_added"} <= actions
 
 
+def _schedule_around_now(db: Session, vehicle_id: object) -> None:
+    """Give today's generated run a realistic window around the simulated trip."""
+    run = db.scalars(select(SchoolRun).where(SchoolRun.vehicle_id == vehicle_id)).one()
+    run.scheduled_start_at = utcnow() - timedelta(minutes=35)
+    run.scheduled_end_at = utcnow() + timedelta(minutes=30)
+    db.commit()
+
+
 def test_school_run_completed_with_gps_evidence(client: TestClient, db: Session) -> None:
     driver, _, h, vehicle = make_driver_account(client, db)
     _, staff = login_as(client, db, UserRole.OPERATIONS)
@@ -204,6 +212,7 @@ def test_school_run_completed_with_gps_evidence(client: TestClient, db: Session)
     )
     assert gen.status_code == 201, gen.text
     assert gen.json()["created"] == 1
+    _schedule_around_now(db, vehicle.id)
 
     ctx = _start_backdated(client, staff, driver, vehicle, 30, route)
     runs = client.get(
@@ -243,6 +252,7 @@ def test_school_run_without_gps_needs_review_then_upgrades_on_late_sync(
             "vehicle_id": str(vehicle.id),
         },
     )
+    _schedule_around_now(db, vehicle.id)
     ctx = _start_backdated(client, staff, driver, vehicle, 30, route)
     client.post(f"/api/v1/operation-sessions/{ctx['session']['id']}/end", headers=staff, json={})
     run_id = client.get(

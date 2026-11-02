@@ -391,7 +391,14 @@ export type LegDetails = {
 };
 
 export type SchoolRunStatus =
-  "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "COMPLETED_UNVERIFIED" | "MISSED" | "CANCELLED";
+  | "SCHEDULED"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "COMPLETED_LATE"
+  | "INCOMPLETE"
+  | "COMPLETED_UNVERIFIED"
+  | "MISSED"
+  | "CANCELLED";
 
 export type SchoolRun = {
   id: string;
@@ -410,6 +417,23 @@ export type SchoolRun = {
   notes: string | null;
   status_reason: string | null;
   evidence: { reached_origin: boolean; reached_destination: boolean; route_events: number };
+  verification: SchoolRunVerification | null;
+};
+
+/** What a school run's outcome rests on (U12). */
+export type SchoolRunVerification = {
+  required_stops: { id: string; name: string }[];
+  reached_stops: string[];
+  missing_stops: string[];
+  arrived_at: string | null;
+  start_delay_minutes: number | null;
+  arrival_delay_minutes: number | null;
+  late_grace_minutes: number;
+  gps_points: number;
+  gps_coverage_pct: number;
+  min_gps_coverage_pct: number;
+  max_deviation_m: number | null;
+  corridor_m: number;
 };
 
 export type ExpectedRevenueModel = "PER_LOOP" | "PER_LEG" | "PASSENGERS_X_FARE";

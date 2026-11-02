@@ -14,6 +14,7 @@ import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { can, requirePermission } from "@/lib/auth";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { verificationLines } from "@/lib/school-runs";
 import type { Driver, Page, Route, SchoolRun, SchoolRunStatus, Vehicle } from "@/lib/types";
 import { correctRunStatusAction, generateRunsAction } from "./actions";
 
@@ -22,8 +23,10 @@ export const metadata: Metadata = { title: "دورات المدارس" };
 const STATUS: Record<SchoolRunStatus, { label: string; tone: Tone }> = {
   SCHEDULED: { label: "مجدولة", tone: "info" },
   IN_PROGRESS: { label: "جارية", tone: "active" },
-  COMPLETED: { label: "مكتملة (موثقة بـ GPS)", tone: "success" },
-  COMPLETED_UNVERIFIED: { label: "مراجعة مطلوبة — بدون دليل GPS", tone: "warning" },
+  COMPLETED: { label: "مكتملة", tone: "success" },
+  COMPLETED_LATE: { label: "مكتملة بتأخير", tone: "warning" },
+  INCOMPLETE: { label: "غير مكتملة", tone: "danger" },
+  COMPLETED_UNVERIFIED: { label: "تحتاج مراجعة — بيانات GPS غير كافية", tone: "warning" },
   MISSED: { label: "حالة غير معتادة — لم يتم تسجيل تشغيل", tone: "danger" },
   CANCELLED: { label: "ملغاة", tone: "neutral" },
 };
@@ -118,11 +121,19 @@ export default async function SchoolRunsPage({
                             الوردية
                           </Link>
                         ) : null}
-                        <div className="text-xs text-ink-muted">
-                          {r.evidence.reached_destination
-                            ? "✔ وصل لنقطة النهاية (GPS)"
-                            : "لا يوجد وصول مسجل لنقطة النهاية"}
-                        </div>
+                        {r.verification ? (
+                          <ul className="mt-1 space-y-0.5 text-xs text-ink-muted">
+                            {verificationLines(r.verification).map((line) => (
+                              <li key={line}>{line}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="text-xs text-ink-muted">
+                            {r.evidence.reached_destination
+                              ? "✔ وصل لنقطة النهاية (GPS)"
+                              : "لا يوجد وصول مسجل لنقطة النهاية"}
+                          </div>
+                        )}
                       </>
                     ) : (
                       "—"
@@ -155,6 +166,8 @@ export default async function SchoolRunsPage({
                               [
                                 "SCHEDULED",
                                 "COMPLETED",
+                                "COMPLETED_LATE",
+                                "INCOMPLETE",
                                 "COMPLETED_UNVERIFIED",
                                 "MISSED",
                                 "CANCELLED",

@@ -111,6 +111,9 @@ class Settings(BaseSettings):
     route_dwell_seconds: int = 20
     route_min_points: int = 2
     route_min_leg_minutes: int = 3
+    # School run verification (U12).
+    school_late_grace_minutes: int = 10
+    school_min_gps_coverage_pct: float = 60.0
     exception_route_corridor_m: float = 2000.0
     exception_route_min_minutes: int = 5
     # "lat,lng,radius_km;lat,lng,radius_km". Empty disables the operating-area rule.

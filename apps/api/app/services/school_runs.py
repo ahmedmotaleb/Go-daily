@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import ConflictError, NotFoundError, ValidationFailed
+from app.core.geo import point_to_polyline_m
 from app.core.time import utcnow
 from app.models.driver import Driver
 from app.models.fleet import Vehicle
@@ -22,10 +23,12 @@ from app.models.route_events import (
     SchoolRunStatus,
 )
 from app.models.shift import OperationSession, SessionStatus
+from app.models.tracking import GpsPoint, PointQuality
 from app.models.user import User
 from app.schemas.common import PageParams
 from app.services import audit
 from app.services.common import paginate
+from app.services.track_analysis import TrackPoint, find_gaps
 
 LINK_TOLERANCE = timedelta(minutes=60)
 MISSED_GRACE = timedelta(minutes=60)
@@ -209,37 +212,125 @@ def link_session(db: Session, session: OperationSession) -> SchoolRun | None:
     return run
 
 
+# Outcomes the system decides; staff corrections ("manual: ...") are never overwritten.
+AUTO_OUTCOMES = (
+    SchoolRunStatus.COMPLETED,
+    SchoolRunStatus.COMPLETED_LATE,
+    SchoolRunStatus.INCOMPLETE,
+    SchoolRunStatus.COMPLETED_UNVERIFIED,
+)
+
+
+def _minutes_late(actual: datetime | None, planned: datetime) -> int | None:
+    if actual is None:
+        return None
+    return int((actual - planned).total_seconds() // 60)
+
+
+def evaluate(db: Session, run: SchoolRun, session: OperationSession) -> None:
+    """Decide the outcome of a finished run from its GPS evidence (no commit).
+
+    - every required stop reached: مكتملة, or مكتملة بتأخير when the start or
+      the arrival at the destination was later than the grace period;
+    - stops missed although GPS covered the run: غير مكتملة;
+    - stops missed and GPS too thin to tell: تحتاج مراجعة.
+    Nothing is inferred for missing GPS; the evidence is stored with the run.
+    """
+    s = get_settings()
+    route = db.get(RouteDefinition, run.route_id)
+    assert route is not None and session.ended_at is not None  # noqa: S101
+    required = [st for st in route.stops if st.latitude is not None and st.longitude is not None]
+    events = db.scalars(
+        select(RouteEvent).where(
+            RouteEvent.session_id == session.id,
+            RouteEvent.status == EventStatus.ACTIVE,
+            RouteEvent.event_type.in_((RouteEventType.ENTERED, RouteEventType.REACHED_DESTINATION)),
+        )
+    ).all()
+    reached = {e.stop_id for e in events if e.stop_id is not None}
+    arrivals = [e.occurred_at for e in events if e.event_type is RouteEventType.REACHED_DESTINATION]
+    arrival = min(arrivals) if arrivals else None
+    missing = [st for st in required if st.id not in reached]
+
+    track = [
+        TrackPoint(p.recorded_at, p.latitude, p.longitude, p.accuracy_m, p.speed_mps)
+        for p in db.scalars(
+            select(GpsPoint)
+            .where(
+                GpsPoint.shift_id == session.shift_id,
+                GpsPoint.quality == PointQuality.VALID,
+                GpsPoint.recorded_at >= session.started_at,
+                GpsPoint.recorded_at <= session.ended_at,
+            )
+            .order_by(GpsPoint.recorded_at)
+        ).all()
+    ]
+    total = (session.ended_at - session.started_at).total_seconds()
+    coverage = 0.0
+    if total > 0:
+        gaps = find_gaps(
+            track,
+            window_start=session.started_at,
+            window_end=session.ended_at,
+            max_gap_seconds=s.gps_gap_seconds,
+        )
+        coverage = round(100 * (1 - sum(g.seconds for g in gaps) / total), 1)
+    line = [(float(st.latitude), float(st.longitude)) for st in required]  # type: ignore[arg-type]
+    deviation = (
+        round(max(point_to_polyline_m(p.latitude, p.longitude, line) for p in track))
+        if track and line
+        else None
+    )
+    start_late = _minutes_late(run.actual_start_at, run.scheduled_start_at)
+    arrival_late = _minutes_late(arrival, run.scheduled_end_at)
+    grace = s.school_late_grace_minutes
+    late = (start_late is not None and start_late > grace) or (
+        arrival_late is not None and arrival_late > grace
+    )
+    run.verification = {
+        "required_stops": [{"id": str(st.id), "name": st.name} for st in required],
+        "reached_stops": [str(st.id) for st in required if st.id in reached],
+        "missing_stops": [st.name for st in missing],
+        "arrived_at": arrival.isoformat() if arrival else None,
+        "start_delay_minutes": start_late,
+        "arrival_delay_minutes": arrival_late,
+        "late_grace_minutes": grace,
+        "gps_points": len(track),
+        "gps_coverage_pct": coverage,
+        "min_gps_coverage_pct": s.school_min_gps_coverage_pct,
+        "max_deviation_m": deviation,
+        "corridor_m": s.exception_route_corridor_m,
+    }
+    run.actual_end_at = session.ended_at
+    if required and not missing:
+        run.status = SchoolRunStatus.COMPLETED_LATE if late else SchoolRunStatus.COMPLETED
+        run.status_reason = "gps_all_stops_reached_late" if late else "gps_all_stops_reached"
+    elif required and coverage >= s.school_min_gps_coverage_pct:
+        run.status = SchoolRunStatus.INCOMPLETE
+        run.status_reason = "stops_not_reached"
+    else:
+        run.status = SchoolRunStatus.COMPLETED_UNVERIFIED
+        run.status_reason = "no_gps_evidence"
+
+
 def on_session_closed(db: Session, session: OperationSession) -> SchoolRun | None:
-    """Decide completion from GPS evidence when a linked session ends (no commit)."""
+    """Evaluate a run when its session ends, and again when late GPS arrives (no commit)."""
     run = db.scalar(select(SchoolRun).where(SchoolRun.session_id == session.id))
     re_evaluable = run is not None and (
         run.status is SchoolRunStatus.IN_PROGRESS
-        or (
-            run.status is SchoolRunStatus.COMPLETED_UNVERIFIED
-            and run.status_reason == "no_gps_evidence"
-        )
+        or (run.status in AUTO_OUTCOMES and not (run.status_reason or "").startswith("manual:"))
     )
     if run is None or not re_evaluable:
         return run
     if session.status is SessionStatus.CANCELLED:
         run.session_id = None
         run.actual_start_at = None
+        run.actual_end_at = None
+        run.verification = None
         run.status = SchoolRunStatus.SCHEDULED
+        run.status_reason = None
         return run
-    reached = db.scalar(
-        select(RouteEvent.id).where(
-            RouteEvent.session_id == session.id,
-            RouteEvent.status == EventStatus.ACTIVE,
-            RouteEvent.event_type == RouteEventType.REACHED_DESTINATION,
-        )
-    )
-    run.actual_end_at = session.ended_at
-    if reached is not None:
-        run.status = SchoolRunStatus.COMPLETED
-        run.status_reason = "gps_destination_reached"
-    else:
-        run.status = SchoolRunStatus.COMPLETED_UNVERIFIED
-        run.status_reason = "no_gps_evidence"
+    evaluate(db, run, session)
     return run
 
 

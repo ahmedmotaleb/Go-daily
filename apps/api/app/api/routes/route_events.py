@@ -159,6 +159,7 @@ def _run_out(db: DbSession, run: SchoolRun) -> SchoolRunOut:
             reached_destination=RouteEventType.REACHED_DESTINATION in evidence_types,
             route_events=total,
         ),
+        verification=run.verification,
     )
 
 

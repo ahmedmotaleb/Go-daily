@@ -86,8 +86,10 @@ class RouteEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 class SchoolRunStatus(StrEnum):
     SCHEDULED = "SCHEDULED"
     IN_PROGRESS = "IN_PROGRESS"
-    COMPLETED = "COMPLETED"  # GPS evidence shows the route was served
-    COMPLETED_UNVERIFIED = "COMPLETED_UNVERIFIED"  # ended without GPS evidence -> review
+    COMPLETED = "COMPLETED"  # مكتملة: GPS shows every stop reached, on time
+    COMPLETED_LATE = "COMPLETED_LATE"  # مكتملة بتأخير: every stop reached, but late
+    INCOMPLETE = "INCOMPLETE"  # غير مكتملة: enough GPS, yet stops were not reached
+    COMPLETED_UNVERIFIED = "COMPLETED_UNVERIFIED"  # تحتاج مراجعة: not enough GPS to tell
     MISSED = "MISSED"
     CANCELLED = "CANCELLED"
 
@@ -117,6 +119,9 @@ class SchoolRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     label: Mapped[str | None] = mapped_column(String(80))
     notes: Mapped[str | None] = mapped_column(String(2000))
     status_reason: Mapped[str | None] = mapped_column(String(500))
+    # U12: what the verdict rests on (required/reached stops, delays, GPS
+    # coverage, deviation), recorded when the run is evaluated.
+    verification: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
 
     __table_args__ = (

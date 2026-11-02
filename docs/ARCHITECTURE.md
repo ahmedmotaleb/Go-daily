@@ -181,6 +181,28 @@ Driver 1─* DriverCompensationPlan (versioned by effective dates)
 
 Tests: `test_geofence_engine.py` (debounce, accuracy, loops, minimum leg time, incomplete legs, evidence, determinism), `test_route_events_api.py` (from uploaded GPS to stored events and counts, recompute, manual correction).
 
+### School route verification (Task 13, U12)
+
+A school run is one scheduled duty (route, date, scheduled start and end, vehicle, driver). It links to the operation session that starts within an hour of its window. When the session ends, `school_runs.evaluate` decides the outcome from GPS and stores what it rests on in `school_runs.verification`.
+
+- **Required stops:** every stop of the route that has coordinates.
+- **Reached stops:** stops with an active entry event in the session (GPS or audited manual event).
+- **Delays:** start delay (actual start − scheduled start) and arrival delay (first arrival at the destination − scheduled end).
+- **Also stored:** GPS coverage of the session and the largest distance from the straight lines between stops. Deviation is shown for context only; the `ROUTE_DEVIATION` rule handles it.
+
+| Outcome | When |
+| --- | --- |
+| مكتملة | Every required stop reached, start and arrival within `SCHOOL_LATE_GRACE_MINUTES` (10) |
+| مكتملة بتأخير | Every required stop reached, but the start or the arrival was later than the grace period |
+| غير مكتملة | Some stops not reached although GPS covered at least `SCHOOL_MIN_GPS_COVERAGE_PCT` (60 %) of the session |
+| تحتاج مراجعة | Stops not reached and GPS too thin to tell; no verdict is guessed |
+| فائتة | The window passed with no session (unchanged) |
+
+- **Re-evaluation.** A run is re-evaluated when late GPS arrives, unless staff set its status. Status corrections need a reason, are audited, and are never overwritten by later GPS.
+- **Not yet:** a per-stop "optional" flag, for example when a pupil is absent. Until then staff correct the outcome with a reason. Per-stop settings belong to route versioning (U08).
+
+Tests: `test_school_verification.py` (each outcome, evidence, corrections kept), `test_route_events_api.py` (linking, missed runs, late sync).
+
 
 ## 7. Financial model (Tasks 14-19)
 

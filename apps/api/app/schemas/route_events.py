@@ -76,6 +76,8 @@ class SchoolRunOut(BaseModel):
     notes: str | None
     status_reason: str | None
     evidence: SchoolRunEvidence
+    # U12: required/reached stops, delays, GPS coverage and deviation behind the outcome.
+    verification: dict[str, Any] | None = None
 
 
 class SchoolRunGenerate(BaseModel):
@@ -101,5 +103,13 @@ class SchoolRunUpdate(BaseModel):
 
 
 class SchoolRunStatusIn(BaseModel):
-    status: Literal["SCHEDULED", "COMPLETED", "COMPLETED_UNVERIFIED", "MISSED", "CANCELLED"]
+    status: Literal[
+        "SCHEDULED",
+        "COMPLETED",
+        "COMPLETED_LATE",
+        "INCOMPLETE",
+        "COMPLETED_UNVERIFIED",
+        "MISSED",
+        "CANCELLED",
+    ]
     reason: Reason
