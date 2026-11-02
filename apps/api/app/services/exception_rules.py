@@ -17,7 +17,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, cast
 
@@ -36,9 +36,7 @@ from app.models.exceptions import (
 )
 from app.models.finance import (
     Expense,
-    FuelCategory,
     FuelTransaction,
-    FuelType,
     PaidBy,
     RecordStatus,
 )
@@ -51,7 +49,7 @@ from app.models.tracking import (
     TrackingEvent,
     TrackingEventType,
 )
-from app.services import expected_revenue, ride_hailing
+from app.services import expected_revenue, fuel_baselines, ride_hailing
 from app.services import finance_common as fc
 from app.services.odometer_reconciliation import ReconciliationStatus, reconcile
 from app.services.track_analysis import TrackPoint, find_gaps, find_stops
@@ -1160,119 +1158,66 @@ def gps_odometer_mismatch(ctx: Context) -> RuleResult:
 _week_start = week_start  # weeks start on Saturday (Egyptian working week)
 
 
-def _week_figures(
-    ctx: Context, vehicle_id: uuid.UUID, week: date
-) -> tuple[Decimal, int, dict[str, dict[str, str]]]:
-    start = local_day_bounds_utc(week)[0]
-    end = local_day_bounds_utc(week + timedelta(days=6))[1]
-    rows = ctx.db.execute(
-        select(FuelType.code, FuelTransaction.quantity, FuelTransaction.total_amount)
-        .join(FuelType, FuelType.id == FuelTransaction.fuel_type_id)
-        .where(
-            FuelTransaction.vehicle_id == vehicle_id,
-            FuelType.category == FuelCategory.FUEL,
-            FuelTransaction.status.in_(LIVE),
-            FuelTransaction.occurred_at >= start,
-            FuelTransaction.occurred_at < end,
-        )
-    ).all()
-    cost = Decimal("0")
-    by_type: dict[str, dict[str, Decimal]] = defaultdict(
-        lambda: {"quantity": Decimal("0"), "cost": Decimal("0")}
-    )
-    for code, quantity, amount in rows:
-        cost += amount
-        by_type[code]["quantity"] += quantity
-        by_type[code]["cost"] += amount
-    km = 0
-    for shift in ctx.db.scalars(
-        select(Shift).where(
-            Shift.vehicle_id == vehicle_id,
-            Shift.status == ShiftStatus.COMPLETED,
-            Shift.started_at >= start,
-            Shift.started_at < end,
-        )
-    ).all():
-        km += shift.odometer_distance_km or 0
-    return (
-        cost,
-        km,
-        {
-            k: {"quantity": str(v["quantity"]), "cost": str(fc.money(v["cost"]))}
-            for k, v in by_type.items()
-        },
-    )
+_BASIS_AR = {"historical": "تاريخ المركبة", "peer": "مركبات بنفس نوع التشغيل"}
 
 
 def fuel_consumption(ctx: Context) -> RuleResult:
+    """Weekly fuel use against the vehicle's rolling baseline (U14)."""
     s = ctx.settings
     result = RuleResult()
     # Whole weeks (Saturday-Friday) that ended during or just before the window.
     last = _week_start(to_local_date(ctx.end)) - timedelta(days=7)
-    week = _week_start(to_local_date(ctx.start)) - timedelta(days=7)
-    weeks: list[date] = []
-    while week <= last:
-        weeks.append(week)
-        week += timedelta(days=7)
-    if not weeks:
+    first = _week_start(to_local_date(ctx.start)) - timedelta(days=7)
+    if last < first:
         return result
-    vehicles = set(
-        ctx.db.scalars(
-            select(FuelTransaction.vehicle_id)
-            .where(
-                FuelTransaction.status.in_(LIVE),
-                FuelTransaction.occurred_at >= local_day_bounds_utc(weeks[0])[0],
+    for a in fuel_baselines.assess(ctx.db, first, last):
+        key = f"FUEL_CONSUMPTION:{a.vehicle_id}:{a.week.isoformat()}"
+        result.scopes.add(key)
+        if a.status is not fuel_baselines.BaselineStatus.UNUSUAL or a.ratio is None:
+            continue
+        base = a.historical if a.basis == "historical" else a.peer
+        if a.metric == "km_per_unit":
+            detail = f"{a.current} كم لكل وحدة مقابل {base.value} المعتاد"
+        else:
+            detail = f"{a.current} ج.م لكل كم مقابل {base.value} المعتاد"
+        result.candidates.append(
+            Candidate(
+                rule_code="FUEL_CONSUMPTION",
+                severity=MEDIUM if a.ratio >= 2 else LOW,
+                summary=(
+                    f"{fuel_baselines.UNUSUAL_LABEL}: {detail} "
+                    f"({_BASIS_AR.get(a.basis or '', a.basis)}، أسوأ بـ {a.ratio}×)"
+                ),
+                evidence={
+                    "week_start": a.week,
+                    "week_end": a.week + timedelta(days=6),
+                    "metric": a.metric,
+                    "fuel": a.fuel,
+                    "current": a.current,
+                    "odometer_km": a.distance_km,
+                    "fuel_cost": a.fuel_cost,
+                    "unit_prices": a.unit_price,
+                    "basis": _BASIS_AR.get(a.basis or "", a.basis),
+                    "historical_baseline": a.historical.value,
+                    "historical_weeks": a.historical.samples,
+                    "recent_baseline": a.recent.value,
+                    "recent_weeks": a.recent.samples,
+                    "peer_baseline": a.peer.value,
+                    "peer_samples": a.peer.samples,
+                    "operation_kind": a.operation_kind,
+                    "excluded_weeks": a.excluded_weeks,
+                    "ratio": a.ratio,
+                    "threshold_ratio": s.exception_fuel_ratio,
+                    "min_week_km": s.exception_fuel_min_week_km,
+                },
+                occurred_at=local_day_bounds_utc(a.week)[0],
+                occurred_until=local_day_bounds_utc(a.week + timedelta(days=6))[1],
+                dedupe_key=key,
+                vehicle_id=a.vehicle_id,
+                subject_type="vehicle",
+                subject_id=a.vehicle_id,
             )
-            .distinct()
-        ).all()
-    )
-    for vehicle_id in vehicles:
-        for week in weeks:
-            key = f"FUEL_CONSUMPTION:{vehicle_id}:{week.isoformat()}"
-            result.scopes.add(key)
-            cost, km, by_type = _week_figures(ctx, vehicle_id, week)
-            if km < s.exception_fuel_min_week_km or cost <= 0:
-                continue
-            history: list[Decimal] = []
-            for back in range(1, s.exception_fuel_history_weeks + 1):
-                h_cost, h_km, _ = _week_figures(ctx, vehicle_id, week - timedelta(days=7 * back))
-                if h_km >= s.exception_fuel_min_week_km and h_cost > 0:
-                    history.append(h_cost / h_km)
-            if len(history) < 3:
-                continue
-            baseline = Decimal(str(statistics.median(history)))
-            current = cost / km
-            ratio = current / baseline
-            if ratio < Decimal(str(s.exception_fuel_ratio)):
-                continue
-            start = local_day_bounds_utc(week)[0]
-            result.candidates.append(
-                Candidate(
-                    rule_code="FUEL_CONSUMPTION",
-                    severity=MEDIUM if ratio >= 2 else LOW,
-                    summary=(
-                        f"تكلفة الوقود لكل كم {fc.money(current)} أعلى "
-                        f"{ratio:.1f}× من المعتاد للمركبة ({fc.money(baseline)})"
-                    ),
-                    evidence={
-                        "week_start": week.isoformat(),
-                        "week_end": (week + timedelta(days=6)).isoformat(),
-                        "fuel_cost": str(fc.money(cost)),
-                        "odometer_km": km,
-                        "cost_per_km": str(fc.money(current)),
-                        "baseline_cost_per_km": str(fc.money(baseline)),
-                        "baseline_weeks": len(history),
-                        "ratio": str(ratio.quantize(Decimal("0.01"))),
-                        "threshold_ratio": s.exception_fuel_ratio,
-                        "by_type": by_type,
-                        "basis": "سجلات الوقود المقدمة والمعتمدة (بدون الزيوت)",
-                    },
-                    occurred_at=start,
-                    occurred_until=local_day_bounds_utc(week + timedelta(days=6))[1],
-                    dedupe_key=key,
-                    vehicle_id=vehicle_id,
-                )
-            )
+        )
     return result
 
 
@@ -1804,7 +1749,8 @@ RULES: list[tuple[RuleInfo, Rule]] = [
         RuleInfo(
             "FUEL_CONSUMPTION",
             "استهلاك وقود غير معتاد",
-            "تكلفة الوقود لكل كم في أسبوع أعلى من المعتاد للمركبة نفسها.",
+            "كفاءة الوقود الأسبوعية أسوأ من المعتاد للمركبة (أو لمركبات بنفس نوع التشغيل) "
+            "بأكثر من الحد، مع حد أدنى لعدد الأسابيع.",
             U,
         ),
         fuel_consumption,

@@ -127,6 +127,11 @@ class Settings(BaseSettings):
     exception_fuel_ratio: float = 1.6
     exception_fuel_min_week_km: int = 150
     exception_fuel_history_weeks: int = 8
+    # Vehicle fuel baselines (U14).
+    fuel_baseline_weeks: int = 12
+    fuel_recent_weeks: int = 4
+    fuel_baseline_min_weeks: int = 4
+    fuel_peer_min_samples: int = 6
     exception_fuel_distance_m: float = 1000.0
     exception_fuel_outside_shift_minutes: int = 60
     exception_duplicate_window_minutes: int = 60

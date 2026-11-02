@@ -44,6 +44,7 @@ from app.models.user import User
 from app.services import (
     driver_ledger,
     expected_revenue,
+    fuel_baselines,
     fuel_efficiency,
     profitability,
     ride_hailing,
@@ -930,6 +931,75 @@ def fuel_efficiency_report(db: Session, f: Filters) -> ReportResult:
     )
 
 
+_KIND_AR = {
+    "RIDE_HAILING": "نقل ذكي",
+    "FIXED_ROUTE": "خط ثابت",
+    "SCHOOL_ROUTE": "دورة مدرسة",
+    "PRIVATE_TRIP": "رحلة خاصة",
+    "EMPLOYEE_TRANSPORT": "نقل موظفين",
+    "OTHER": "أخرى",
+}
+_BASELINE_REASON_AR = {
+    "incomplete_week": "أسبوع غير مكتمل البيانات (عداد ناقص أو مسافة قليلة)",
+    "not_enough_history": "لا توجد أسابيع كافية للمقارنة",
+}
+
+
+def fuel_baselines_report(db: Session, f: Filters) -> ReportResult:
+    """Each vehicle-week against its rolling fuel baselines (U14)."""
+    settings = get_settings()
+    found = fuel_baselines.assess(db, f.date_from, f.date_to, vehicle_id=f.vehicle_id)
+
+    def base(b: fuel_baselines.Baseline) -> str | None:
+        return f"{b.value} ({b.samples})" if b.value is not None else None
+
+    rows = [
+        {
+            "week": a.week,
+            "vehicle": a.vehicle_code,
+            "operation": _KIND_AR.get(a.operation_kind.value) if a.operation_kind else None,
+            "metric": "كم/وحدة" if a.metric == "km_per_unit" else "ج.م/كم",
+            "fuel": a.fuel,
+            "current": a.current,
+            "historical": base(a.historical),
+            "recent": base(a.recent),
+            "peer": base(a.peer),
+            "ratio": a.ratio,
+            "status": fuel_baselines.STATUS_AR[a.status],
+            "reason": _BASELINE_REASON_AR.get(a.reason or ""),
+        }
+        for a in _limit(found)
+    ]
+    return ReportResult(
+        Table(
+            [
+                Column("week", "بداية الأسبوع", "date"),
+                Column("vehicle", "المركبة"),
+                Column("operation", "التشغيل الغالب"),
+                Column("metric", "المقياس"),
+                Column("fuel", "الوقود"),
+                Column("current", "القيمة", "number"),
+                Column("historical", "المعتاد للمركبة (أسابيع)"),
+                Column("recent", "آخر الأسابيع (عدد)"),
+                Column("peer", "مركبات بنفس التشغيل (عينات)"),
+                Column("ratio", "أسوأ بـ (×)", "number"),
+                Column("status", "النتيجة"),
+                Column("reason", "سبب عدم الحكم"),
+            ],
+            rows,
+        ),
+        notes=[
+            APPROVED_ONLY,
+            "أسبوع بوقود واحد يُقارن بالكفاءة الفعلية (كم لكل وحدة) فلا يؤثر تغير سعر الوقود؛ "
+            "الأسبوع المختلط يُقارن بالتكلفة لكل كم.",
+            f"يلزم {settings.fuel_baseline_min_weeks} أسابيع صالحة على الأقل من تاريخ المركبة، "
+            f"أو {settings.fuel_peer_min_samples} عينات من مركبات بنفس نوع التشغيل.",
+            f"«{fuel_baselines.UNUSUAL_LABEL}» عند الأسوأ بـ "
+            f"{settings.exception_fuel_ratio}× أو أكثر؛ سبب للمراجعة وليس حكمًا.",
+        ],
+    )
+
+
 _LEDGER_COLUMNS = [
     ("earnings", "المستحقات", (LedgerEntryType.EARNING, LedgerEntryType.BONUS)),
     ("reimbursements", "تعويض مصروفات", (LedgerEntryType.REIMBURSEMENT,)),
@@ -1194,6 +1264,14 @@ REPORTS: list[ReportDef] = [
         (P.FUEL_READ, P.SHIFTS_READ),
         ("vehicle", "fuel_type", "period"),
         fuel_efficiency_report,
+    ),
+    ReportDef(
+        "fuel_baselines",
+        "خط الأساس لاستهلاك الوقود",
+        "كل أسبوع لكل مركبة مقابل المعتاد لها ولآخر أسابيعها ولمركبات بنفس نوع التشغيل.",
+        (P.FUEL_READ, P.SHIFTS_READ),
+        ("vehicle",),
+        fuel_baselines_report,
     ),
     ReportDef(
         "ride_hailing",

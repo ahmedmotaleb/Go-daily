@@ -239,6 +239,22 @@ Driver 1─* DriverSettlement (DRAFT → FINALIZED → VOIDED, frozen details)
 
 Tests: `test_fuel_efficiency.py`.
 
+### Vehicle fuel baselines (U14)
+
+`app/services/fuel_baselines.py` judges each complete week (Saturday to Friday) of each vehicle.
+
+- **Metric.** A week with one fuel is compared on physical efficiency (km per litre, m³ or kg), so a fuel price rise never looks like higher use. A week with several fuels (CNG + gasoline) cannot split its distance, so it is compared on cost per km. Unit prices are shown with it.
+- **Baselines.**
+  - Historical: the median of the vehicle's previous `FUEL_BASELINE_WEEKS` (12) usable weeks with the same metric and fuel.
+  - Recent: the median of its last `FUEL_RECENT_WEEKS` (4) such weeks, shown for context.
+  - Peer: other vehicles whose main operation type (by session minutes) was the same over those weeks. It is used when the vehicle's own history is too short.
+- **Minimum sample.** At least `FUEL_BASELINE_MIN_WEEKS` (4) of the vehicle's own weeks, or `FUEL_PEER_MIN_SAMPLES` (6) peer vehicle-weeks. Otherwise the result is "بيانات غير كافية".
+- **Incomplete data.** Weeks with a missing odometer reading or less than `EXCEPTION_FUEL_MIN_WEEK_KM` (150) are neither used as a baseline nor judged. They are counted as excluded weeks.
+- **Verdict.** A week worse than its baseline by `EXCEPTION_FUEL_RATIO` (1.6×) or more is **استهلاك غير معتاد — مراجعة مطلوبة**. The `FUEL_CONSUMPTION` review rule raises it with every baseline, sample size and threshold as evidence. Only approved fuel records count.
+- **Where:** the rule, and the report *خط الأساس لاستهلاك الوقود* (`fuel_baselines`), which shows every vehicle-week with its baselines and the reason when no verdict was possible.
+
+Tests: `test_fuel_baselines.py`, `test_exceptions.py` (unusual use flagged; a price-only rise not flagged).
+
 ### Expected collection per loop (U10)
 
 `app/services/expected_revenue.py` compares what a fixed route should have collected with what was recorded.

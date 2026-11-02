@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -112,13 +112,14 @@ def fuel(
     paid_by: PaidBy = PaidBy.COMPANY,
     status: RecordStatus = RecordStatus.APPROVED,
     code: str = "CNG",
+    quantity: str = "40",
     **extra: Any,
 ) -> FuelTransaction:
     tx = FuelTransaction(
         vehicle_id=vehicle.id,
         driver_id=driver.id if driver else None,
         fuel_type_id=uuid.UUID(fuel_type_id(db, code)),
-        quantity=Decimal("40"),
+        quantity=Decimal(quantity),
         unit=QuantityUnit.CUBIC_METER,
         total_amount=Decimal(amount),
         occurred_at=at,
@@ -397,9 +398,9 @@ def test_impossible_distance_for_shift_length(db: Session) -> None:
 # --- Fuel rules ---------------------------------------------------------------
 
 
-def test_fuel_cost_per_km_far_above_the_vehicles_own_history(db: Session) -> None:
+def _fuel_weeks(db: Session, target: date, *, last_qty: str, last_amount: str) -> Vehicle:
+    """Five weeks of 300 km; the earlier four use 40 m³ for 300 EGP."""
     driver, vehicle = pair(db)
-    target = _week_start(local_today()) - timedelta(days=7)
     for back in range(0, 5):
         week = target - timedelta(days=7 * back)
         day = week + timedelta(days=1)
@@ -415,15 +416,35 @@ def test_fuel_cost_per_km_far_above_the_vehicles_own_history(db: Session) -> Non
             db,
             vehicle,
             at=local_day_bounds_utc(day)[0] + timedelta(hours=12),
-            amount="700" if back == 0 else "300",
+            amount=last_amount if back == 0 else "300",
+            quantity=last_qty if back == 0 else "40",
         )
-    result = rules.fuel_consumption(ctx_around(db))
-    found = [c for c in result.candidates if c.vehicle_id == vehicle.id]
+    return vehicle
+
+
+def test_fuel_use_far_worse_than_the_vehicles_own_baseline(db: Session) -> None:
+    target = _week_start(local_today()) - timedelta(days=7)
+    vehicle = _fuel_weeks(db, target, last_qty="100", last_amount="750")
+    found = [
+        c for c in rules.fuel_consumption(ctx_around(db)).candidates if c.vehicle_id == vehicle.id
+    ]
     assert len(found) == 1
-    ev = found[0].evidence
-    assert ev["week_start"] == target.isoformat()
-    assert ev["cost_per_km"] == "2.33" and ev["baseline_cost_per_km"] == "1.00"
-    assert found[0].severity.value == "MEDIUM"
+    c = found[0]
+    ev = c.evidence
+    assert ev["week_start"] == target
+    assert ev["metric"] == "km_per_unit"  # one fuel: physical efficiency, price-proof
+    assert ev["current"] == Decimal("3.00") and ev["historical_baseline"] == Decimal("7.50")
+    assert ev["historical_weeks"] == 4 and ev["ratio"] == Decimal("2.50")
+    assert c.summary.startswith("استهلاك غير معتاد — مراجعة مطلوبة")
+    assert c.severity.value == "MEDIUM"
+
+
+def test_a_fuel_price_rise_alone_is_not_unusual_consumption(db: Session) -> None:
+    target = _week_start(local_today()) - timedelta(days=7)
+    vehicle = _fuel_weeks(db, target, last_qty="40", last_amount="700")
+    assert [
+        c for c in rules.fuel_consumption(ctx_around(db)).candidates if c.vehicle_id == vehicle.id
+    ] == []
 
 
 def test_fuel_far_from_vehicle_when_both_locations_exist(db: Session) -> None:
