@@ -284,6 +284,48 @@ export type ShiftTrack = {
   gaps: { start: string; end: string; seconds: number; displacement_m: number | null }[];
   stops: { start: string; end: string; seconds: number; latitude: number; longitude: number }[];
   timeline: { at: string; kind: string; label: string; until: string | null }[];
+  quality: GpsQuality;
+};
+
+export type QualityGrade = "EXCELLENT" | "GOOD" | "NEEDS_REVIEW" | "INSUFFICIENT";
+
+export type QualityCheck = {
+  code:
+    | "COVERAGE"
+    | "LONGEST_GAP"
+    | "MEDIAN_ACCURACY"
+    | "LOW_ACCURACY_SHARE"
+    | "IMPOSSIBLE_JUMPS"
+    | "MOCK_POINTS"
+    | "STALE_SHARE";
+  value: number;
+  unit: string;
+  excellent: number;
+  good: number;
+  higher_is_better: boolean;
+  grade: QualityGrade;
+};
+
+export type GpsQuality = {
+  grade: QualityGrade;
+  metrics: {
+    duration_minutes: number;
+    points: number;
+    valid_points: number;
+    low_accuracy_points: number;
+    impossible_jumps: number;
+    mock_points: number;
+    coverage_pct: number | null;
+    gaps: number;
+    longest_gap_minutes: number;
+    median_accuracy_m: number | null;
+    stale_points: number;
+    median_sync_delay_s: number | null;
+    p95_sync_delay_s: number | null;
+  };
+  checks: QualityCheck[];
+  insufficient_reason: "NOT_STARTED" | "TOO_SHORT" | "TOO_FEW_POINTS" | null;
+  partial: boolean;
 };
 
 export type RouteEvent = {

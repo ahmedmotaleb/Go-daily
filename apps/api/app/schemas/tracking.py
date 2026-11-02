@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import AwareDatetime, BaseModel, Field
 
 from app.models.tracking import PointQuality, PointSource, TrackingEventType
+from app.services.gps_quality import QualityGrade
 
 
 class PointIn(BaseModel):
@@ -139,6 +140,48 @@ class TimelineItem(BaseModel):
     until: datetime | None = None
 
 
+class QualityCheckOut(BaseModel):
+    code: Literal[
+        "COVERAGE",
+        "LONGEST_GAP",
+        "MEDIAN_ACCURACY",
+        "LOW_ACCURACY_SHARE",
+        "IMPOSSIBLE_JUMPS",
+        "MOCK_POINTS",
+        "STALE_SHARE",
+    ]
+    value: float
+    unit: str
+    excellent: float
+    good: float
+    higher_is_better: bool
+    grade: QualityGrade
+
+
+class QualityMetricsOut(BaseModel):
+    duration_minutes: int
+    points: int
+    valid_points: int
+    low_accuracy_points: int
+    impossible_jumps: int
+    mock_points: int
+    coverage_pct: float | None
+    gaps: int
+    longest_gap_minutes: float
+    median_accuracy_m: float | None
+    stale_points: int
+    median_sync_delay_s: float | None
+    p95_sync_delay_s: float | None
+
+
+class GpsQualityOut(BaseModel):
+    grade: QualityGrade
+    metrics: QualityMetricsOut
+    checks: list[QualityCheckOut]
+    insufficient_reason: Literal["NOT_STARTED", "TOO_SHORT", "TOO_FEW_POINTS"] | None
+    partial: bool
+
+
 class ShiftTrackOut(BaseModel):
     shift_id: uuid.UUID
     vehicle_id: uuid.UUID
@@ -152,3 +195,4 @@ class ShiftTrackOut(BaseModel):
     gaps: list[GapOut]
     stops: list[StopOut]
     timeline: list[TimelineItem]
+    quality: GpsQualityOut

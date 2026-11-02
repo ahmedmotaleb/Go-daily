@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     gps_gap_seconds: int = 300
     gps_stop_min_seconds: int = 180
     gps_stop_radius_m: float = 60.0
+    # GPS quality score (U03): below these a shift is "insufficient data".
+    gps_quality_min_minutes: int = 15
+    gps_quality_min_points: int = 10
+    # Points reaching the server later than this count as stale.
+    gps_quality_stale_minutes: int = 10
     tracking_online_seconds: int = 120
     tracking_stale_seconds: int = 600
     gps_retention_days: int = 180

@@ -1,4 +1,4 @@
-# Go Daily — GPS integrity evidence (U02)
+# Go Daily — GPS integrity evidence and quality score (U02, U03)
 
 Go Daily records evidence when tracking is interrupted or GPS data looks unusual, and turns it into review cases. A case is a reason to look, never a conclusion. Phones restart, lose signal, run out of battery and have wrong clocks for ordinary reasons. Cases use only the labels **مراجعة مطلوبة** (review required) or **حالة غير معتادة** (unusual case). No rule, summary or label says theft, fraud or tampering, and a test (`test_no_rule_accuses_anyone`) keeps it that way.
 
@@ -47,3 +47,34 @@ Tests: `tests/test_gps_integrity.py` (ingestion evidence, every new rule, normal
 - Nothing is collected outside a work shift. Points from outside the shift are refused, and only their count and time range are kept.
 - Integrity evidence holds times, counts, distances and speeds, not extra locations. Closed cases older than `GPS_RETENTION_DAYS` lose any coordinates through `prune-gps` (see `docs/SECURITY.md`).
 - The boot counter is the only new value read from the phone. It identifies neither the phone nor the driver.
+
+## GPS quality score (U03)
+
+Every shift's GPS page (admin web → shift → *المسار الفعلي حسب GPS*) shows a quality grade and all the numbers behind it. The API returns it as `quality` on `GET /api/v1/shifts/{id}/track` (`app/services/gps_quality.py`).
+
+| Grade | Meaning |
+| --- | --- |
+| ممتاز | Every check is within its "excellent" threshold |
+| جيد | At least one check is only within its "good" threshold |
+| يحتاج مراجعة | At least one check is beyond "good" |
+| بيانات غير كافية | Shift not started, shorter than `GPS_QUALITY_MIN_MINUTES` (15), or fewer than `GPS_QUALITY_MIN_POINTS` (10) valid points. Nothing is estimated |
+
+The grade is the **worst** check, so one weak area is never averaged away. While a shift is running, the figures are "so far".
+
+| Check | Definition | Excellent | Good |
+| --- | --- | --- | --- |
+| تغطية مدة الوردية | Share of the shift not inside a gap longer than `GPS_GAP_SECONDS` (300 s). Same definition as the GPS-vs-odometer rule | ≥ 95 % | ≥ 80 % |
+| أطول انقطاع | Longest gap between valid points (or from the shift start/to its end) | ≤ 10 min | ≤ 30 min |
+| الدقة المعتادة | Median reported accuracy of all points | ≤ 20 m | ≤ 50 m |
+| نقاط منخفضة الدقة | Share of points less accurate than `GPS_MAX_ACCURACY_M` (100 m) | ≤ 5 % | ≤ 15 % |
+| قفزات غير ممكنة | Points flagged as impossible jumps | 0 | ≤ 2 |
+| نقاط من مصدر وهمي | Points the phone flagged as mock | 0 | 0 |
+| نقاط وصلت متأخرة | Share of points received more than `GPS_QUALITY_STALE_MINUTES` (10) after recording | ≤ 10 % | ≤ 50 % |
+
+Always shown as well: shift duration, points and valid points, number of gaps, median and 95th-percentile sync delay (time from recording to reaching the server), and the number of late points.
+
+A low grade means the GPS record is weak for that shift: distances and route checks for it deserve less weight. It is not a judgement of the driver. Phones, buildings, tunnels and network coverage all affect it.
+
+Old shifts whose raw points were deleted after `GPS_RETENTION_DAYS` show "بيانات غير كافية".
+
+Tests: `tests/test_gps_quality.py` (each grade, worst-check rule, stale points, insufficient data), `tests/test_tracking.py` (the API returns the quality with its checks), `src/lib/gps-quality.test.ts` (labels).

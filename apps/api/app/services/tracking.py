@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -27,6 +27,7 @@ from app.models.tracking import (
 from app.schemas.tracking import (
     DriverTrackingStatus,
     GapOut,
+    GpsQualityOut,
     LivePosition,
     PointBatchIn,
     PointBatchResult,
@@ -39,7 +40,7 @@ from app.schemas.tracking import (
     TrackingState,
     TrackPointOut,
 )
-from app.services import route_events, school_runs
+from app.services import gps_quality, route_events, school_runs
 from app.services.track_analysis import TrackPoint, find_gaps, find_stops, recorded_distance_m
 
 WINDOW_TOLERANCE = timedelta(minutes=2)
@@ -531,6 +532,17 @@ def shift_track(db: Session, shift_id: uuid.UUID) -> ShiftTrackOut:
             for s in stops
         ],
         timeline=timeline,
+        quality=GpsQualityOut.model_validate(
+            asdict(
+                gps_quality.assess(
+                    points,
+                    window_start=window_start,
+                    window_end=window_end,
+                    settings=settings,
+                    partial=shift.ended_at is None,
+                )
+            )
+        ),
     )
 
 

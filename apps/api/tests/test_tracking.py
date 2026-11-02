@@ -205,6 +205,20 @@ def test_shift_track_distance_gaps_stops_and_timeline(client: TestClient, db: Se
     assert kinds[0] == "SHIFT_STARTED" and kinds[-1] == "SHIFT_ENDED"
     assert {"STOP", "GAP"} <= set(kinds)
     assert body["counts"]["VALID"] == len(pts)
+    # Quality: the 10-minute gap leaves 40% coverage, so the shift needs review.
+    quality = body["quality"]
+    assert quality["grade"] == "NEEDS_REVIEW" and quality["partial"] is False
+    assert quality["metrics"]["coverage_pct"] == 40.0
+    coverage = next(c for c in quality["checks"] if c["code"] == "COVERAGE")
+    assert coverage == {
+        "code": "COVERAGE",
+        "value": 40.0,
+        "unit": "%",
+        "excellent": 95,
+        "good": 80,
+        "higher_is_better": True,
+        "grade": "NEEDS_REVIEW",
+    }
 
 
 def test_track_analysis_pure_functions() -> None:
