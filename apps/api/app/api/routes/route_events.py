@@ -62,6 +62,7 @@ def _event_out(e: RouteEvent, stop_names: dict[uuid.UUID, str]) -> RouteEventOut
         status=e.status,
         reason=e.reason,
         void_reason=e.void_reason,
+        details=e.details,
     )
 
 

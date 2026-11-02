@@ -11,8 +11,10 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import ForeignKey, Index, Integer, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, enum_column_type
@@ -25,6 +27,9 @@ class RouteEventType(StrEnum):
     REACHED_DESTINATION = "REACHED_DESTINATION"
     LEG_COMPLETED = "LEG_COMPLETED"
     LOOP_COMPLETED = "LOOP_COMPLETED"
+    # U09: kept as evidence, never counted as legs or loops.
+    LEG_INCOMPLETE = "LEG_INCOMPLETE"
+    LEG_REJECTED = "LEG_REJECTED"
 
 
 class LegDirection(StrEnum):
@@ -63,6 +68,9 @@ class RouteEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         enum_column_type(EventStatus, "event_status"), default=EventStatus.ACTIVE
     )
     dedupe_key: Mapped[str] = mapped_column(String(200))
+    # Leg evidence (U09): duration, terminals, intermediate stops, why a leg
+    # was incomplete or rejected.
+    details: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     reason: Mapped[str | None] = mapped_column(String(500))
     void_reason: Mapped[str | None] = mapped_column(String(500))
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))

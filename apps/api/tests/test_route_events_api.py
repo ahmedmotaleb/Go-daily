@@ -314,3 +314,36 @@ def test_generate_rejects_non_school_route(client: TestClient, db: Session) -> N
         },
     )
     assert res.json()["error"]["code"] == "not_a_school_route"
+
+
+def test_leg_evidence_and_incomplete_legs_are_stored(client: TestClient, db: Session) -> None:
+    driver, _, h, vehicle = make_driver_account(client, db)
+    _, staff = login_as(client, db, UserRole.OPERATIONS)
+    route = _route(db, "FIXED_ROUTE", STATION, UNIVERSITY, "موقف ⇄ جامعة")
+    ctx = _start_backdated(client, staff, driver, vehicle, 40, route)
+    t0 = utcnow() - timedelta(minutes=38)
+    midway = (STATION[0], (STATION[1] + UNIVERSITY[1]) / 2)
+    segments: list[Any] = [
+        ("dwell", STATION, 60),
+        ("drive", STATION, UNIVERSITY, 300),  # a complete leg
+        ("dwell", UNIVERSITY, 60),
+        ("drive", UNIVERSITY, midway, 240),  # turned back halfway
+        ("drive", midway, UNIVERSITY, 240),
+        ("dwell", UNIVERSITY, 60),
+    ]
+    _upload(client, h, ctx["shift"]["id"], _points(t0, segments))
+
+    events = client.get(
+        f"/api/v1/operation-sessions/{ctx['session']['id']}/route-events", headers=staff
+    ).json()
+    [leg] = [e for e in events if e["event_type"] == "LEG_COMPLETED"]
+    assert leg["direction"] == "OUTBOUND"
+    # Measured from leaving one geofence to entering the other, so under 300 s.
+    assert 240 <= leg["details"]["seconds"] <= 300
+    [incomplete] = [e for e in events if e["event_type"] == "LEG_INCOMPLETE"]
+    assert incomplete["details"]["reason"] == "returned_to_start"
+    assert incomplete["direction"] == "INBOUND"
+
+    detail = client.get(f"/api/v1/shifts/{ctx['shift']['id']}", headers=staff).json()
+    session = next(s for s in detail["sessions"] if s["id"] == ctx["session"]["id"])
+    assert (session["legs"], session["incomplete_legs"], session["loops"]) == (1, 1, 0)

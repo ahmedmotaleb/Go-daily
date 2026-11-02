@@ -119,6 +119,7 @@ class SessionOut(BaseModel):
     # Counted from GPS route events (fixed routes); 0 when none detected.
     loops: int = 0
     legs: int = 0
+    incomplete_legs: int = 0
 
 
 class ShiftOut(BaseModel):

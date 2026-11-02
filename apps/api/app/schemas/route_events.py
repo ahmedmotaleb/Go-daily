@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, time
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, Field, StringConstraints
 
@@ -33,6 +33,8 @@ class RouteEventOut(BaseModel):
     status: EventStatus
     reason: str | None
     void_reason: str | None
+    # Leg evidence: seconds, terminals, intermediate stops, reason if incomplete/rejected.
+    details: dict[str, Any] | None = None
 
 
 class ManualRouteEventIn(BaseModel):

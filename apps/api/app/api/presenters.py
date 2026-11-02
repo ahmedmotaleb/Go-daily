@@ -126,6 +126,7 @@ def session_out(s: OperationSession, counts: dict[str, int] | None = None) -> Se
         notes=s.notes,
         loops=(counts or {}).get("loops", 0),
         legs=(counts or {}).get("legs", 0),
+        incomplete_legs=(counts or {}).get("incomplete_legs", 0),
     )
 
 

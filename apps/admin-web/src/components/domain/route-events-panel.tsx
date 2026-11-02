@@ -8,6 +8,7 @@ import { SelectField, TextField } from "@/components/forms/fields";
 import { Badge } from "@/components/ui/badge";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { formatDateTime } from "@/lib/format";
+import { legSummary } from "@/lib/route-legs";
 import type { OperationSession, RouteEvent } from "@/lib/types";
 
 const EVENT_LABELS: Record<RouteEvent["event_type"], string> = {
@@ -17,6 +18,8 @@ const EVENT_LABELS: Record<RouteEvent["event_type"], string> = {
   REACHED_DESTINATION: "الوصول لنقطة النهاية",
   LEG_COMPLETED: "اكتمال اتجاه",
   LOOP_COMPLETED: "اكتمال دورة",
+  LEG_INCOMPLETE: "اتجاه غير مكتمل",
+  LEG_REJECTED: "اتجاه غير محتسب",
 };
 
 export function RouteEventsPanel({
@@ -37,6 +40,9 @@ export function RouteEventsPanel({
         <span className="text-sm font-semibold">{session.route?.name}</span>
         <Badge tone="active">الدورات: {session.loops}</Badge>
         <Badge tone="info">الاتجاهات: {session.legs}</Badge>
+        {session.incomplete_legs > 0 ? (
+          <Badge tone="warning">غير مكتملة: {session.incomplete_legs}</Badge>
+        ) : null}
         {canWrite ? (
           <ActionForm
             action={recomputeRouteEventsAction.bind(null, session.id, shiftId)}
@@ -72,6 +78,11 @@ export function RouteEventsPanel({
                     <span className="text-xs text-ink-muted">
                       {" "}
                       ({e.direction === "OUTBOUND" ? "ذهاب" : "عودة"})
+                    </span>
+                  ) : null}
+                  {e.details ? (
+                    <span className="block text-xs font-normal text-ink-muted">
+                      {legSummary(e.details)}
                     </span>
                   ) : null}
                 </TD>

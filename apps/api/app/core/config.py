@@ -105,6 +105,11 @@ class Settings(BaseSettings):
     exception_backwards_minutes: int = 2
     exception_long_stop_minutes: int = 45
     # Corridor around the straight lines joining a route's stops (not roads).
+    # Fixed-route leg and loop detection (U09).
+    route_max_accuracy_m: float = 50.0
+    route_dwell_seconds: int = 20
+    route_min_points: int = 2
+    route_min_leg_minutes: int = 3
     exception_route_corridor_m: float = 2000.0
     exception_route_min_minutes: int = 5
     # "lat,lng,radius_km;lat,lng,radius_km". Empty disables the operating-area rule.

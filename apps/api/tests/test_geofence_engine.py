@@ -146,3 +146,94 @@ def test_event_time_is_first_point_inside() -> None:
         p.recorded_at for p in track.points if abs(p.longitude - STATION[1]) < 0.0012
     )
     assert entered.occurred_at == first_inside
+
+
+# --- U09: minimum travel time, incomplete legs, leg evidence -------------------
+
+
+def _of(events, kind: RouteEventType):
+    return [e for e in events if e.event_type is kind]
+
+
+def test_a_leg_faster_than_the_minimum_is_kept_but_not_counted() -> None:
+    track = Track().dwell(STATION, 120).drive(STATION, UNIVERSITY, 60).dwell(UNIVERSITY, 120)
+    events = detect_route_events(track.points, [ORIGIN, DEST], pattern=TripPattern.ROUND_TRIP)
+    assert _of(events, RouteEventType.LEG_COMPLETED) == []
+    [rejected] = _of(events, RouteEventType.LEG_REJECTED)
+    assert rejected.details is not None
+    assert rejected.details["reason"] == "faster_than_minimum"
+    assert rejected.details["seconds"] < 180 and rejected.details["min_seconds"] == 180
+    # The minimum is a parameter (route_min_leg_minutes in settings).
+    relaxed = detect_route_events(
+        track.points,
+        [ORIGIN, DEST],
+        pattern=TripPattern.ROUND_TRIP,
+        params=DetectionParams(min_leg_seconds=30),
+    )
+    assert len(_of(relaxed, RouteEventType.LEG_COMPLETED)) == 1
+
+
+def test_returning_to_the_start_terminal_is_an_incomplete_leg() -> None:
+    track = (
+        Track()
+        .dwell(STATION, 120)
+        .drive(STATION, MIDPOINT, 300)
+        .drive(MIDPOINT, STATION, 300)
+        .dwell(STATION, 120)
+    )
+    events = detect_route_events(track.points, [ORIGIN, DEST], pattern=TripPattern.ROUND_TRIP)
+    [leg] = _of(events, RouteEventType.LEG_INCOMPLETE)
+    assert leg.details is not None and leg.details["reason"] == "returned_to_start"
+    assert leg.direction is LegDirection.OUTBOUND
+    assert _of(events, RouteEventType.LEG_COMPLETED) == []
+
+
+def test_a_short_excursion_from_the_terminal_is_noise() -> None:
+    near = (STATION[0], STATION[1] - 0.002)  # ~190 m: just outside the 120 m fence
+    track = (
+        Track()
+        .dwell(STATION, 120)
+        .drive(STATION, near, 45)
+        .drive(near, STATION, 45)
+        .dwell(STATION, 60)
+    )
+    events = detect_route_events(track.points, [ORIGIN, DEST], pattern=TripPattern.ROUND_TRIP)
+    assert _of(events, RouteEventType.LEG_INCOMPLETE) == []
+    assert _of(events, RouteEventType.LEG_REJECTED) == []
+
+
+def test_an_open_leg_becomes_incomplete_only_when_the_session_ends() -> None:
+    track = Track().dwell(STATION, 120).drive(STATION, MIDPOINT, 400)
+    live = detect_route_events(track.points, [ORIGIN, DEST], pattern=TripPattern.ROUND_TRIP)
+    assert _of(live, RouteEventType.LEG_INCOMPLETE) == []  # still driving
+    ended = detect_route_events(
+        track.points, [ORIGIN, DEST], pattern=TripPattern.ROUND_TRIP, ended_at=track.t
+    )
+    [leg] = _of(ended, RouteEventType.LEG_INCOMPLETE)
+    assert leg.details is not None and leg.details["reason"] == "session_ended"
+    assert leg.details["to_stop_id"] is None
+
+
+def test_completed_legs_carry_their_evidence() -> None:
+    origin = Geofence(uuid.uuid4(), StopKind.ORIGIN, *STATION, radius_m=120, sequence=1)
+    mid = Geofence(uuid.uuid4(), StopKind.INTERMEDIATE, *MIDPOINT, radius_m=80, sequence=2)
+    dest = Geofence(uuid.uuid4(), StopKind.DESTINATION, *UNIVERSITY, radius_m=150, sequence=3)
+    track = (
+        Track()
+        .dwell(STATION, 120)
+        .drive(STATION, MIDPOINT, 150)
+        .dwell(MIDPOINT, 60)
+        .drive(MIDPOINT, UNIVERSITY, 150)
+        .dwell(UNIVERSITY, 120)
+    )
+    events = detect_route_events(track.points, [origin, mid, dest], pattern=TripPattern.ROUND_TRIP)
+    [leg] = _of(events, RouteEventType.LEG_COMPLETED)
+    assert leg.details is not None
+    assert leg.details["from_stop_id"] == str(origin.stop_id)
+    assert leg.details["to_stop_id"] == str(dest.stop_id)
+    assert leg.details["visited_stop_ids"] == [str(mid.stop_id)]
+    assert leg.details["in_route_order"] is True
+    assert 300 <= leg.details["seconds"] <= 420
+    # Same points, same result: re-running never changes the evidence.
+    again = detect_route_events(track.points, [origin, mid, dest], pattern=TripPattern.ROUND_TRIP)
+    assert again == events

@@ -277,6 +277,7 @@ def route_loops(db: Session, f: Filters) -> ReportResult:
                 "minutes": _minutes(s.started_at, s.ended_at),
                 "loops": counts[s.id]["loops"],
                 "legs": counts[s.id]["legs"],
+                "incomplete_legs": counts[s.id]["incomplete_legs"],
             }
         )
     by_route: dict[str, dict[str, Any]] = {}
@@ -297,6 +298,7 @@ def route_loops(db: Session, f: Filters) -> ReportResult:
                 Column("minutes", "المدة (دقيقة)", "minutes", total=True),
                 Column("loops", "دورات مكتملة", "number", total=True),
                 Column("legs", "اتجاهات مكتملة", "number", total=True),
+                Column("incomplete_legs", "اتجاهات غير مكتملة", "number", total=True),
             ],
             rows,
         ),

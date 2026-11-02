@@ -177,6 +177,7 @@ export type OperationSession = {
   notes: string | null;
   loops: number;
   legs: number;
+  incomplete_legs: number;
 };
 
 export type ShiftStatus = "PLANNED" | "ACTIVE" | "COMPLETED" | "CANCELLED";
@@ -364,7 +365,9 @@ export type RouteEvent = {
     | "REACHED_ORIGIN"
     | "REACHED_DESTINATION"
     | "LEG_COMPLETED"
-    | "LOOP_COMPLETED";
+    | "LOOP_COMPLETED"
+    | "LEG_INCOMPLETE"
+    | "LEG_REJECTED";
   direction: "OUTBOUND" | "INBOUND" | null;
   occurred_at: string;
   sequence_no: number | null;
@@ -372,6 +375,19 @@ export type RouteEvent = {
   status: "ACTIVE" | "VOIDED";
   reason: string | null;
   void_reason: string | null;
+  details: LegDetails | null;
+};
+
+/** Evidence the detector stores on leg events (U09). */
+export type LegDetails = {
+  started_at: string | null;
+  seconds: number | null;
+  from_stop_id: string | null;
+  to_stop_id: string | null;
+  visited_stop_ids: string[];
+  in_route_order: boolean;
+  reason?: "returned_to_start" | "session_ended" | "faster_than_minimum";
+  min_seconds?: number;
 };
 
 export type SchoolRunStatus =

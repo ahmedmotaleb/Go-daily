@@ -163,7 +163,23 @@ Driver 1─* DriverCompensationPlan (versioned by effective dates)
   - The distance per shift is capped at 1,500 km.
   - Corrections are audited with old and new values and a reason.
   - Staff may backdate up to 7 days. The driver app always uses server time.
-- **Odometer and GPS distance** are kept separate. Shifts report `odometer_distance_km` only; GPS distance comes from the tracking phase.
+- **Odometer and GPS distance** are kept separate. Shifts report `odometer_distance_km` only; GPS distance comes from the tracking phase. They are compared by the reconciliation in [`GPS_INTEGRITY.md`](GPS_INTEGRITY.md#gps-vs-odometer-reconciliation-u04). The first-entered readings are kept when corrected.
+
+### Route events and loop detection (Task 12, U09)
+
+`app/services/geofence.py` turns a session's valid GPS points into events, deterministically (same points, same events). `app/services/route_events.py` stores them.
+
+- **Geofences.** Each stop is a circle (lat/lng/radius). Points less accurate than `ROUTE_MAX_ACCURACY_M` (50 m), or than the fence's own radius, are ignored for that fence.
+- **Debounce.** An entry or exit counts only after `ROUTE_MIN_POINTS` (2) consecutive points over at least `ROUTE_DWELL_SECONDS` (20 s). It is timestamped at the first point of the run.
+- **Legs.** A leg runs from leaving one terminal (origin or destination) to entering the other. It counts only if it took at least `ROUTE_MIN_LEG_MINUTES` (3), because close or overlapping terminals can make GPS noise look like a trip. Faster legs are stored as `LEG_REJECTED` with the measured time and are not counted.
+- **Incomplete legs.** A leg that comes back to its own terminal after at least the minimum time, or is still open when the session ends, is stored as `LEG_INCOMPLETE` with the reason. While a session is running, an open leg is simply in progress.
+- **Evidence.** Every leg event carries `details`: start time, duration, from and to terminal, the intermediate stops visited, and whether they were visited in route order.
+- **Loops (round-trip routes).** A loop is two consecutive completed legs in opposite directions (موقف → جامعة → موقف). Legs and loops are both kept and numbered.
+- **Duplicates.** Each event has a dedupe key (session, type, stop, second). Recomputing updates sequence numbers and evidence, and voids automatic events that are no longer produced (reason `superseded_by_recompute`). Events voided by staff stay voided.
+- **Manual correction.** Staff can add a reached/leg/loop event or void any event, always with a reason, and each step is audited.
+- **Counts.** Sessions report `loops`, `legs` and `incomplete_legs`; the route-loops report has the same columns.
+
+Tests: `test_geofence_engine.py` (debounce, accuracy, loops, minimum leg time, incomplete legs, evidence, determinism), `test_route_events_api.py` (from uploaded GPS to stored events and counts, recompute, manual correction).
 
 
 ## 7. Financial model (Tasks 14-19)

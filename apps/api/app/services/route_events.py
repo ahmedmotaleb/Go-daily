@@ -10,6 +10,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.errors import ConflictError, NotFoundError, ValidationFailed
 from app.core.time import utcnow
 from app.models.route_events import (
@@ -23,7 +24,7 @@ from app.models.shift import OperationSession, SessionStatus
 from app.models.tracking import GpsPoint, PointQuality
 from app.models.user import User
 from app.services import audit
-from app.services.geofence import Geofence, detect_route_events
+from app.services.geofence import DetectionParams, Geofence, detect_route_events
 from app.services.track_analysis import TrackPoint
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ def detect_for_session(db: Session, session: OperationSession) -> dict[str, int]
     if route is None:
         return {"events": 0}
     fences = [
-        Geofence(s.id, s.kind, float(s.latitude), float(s.longitude), float(s.radius_m))
+        Geofence(s.id, s.kind, float(s.latitude), float(s.longitude), float(s.radius_m), s.sequence)
         for s in route.stops
         if s.latitude is not None and s.longitude is not None
     ]
@@ -62,7 +63,16 @@ def detect_for_session(db: Session, session: OperationSession) -> dict[str, int]
             .order_by(GpsPoint.recorded_at)
         ).all()
     ]
-    detected = detect_route_events(points, fences, pattern=route.trip_pattern)
+    settings = get_settings()
+    params = DetectionParams(
+        max_accuracy_m=settings.route_max_accuracy_m,
+        dwell_seconds=settings.route_dwell_seconds,
+        min_points=settings.route_min_points,
+        min_leg_seconds=settings.route_min_leg_minutes * 60,
+    )
+    detected = detect_route_events(
+        points, fences, pattern=route.trip_pattern, params=params, ended_at=session.ended_at
+    )
     keys = []
     rows = []
     for e in detected:
@@ -80,6 +90,7 @@ def detect_for_session(db: Session, session: OperationSession) -> dict[str, int]
                 "direction": e.direction,
                 "occurred_at": e.occurred_at,
                 "sequence_no": e.sequence_no,
+                "details": e.details,
                 "source": EventSource.AUTO,
                 "status": EventStatus.ACTIVE,
                 "dedupe_key": key,
@@ -97,7 +108,11 @@ def detect_for_session(db: Session, session: OperationSession) -> dict[str, int]
                     RouteEvent.dedupe_key == row["dedupe_key"],
                     RouteEvent.source == EventSource.AUTO,
                 )
-                .values(sequence_no=row["sequence_no"], direction=row["direction"])
+                .values(
+                    sequence_no=row["sequence_no"],
+                    direction=row["direction"],
+                    details=row["details"],
+                )
             )
         # An event superseded earlier but produced again (late points) is restored;
         # events voided by an admin stay voided.
@@ -161,7 +176,14 @@ def list_events(db: Session, session_id: uuid.UUID) -> list[RouteEvent]:
 
 
 def counts(db: Session, session_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict[str, int]]:
-    out: dict[uuid.UUID, dict[str, int]] = {sid: {"loops": 0, "legs": 0} for sid in session_ids}
+    names = {
+        RouteEventType.LOOP_COMPLETED: "loops",
+        RouteEventType.LEG_COMPLETED: "legs",
+        RouteEventType.LEG_INCOMPLETE: "incomplete_legs",
+    }
+    out: dict[uuid.UUID, dict[str, int]] = {
+        sid: dict.fromkeys(names.values(), 0) for sid in session_ids
+    }
     if not session_ids:
         return out
     rows = db.execute(
@@ -169,14 +191,12 @@ def counts(db: Session, session_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict[st
         .where(
             RouteEvent.session_id.in_(session_ids),
             RouteEvent.status == EventStatus.ACTIVE,
-            RouteEvent.event_type.in_(
-                [RouteEventType.LOOP_COMPLETED, RouteEventType.LEG_COMPLETED]
-            ),
+            RouteEvent.event_type.in_(list(names)),
         )
         .group_by(RouteEvent.session_id, RouteEvent.event_type)
     ).all()
     for sid, etype, n in rows:
-        out[sid]["loops" if etype is RouteEventType.LOOP_COMPLETED else "legs"] = n
+        out[sid][names[etype]] = n
     return out
 
 
