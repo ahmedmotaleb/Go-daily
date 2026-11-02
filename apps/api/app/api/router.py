@@ -12,6 +12,7 @@ from app.api.routes import (
     driver_finance,
     drivers,
     exceptions,
+    expected_revenue,
     expenses,
     fuel,
     maintenance,
@@ -44,6 +45,7 @@ api_router.include_router(route_events.router)
 api_router.include_router(fuel.router)
 api_router.include_router(expenses.router)
 api_router.include_router(revenue.router)
+api_router.include_router(expected_revenue.router)
 api_router.include_router(ride_hailing.router)
 api_router.include_router(driver_finance.router)
 api_router.include_router(profitability.router)

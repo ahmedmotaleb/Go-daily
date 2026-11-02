@@ -187,6 +187,19 @@ export const EVIDENCE_KEYS: Record<string, string> = {
   future_max_minutes: "أبعد تاريخ مستقبلي (دقيقة)",
   clock_threshold_minutes: "حد فرق الساعة (دقيقة)",
   backwards_threshold_minutes: "حد الرجوع الزمني (دقيقة)",
+  // Expected collection (U10).
+  day: "اليوم",
+  routes: "المسارات",
+  loops: "الدورات المكتملة",
+  legs: "الاتجاهات المكتملة",
+  rate_models: "طريقة حساب المتوقع",
+  expected: "المتوقع",
+  approved: "المحصل المعتمد",
+  pending: "بانتظار المراجعة",
+  difference: "الفرق",
+  difference_pct: "الفرق (%)",
+  allowed: "الحد المسموح",
+  tolerance_amount: "حد السماح (ج.م)",
 };
 
 export const EVIDENCE_VALUES: Record<string, string> = {
@@ -202,6 +215,9 @@ export const EVIDENCE_VALUES: Record<string, string> = {
   OFFLINE_QUEUE_BACKLOG: "تراكم بيانات غير مرسلة",
   BATTERY_OPTIMIZATION_ENABLED: "توفير البطارية مفعّل",
   BACKGROUND_PERMISSION_DENIED: "إذن الخلفية غير ممنوح",
+  PER_LOOP: "لكل دورة",
+  PER_LEG: "لكل اتجاه",
+  PASSENGERS_X_FARE: "الركاب × الأجرة",
   stop_event: "إشعار إيقاف من الهاتف",
   last_point: "آخر نقطة قبل الاستئناف",
   shift_start: "بداية الوردية",

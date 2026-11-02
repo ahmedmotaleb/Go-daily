@@ -201,6 +201,29 @@ Driver 1─* DriverSettlement (DRAFT → FINALIZED → VOIDED, frozen details)
 - **Vehicle P&L** uses approved records only. Amounts with a service period (contracts, statements, settlement earnings) are spread over it by days. Driver earnings are split across vehicles by driving minutes, and costs across operation types by session minutes. Missing inputs produce warnings, never estimates.
 - **Platforms are not scraped or integrated.** Statements are entered manually from what the platform provides.
 
+### Expected collection per loop (U10)
+
+`app/services/expected_revenue.py` compares what a fixed route should have collected with what was recorded.
+
+- **Rates** (`route_revenue_rates`) are set per route by finance staff (`revenue:write`; operations cannot) on the route page. There are three models:
+  - an amount per completed loop (round-trip routes only);
+  - an amount per completed leg;
+  - planned passengers per leg × fare. The passenger figure is a planning assumption typed in by staff. It is never inferred from GPS.
+- **Versioned by date.** A new rate closes the previous one the day before. Past days keep the rate that applied then, and both steps are audited.
+- **Expected** = completed loops or legs detected on that day's sessions (GPS plus audited manual corrections; incomplete and rejected legs never count) × the rate in force that day.
+- **Recorded** = "تحصيل خط ثابت" revenue entries for the same vehicle and day. Approved and pending amounts are shown separately, and the difference uses both, so an entry waiting for approval does not look like a shortfall.
+- **Results per vehicle and day:**
+  - مطابق للمتوقع: within the allowance;
+  - **فرق تحصيل — مراجعة مطلوبة**: short by more than the allowance;
+  - أعلى من المتوقع;
+  - لا يوجد سعر متوقع: a fixed route without a rate, so no expected figure is invented;
+  - تحصيل بدون دورات مسجلة;
+  - اليوم لم ينتهِ بعد: a shortfall on the current day.
+- **Allowance:** the larger of `COLLECTION_TOLERANCE_AMOUNT` (50 EGP) and `COLLECTION_TOLERANCE_PCT` (10 %) of the expected amount.
+- **Where:** the report *التحصيل المتوقع من الدورات* (`expected_collection`, `revenue:read`), and the review rule `COLLECTION_GAP` for finished days. The rule is labelled "مراجعة مطلوبة" and its summary starts with "فرق تحصيل — مراجعة مطلوبة". A shortfall can have ordinary causes (collection not yet recorded, a wrong loop count), so the wording never suggests theft.
+
+Tests: `test_expected_revenue.py`.
+
 ### Attachments (Task 24)
 
 - `Attachment` rows hold metadata only (owner type and id, kind, original name, sniffed content type, size, sha256, storage key, uploader, soft-delete reason). Owners: fuel transactions, expenses, revenue entries, platform statements, maintenance records and vehicles.

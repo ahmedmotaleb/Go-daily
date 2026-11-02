@@ -41,7 +41,14 @@ from app.models.operations import RouteDefinition
 from app.models.route_events import SchoolRun
 from app.models.shift import OperationSession, SessionStatus, Shift, ShiftStatus
 from app.models.user import User
-from app.services import driver_ledger, profitability, ride_hailing, route_events, tracking
+from app.services import (
+    driver_ledger,
+    expected_revenue,
+    profitability,
+    ride_hailing,
+    route_events,
+    tracking,
+)
 from app.services import finance_common as fc
 from app.services import revenue as revenue_service
 from app.services.exception_rules import RULE_INFO
@@ -448,6 +455,75 @@ def gps_odometer(db: Session, f: Filters) -> ReportResult:
             f"لا تُقارن الورديات التي تقل تغطية GPS فيها عن "
             f"{settings.exception_odometer_min_gps_coverage_pct:g}%: تظهر كبيانات ناقصة لا كفرق.",
             "القراءات المصححة تُعرض بعد التصحيح؛ القراءة الأصلية محفوظة في الوردية وسجل التدقيق.",
+        ],
+    )
+
+
+def expected_collection(db: Session, f: Filters) -> ReportResult:
+    """Expected revenue from detected loops/legs vs recorded fixed-route collection (U10)."""
+    settings = get_settings()
+    found = _limit(
+        expected_revenue.compare(
+            db, f.date_from, f.date_to, vehicle_id=f.vehicle_id, route_id=f.route_id
+        )
+    )
+    rows = [
+        {
+            "day": r.day,
+            "vehicle": r.vehicle_code,
+            "routes": "، ".join(r.routes) or "—",
+            "loops": r.loops,
+            "legs": r.legs,
+            "expected": r.expected,
+            "approved": r.approved,
+            "pending": r.pending,
+            "difference": r.difference,
+            "difference_pct": float(r.difference_pct) if r.difference_pct is not None else None,
+            "status": expected_revenue.STATUS_AR[r.status],
+        }
+        for r in found
+    ]
+    by_status: dict[str, int] = {}
+    for r in found:
+        label = expected_revenue.STATUS_AR[r.status]
+        by_status[label] = by_status.get(label, 0) + 1
+    return ReportResult(
+        Table(
+            [
+                Column("day", "اليوم", "date"),
+                Column("vehicle", "المركبة"),
+                Column("routes", "المسارات"),
+                Column("loops", "دورات مكتملة", "number", total=True),
+                Column("legs", "اتجاهات مكتملة", "number", total=True),
+                Column("expected", "المتوقع", "money", total=True),
+                Column("approved", "المحصل المعتمد", "money", total=True),
+                Column("pending", "بانتظار المراجعة", "money", total=True),
+                Column("difference", "الفرق", "money", total=True),
+                Column("difference_pct", "الفرق (%)", "number"),
+                Column("status", "النتيجة"),
+            ],
+            rows,
+        ),
+        summaries=[
+            (
+                "حسب النتيجة",
+                Table(
+                    [
+                        Column("status", "النتيجة"),
+                        Column("days", "عدد الأيام", "number", total=True),
+                    ],
+                    [{"status": k, "days": v} for k, v in by_status.items()],
+                ),
+            )
+        ],
+        notes=[
+            "المتوقع = الدورات أو الاتجاهات المكتشفة من GPS (مع التصحيحات اليدوية الموثقة) × سعر "
+            "المسار الساري في ذلك اليوم.",
+            "المحصل = إيرادات «تحصيل خط ثابت» لنفس المركبة واليوم؛ "
+            "الفرق يشمل السجلات بانتظار المراجعة.",
+            f"الحد المسموح = الأكبر بين {settings.collection_tolerance_amount} ج.م و"
+            f"{settings.collection_tolerance_pct}% من المتوقع.",
+            "«فرق تحصيل — مراجعة مطلوبة» سبب للمراجعة وليس حكمًا؛ قد يكون التحصيل لم يُسجل بعد.",
         ],
     )
 
@@ -988,6 +1064,14 @@ REPORTS: list[ReportDef] = [
         (P.OPERATIONS_READ,),
         ("vehicle", "driver", "route"),
         school_runs,
+    ),
+    ReportDef(
+        "expected_collection",
+        "التحصيل المتوقع من الدورات",
+        "المتوقع من الدورات المكتشفة مقابل التحصيل المسجل لكل مركبة ويوم.",
+        (P.REVENUE_READ,),
+        ("vehicle", "route"),
+        expected_collection,
     ),
     ReportDef(
         "ride_hailing",

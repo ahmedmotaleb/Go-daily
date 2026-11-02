@@ -4,13 +4,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AuditTrail } from "@/components/audit-trail";
 import { ActiveBadge } from "@/components/domain/badges";
+import { RouteRevenueRates } from "@/components/domain/route-revenue-rates";
 import { ActionForm } from "@/components/forms/action-form";
 import { Notice } from "@/components/notice";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
 import { can, requirePermission } from "@/lib/auth";
-import type { Route } from "@/lib/types";
+import type { Route, RouteRevenueRate } from "@/lib/types";
 import { setRouteActiveAction, updateRouteAction } from "../../actions";
 import { RouteForm } from "../route-form";
 
@@ -26,6 +27,9 @@ export default async function RouteDetailPage({
   const route = await api.get<Route | null>(`/routes/${id}`, undefined, { allow404: true });
   if (!route) notFound();
   const canEdit = can(me, "operations:write");
+  const rates = can(me, "revenue:read")
+    ? await api.get<RouteRevenueRate[]>(`/routes/${id}/revenue-rates`)
+    : null;
   const days = route.operating_days?.length
     ? WEEKDAY_ORDER.filter((d) => route.operating_days?.includes(d))
         .map((d) => WEEKDAY_LABELS_AR[d])
@@ -86,6 +90,14 @@ export default async function RouteDetailPage({
                 </ActionForm>
               </CardBody>
             </Card>
+          ) : null}
+          {rates ? (
+            <RouteRevenueRates
+              routeId={route.id}
+              rates={rates}
+              canWrite={can(me, "revenue:write")}
+              roundTrip={route.trip_pattern === "ROUND_TRIP"}
+            />
           ) : null}
           {can(me, "audit:read") ? <AuditTrail entityType="route" entityId={route.id} /> : null}
         </div>

@@ -528,3 +528,47 @@ class DriverSettlement(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         Index("ix_driver_settlements_driver", "driver_id", "period_start"),
     )
+
+
+class ExpectedRevenueModel(StrEnum):
+    PER_LOOP = "PER_LOOP"  # amount for each completed round trip
+    PER_LEG = "PER_LEG"  # amount for each completed leg (one direction)
+    PASSENGERS_X_FARE = "PASSENGERS_X_FARE"  # planned passengers per leg x fare
+
+
+class RouteRevenueRate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """What a fixed route is expected to collect (U10), versioned by date.
+
+    Rates are never edited after they take effect: a new rate closes the
+    previous one the day before, so past days keep the rate that applied.
+    The passengers figure is a planning assumption entered by staff; it is
+    never inferred from GPS.
+    """
+
+    __tablename__ = "route_revenue_rates"
+
+    route_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("route_definitions.id"))
+    model: Mapped[ExpectedRevenueModel] = mapped_column(
+        enum_column_type(ExpectedRevenueModel, "expected_revenue_model")
+    )
+    amount_per_loop: Mapped[Decimal | None]
+    amount_per_leg: Mapped[Decimal | None]
+    fare: Mapped[Decimal | None]
+    passengers_per_leg: Mapped[int | None] = mapped_column(Integer)
+    effective_from: Mapped[date]
+    effective_to: Mapped[date | None]
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+
+    __table_args__ = (
+        CheckConstraint(
+            "effective_to IS NULL OR effective_to >= effective_from", name="effective_range"
+        ),
+        CheckConstraint(
+            "(model <> 'PER_LOOP' OR amount_per_loop > 0) AND "
+            "(model <> 'PER_LEG' OR amount_per_leg > 0) AND "
+            "(model <> 'PASSENGERS_X_FARE' OR (fare > 0 AND passengers_per_leg > 0))",
+            name="model_amounts",
+        ),
+        Index("uq_route_revenue_rates_start", "route_id", "effective_from", unique=True),
+    )

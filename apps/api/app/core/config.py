@@ -6,6 +6,7 @@ development). Never hardcode credentials here.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from functools import lru_cache
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -127,6 +128,10 @@ class Settings(BaseSettings):
     exception_fuel_outside_shift_minutes: int = 60
     exception_duplicate_window_minutes: int = 60
     exception_revenue_ratio: float = 2.0
+    # Expected vs recorded fixed-route collection (U10): a shortfall beyond the
+    # larger of these is "فرق تحصيل — مراجعة مطلوبة".
+    collection_tolerance_pct: Decimal = Decimal("10")
+    collection_tolerance_amount: Decimal = Decimal("50")
     exception_revenue_min_statements: int = 5
 
     # Notifications (Task 22). In-app is always on. Extra channels are

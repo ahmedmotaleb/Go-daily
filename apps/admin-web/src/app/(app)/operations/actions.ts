@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { api } from "@/lib/api";
+import { boundId } from "@/lib/bound";
 import { errorToFormState, formValues } from "@/lib/form-state";
 import type { FormState } from "@/lib/forms";
 import { compact, decimal, int, text } from "@/lib/parse";
@@ -103,4 +104,31 @@ export async function setRouteActiveAction(routeId: string, active: boolean): Pr
   revalidatePath("/operations");
   revalidatePath(`/operations/routes/${routeId}`);
   return { ok: true, message: active ? "تم تفعيل المسار" : "تم إيقاف المسار" };
+}
+
+export async function addRouteRevenueRateAction(
+  routeId: string,
+  _: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const id = boundId(routeId);
+  const values = formValues(formData);
+  const model = text(formData, "model");
+  const body = compact({
+    model,
+    amount_per_loop: model === "PER_LOOP" ? decimal(formData, "amount_per_loop") : undefined,
+    amount_per_leg: model === "PER_LEG" ? decimal(formData, "amount_per_leg") : undefined,
+    fare: model === "PASSENGERS_X_FARE" ? decimal(formData, "fare") : undefined,
+    passengers_per_leg:
+      model === "PASSENGERS_X_FARE" ? int(formData, "passengers_per_leg") : undefined,
+    effective_from: text(formData, "effective_from"),
+    notes: text(formData, "notes"),
+  });
+  try {
+    await api.post(`/routes/${id}/revenue-rates`, body);
+  } catch (error) {
+    return errorToFormState(error, values);
+  }
+  revalidatePath(`/operations/routes/${id}`);
+  return { ok: true, message: "تم حفظ السعر المتوقع" };
 }

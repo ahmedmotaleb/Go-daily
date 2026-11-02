@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session, aliased
 
 from app.core.config import Settings
 from app.core.geo import haversine_m, point_to_polyline_m
-from app.core.time import local_day_bounds_utc, to_local_date, utcnow
+from app.core.time import local_day_bounds_utc, local_today, to_local_date, utcnow
 from app.models.attachment import Attachment
 from app.models.exceptions import (
     ExceptionLabel,
@@ -51,8 +51,8 @@ from app.models.tracking import (
     TrackingEvent,
     TrackingEventType,
 )
+from app.services import expected_revenue, ride_hailing
 from app.services import finance_common as fc
-from app.services import ride_hailing
 from app.services.odometer_reconciliation import ReconciliationStatus, reconcile
 from app.services.track_analysis import TrackPoint, find_gaps, find_stops
 
@@ -1620,6 +1620,59 @@ def revenue_inconsistent(ctx: Context) -> RuleResult:
     return result
 
 
+def collection_gap(ctx: Context) -> RuleResult:
+    """Recorded fixed-route collection below what the detected loops imply (U10)."""
+    s = ctx.settings
+    result = RuleResult()
+    first = to_local_date(ctx.start)
+    last = min(to_local_date(ctx.end), local_today() - timedelta(days=1))
+    # Cases whose day is re-checked here and no longer short are cleared.
+    result.scopes |= ctx.active_keys("COLLECTION_GAP")
+    if last < first:
+        return result
+    for row in expected_revenue.compare(ctx.db, first, last):
+        key = f"COLLECTION_GAP:{row.vehicle_id}:{row.day.isoformat()}"
+        result.scopes.add(key)
+        if row.status is not expected_revenue.CollectionStatus.SHORTFALL:
+            continue
+        expected = row.expected or Decimal("0")
+        recorded = row.recorded
+        severity = HIGH if expected > 0 and recorded * 2 < expected else MEDIUM
+        start, end = local_day_bounds_utc(row.day)
+        result.candidates.append(
+            Candidate(
+                rule_code="COLLECTION_GAP",
+                severity=severity,
+                summary=(
+                    f"{expected_revenue.SHORTFALL_LABEL}: المتوقع {expected:,.2f} ج.م من "
+                    f"{row.loops} دورة و{row.legs} اتجاه، والمسجل {recorded:,.2f} ج.م"
+                ),
+                evidence={
+                    "day": row.day,
+                    "routes": row.routes,
+                    "loops": row.loops,
+                    "legs": row.legs,
+                    "rate_models": row.models,
+                    "expected": expected,
+                    "approved": row.approved,
+                    "pending": row.pending,
+                    "difference": row.difference,
+                    "difference_pct": row.difference_pct,
+                    "allowed": row.allowed,
+                    "tolerance_pct": s.collection_tolerance_pct,
+                    "tolerance_amount": s.collection_tolerance_amount,
+                },
+                occurred_at=start,
+                occurred_until=end,
+                dedupe_key=key,
+                vehicle_id=row.vehicle_id,
+                subject_type="vehicle",
+                subject_id=row.vehicle_id,
+            )
+        )
+    return result
+
+
 Rule = Callable[[Context], RuleResult]
 
 RULES: list[tuple[RuleInfo, Rule]] = [
@@ -1793,6 +1846,15 @@ RULES: list[tuple[RuleInfo, Rule]] = [
             R,
         ),
         duplicate_transactions,
+    ),
+    (
+        RuleInfo(
+            "COLLECTION_GAP",
+            "فرق تحصيل",
+            "التحصيل المسجل لخط ثابت أقل من المتوقع من الدورات المكتشفة بأكثر من الحد المسموح.",
+            R,
+        ),
+        collection_gap,
     ),
     (
         RuleInfo(

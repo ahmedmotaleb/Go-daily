@@ -411,3 +411,20 @@ export type SchoolRun = {
   status_reason: string | null;
   evidence: { reached_origin: boolean; reached_destination: boolean; route_events: number };
 };
+
+export type ExpectedRevenueModel = "PER_LOOP" | "PER_LEG" | "PASSENGERS_X_FARE";
+
+/** Expected collection rate of a route, versioned by date (U10). */
+export type RouteRevenueRate = {
+  id: string;
+  route_id: string;
+  model: ExpectedRevenueModel;
+  amount_per_loop: string | null;
+  amount_per_leg: string | null;
+  fare: string | null;
+  passengers_per_leg: number | null;
+  effective_from: string;
+  effective_to: string | null;
+  notes: string | null;
+  created_at: string;
+};
