@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel
@@ -56,3 +57,41 @@ class DashboardSummary(BaseModel):
     assignments: list[AssignmentSummary]
     expiring_documents: list[ExpiringDocument]
     recent_activity: list[ActivityItem]
+
+
+class MoneySplit(BaseModel):
+    approved: Decimal
+    pending: Decimal
+    total: Decimal
+
+
+class DayFiguresOut(BaseModel):
+    day: date
+    revenue: Decimal
+    expenses: Decimal
+
+
+class OperationTodayOut(BaseModel):
+    kind: str
+    name_ar: str
+    vehicles: int
+    active_sessions: int
+    sessions_today: int
+    activity_label: str
+    activity_value: str
+    progress_pct: int | None
+    note: str | None
+    note_is_warning: bool
+    collection: Decimal | None
+
+
+class TodayOverviewOut(BaseModel):
+    """Money fields are null for users without the matching finance permission."""
+
+    generated_at: datetime
+    oldest_shift_started_at: datetime | None
+    revenue: MoneySplit | None
+    fuel: MoneySplit | None
+    other_expenses: MoneySplit | None
+    week: list[DayFiguresOut]
+    operations: list[OperationTodayOut]

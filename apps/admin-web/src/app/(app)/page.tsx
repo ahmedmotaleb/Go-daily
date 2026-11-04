@@ -1,23 +1,32 @@
-import { Bell, Bus, Clock, MapPin, UsersRound, CalendarDays, type LucideIcon } from "lucide-react";
+import {
+  Banknote,
+  Bus,
+  CalendarDays,
+  ChartColumn,
+  Clock,
+  Fuel,
+  ShieldAlert,
+  UsersRound,
+} from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { FleetNow } from "@/components/dashboard/fleet-now";
+import { KpiCard } from "@/components/dashboard/kpi-card";
+import { OperationsToday, pounds } from "@/components/dashboard/operations-today";
+import { ReviewPanel } from "@/components/dashboard/review-panel";
+import { WeekFinance } from "@/components/dashboard/week-finance";
 import { ExpiryBadge } from "@/components/domain/badges";
-import { formatDuration } from "@/components/domain/shift-badges";
-import { Badge } from "@/components/ui/badge";
-import { ExceptionsSummaryCard } from "@/components/exceptions/panels";
-import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
+import { Card, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
-import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { api } from "@/lib/api";
-import { LiveFleetMap } from "@/components/map/live-fleet-map";
-import { can, getCurrentUser } from "@/lib/auth";
-import { tileConfig } from "@/lib/map-config";
 import { actionLabel } from "@/lib/audit-labels";
+import { can, getCurrentUser } from "@/lib/auth";
+import type { ExceptionSummary, OperationalException } from "@/lib/exception-types";
 import { formatDateTime, formatNumber } from "@/lib/format";
-import type { DashboardSummary, LivePosition } from "@/lib/types";
+import { tileConfig } from "@/lib/map-config";
+import type { DashboardSummary, LivePosition, Page, TodayOverview } from "@/lib/types";
 
-export const metadata: Metadata = { title: "لوحة التحكم" };
+export const metadata: Metadata = { title: "لوحة التشغيل" };
 
 const DOC_LABELS: Record<DashboardSummary["expiring_documents"][number]["kind"], string> = {
   VEHICLE_LICENSE: "رخصة مركبة",
@@ -32,249 +41,145 @@ const ENTITY_PATHS: Record<string, string> = {
   route: "/operations/routes",
 };
 
-function Kpi({
-  label,
-  value,
-  icon: Icon,
-  accent,
-}: {
-  label: string;
-  value: number;
-  icon: LucideIcon;
-  accent?: boolean;
-}) {
-  return (
-    <Card>
-      <CardBody className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-ink-muted">{label}</p>
-          <p className="ltr-nums mt-1 text-3xl font-bold text-ink">{formatNumber(value)}</p>
-        </div>
-        <span
-          className={
-            accent
-              ? "flex size-11 items-center justify-center rounded-full bg-lime-100 text-forest-800"
-              : "flex size-11 items-center justify-center rounded-full bg-forest-50 text-forest-700"
-          }
-        >
-          <Icon className="size-5" aria-hidden="true" />
-        </span>
-      </CardBody>
-    </Card>
-  );
-}
-
-function Placeholder({
-  icon: Icon,
-  title,
-  text,
-}: {
-  icon: LucideIcon;
-  title: string;
-  text: string;
-}) {
-  return (
-    <Card className="border-dashed">
-      <CardBody className="flex items-start gap-3">
-        <Icon className="mt-0.5 size-5 shrink-0 text-ink-muted" aria-hidden="true" />
-        <div>
-          <p className="font-semibold text-ink">{title}</p>
-          <p className="mt-1 text-sm text-ink-muted">{text}</p>
-        </div>
-      </CardBody>
-    </Card>
-  );
-}
+const TIME = new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
+  timeZone: "Africa/Cairo",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
   const canTrack = can(user, "tracking:read");
-  const [data, live] = await Promise.all([
+  const canReview = can(user, "exceptions:read");
+  const [data, today, live, summary, cases] = await Promise.all([
     api.get<DashboardSummary>("/dashboard/summary"),
+    api.get<TodayOverview>("/dashboard/today"),
     canTrack ? api.get<LivePosition[]>("/tracking/live") : Promise.resolve(null),
+    canReview ? api.get<ExceptionSummary>("/exceptions/summary") : Promise.resolve(null),
+    canReview
+      ? api.get<Page<OperationalException>>("/exceptions", { status: "ACTIVE", page_size: 5 })
+      : Promise.resolve(null),
   ]);
   const { kpis } = data;
+  const idle = Math.max(0, kpis.active_vehicles - kpis.active_shifts);
+  const expenses =
+    today.fuel && today.other_expenses
+      ? Number(today.fuel.total) + Number(today.other_expenses.total)
+      : null;
+  const pendingRevenue = today.revenue ? Number(today.revenue.pending) : 0;
 
   return (
     <>
       <PageHeader
-        title="لوحة التحكم"
-        description={`مرحبًا ${user.full_name} · آخر تحديث ${formatDateTime(data.generated_at)}`}
+        title="لوحة التشغيل"
+        description={`آخر تحديث ${TIME.format(new Date(data.generated_at))}`}
       />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi label="العربيات النشطة" value={kpis.active_vehicles} icon={Bus} />
-        <Kpi label="السائقون النشطون" value={kpis.active_drivers} icon={UsersRound} />
-        <Kpi label="الورديات النشطة" value={kpis.active_shifts} icon={Clock} accent />
-        <Kpi label="ورديات اليوم" value={kpis.today_shifts} icon={CalendarDays} />
-      </div>
-
-      <div className="mb-6 grid gap-4 lg:grid-cols-3">
-        {live ? (
-          <Card className="lg:col-span-2">
-            <CardHeader
-              title="الخريطة المباشرة"
-              actions={
-                <Link href="/tracking" className="text-sm font-medium text-primary hover:underline">
-                  عرض كامل
-                </Link>
-              }
-            />
-            <CardBody>
-              {live.length === 0 ? (
-                <p className="flex items-center gap-2 text-sm text-ink-muted">
-                  <MapPin className="size-4" aria-hidden="true" />
-                  لا توجد ورديات نشطة الآن. تظهر المركبات عند بدء وردية وإرسال تطبيق السائق للمواقع.
-                </p>
-              ) : (
-                <LiveFleetMap tiles={tileConfig()} initial={live} height={300} compact />
-              )}
-            </CardBody>
-          </Card>
-        ) : null}
-        {can(user, "exceptions:read") ? (
-          <ExceptionsSummaryCard />
-        ) : (
-          <Placeholder
-            icon={Bell}
-            title="التنبيهات التشغيلية"
-            text="تظهر هنا لمن لديه صلاحية مراجعة الحالات"
+      <div className="flex flex-col gap-6">
+        <section
+          aria-label="المؤشرات الرئيسية"
+          className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4"
+        >
+          <KpiCard
+            label="السيارات في وردية"
+            value={formatNumber(kpis.active_shifts)}
+            unit={`من ${formatNumber(kpis.active_vehicles)}`}
+            sub={idle ? `${formatNumber(idle)} بدون وردية الآن` : "كل السيارات النشطة في وردية"}
+            icon={Bus}
           />
-        )}
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-3">
-        <div className="space-y-6 xl:col-span-2">
-          <Card>
-            <CardHeader
-              title="التشغيل الجاري"
-              description="الورديات النشطة الآن والتشغيل الحالي لكل منها"
+          <KpiCard
+            label="الورديات الحالية"
+            value={formatNumber(kpis.active_shifts)}
+            unit="وردية"
+            sub={
+              today.oldest_shift_started_at
+                ? `أقدمها بدأت ${TIME.format(new Date(today.oldest_shift_started_at))}`
+                : "لا توجد ورديات جارية"
+            }
+            icon={Clock}
+          />
+          {today.revenue ? (
+            <KpiCard
+              label="تحصيل اليوم"
+              value={pounds(today.revenue.total)}
+              unit="ج.م"
+              sub={
+                pendingRevenue
+                  ? `منها ${pounds(pendingRevenue)} بانتظار المراجعة`
+                  : "كل السجلات معتمدة"
+              }
+              icon={Banknote}
+              href="/finance/revenue"
             />
-            {data.active_shifts.length === 0 ? (
-              <EmptyState title="لا توجد ورديات نشطة الآن" />
-            ) : (
-              <Table>
-                <THead>
-                  <tr>
-                    <TH>السائق</TH>
-                    <TH>المركبة</TH>
-                    <TH>التشغيل الحالي</TH>
-                    <TH>منذ</TH>
-                  </tr>
-                </THead>
-                <tbody>
-                  {data.active_shifts.map((s) => (
-                    <TR key={s.id}>
-                      <TD>
-                        <Link
-                          href={`/shifts/${s.id}`}
-                          className="font-semibold text-primary hover:underline"
-                        >
-                          {s.driver.full_name}
-                        </Link>
-                      </TD>
-                      <TD className="ltr-nums">{s.vehicle.internal_code}</TD>
-                      <TD>
-                        {s.active_session ? (
-                          <>
-                            {s.active_session.operation_type.name_ar}
-                            {s.active_session.route ? (
-                              <span className="text-ink-muted">
-                                {" "}
-                                — {s.active_session.route.name}
-                              </span>
-                            ) : null}
-                          </>
-                        ) : (
-                          <span className="text-ink-muted">لم يحدد</span>
-                        )}
-                      </TD>
-                      <TD className="text-ink-muted">{formatDuration(s.duration_minutes)}</TD>
-                    </TR>
-                  ))}
-                </tbody>
-              </Table>
-            )}
-          </Card>
+          ) : (
+            <KpiCard
+              label="ورديات اليوم"
+              value={formatNumber(kpis.today_shifts)}
+              unit="وردية"
+              icon={CalendarDays}
+            />
+          )}
+          {expenses !== null && today.fuel && today.other_expenses ? (
+            <KpiCard
+              label="مصروفات اليوم"
+              value={pounds(expenses)}
+              unit="ج.م"
+              sub={`وقود ${pounds(today.fuel.total)} · أخرى ${pounds(today.other_expenses.total)}`}
+              icon={Fuel}
+              href="/finance/expenses"
+            />
+          ) : (
+            <KpiCard
+              label="السائقون النشطون"
+              value={formatNumber(kpis.active_drivers)}
+              unit="سائق"
+              icon={UsersRound}
+            />
+          )}
+          {today.revenue && expenses !== null ? (
+            <KpiCard
+              label="صافي التشغيل"
+              value={pounds(Number(today.revenue.total) - expenses)}
+              unit="ج.م"
+              sub="قبل مستحقات السائقين"
+              icon={ChartColumn}
+              tone="hero"
+            />
+          ) : null}
+          {summary ? (
+            <KpiCard
+              label="حالات تحتاج مراجعة"
+              value={formatNumber(summary.active)}
+              unit="حالة"
+              sub={`${formatNumber(summary.by_severity.HIGH ?? 0)} أولوية عالية`}
+              icon={ShieldAlert}
+              tone={summary.active ? "alert" : "default"}
+              href="/exceptions"
+            />
+          ) : null}
+        </section>
 
-          <Card>
-            <CardHeader title="المركبات النشطة" />
-            {data.vehicles.length === 0 ? (
-              <EmptyState title="لا توجد مركبات نشطة" />
-            ) : (
-              <Table>
-                <THead>
-                  <tr>
-                    <TH>المركبة</TH>
-                    <TH>النوع</TH>
-                    <TH>السائق</TH>
-                    <TH>الحالة</TH>
-                  </tr>
-                </THead>
-                <tbody>
-                  {data.vehicles.map((v) => (
-                    <TR key={v.id}>
-                      <TD>
-                        <Link
-                          href={`/vehicles/${v.id}`}
-                          className="font-semibold text-primary hover:underline"
-                        >
-                          <span className="ltr-nums">{v.internal_code}</span>
-                        </Link>
-                        <span className="ms-2 text-xs text-ink-muted">{v.plate_number}</span>
-                      </TD>
-                      <TD>{v.vehicle_type}</TD>
-                      <TD>{v.driver_name ?? <span className="text-ink-muted">بدون تكليف</span>}</TD>
-                      <TD>
-                        {v.in_shift ? (
-                          <Badge tone="active">
-                            في وردية{v.current_operation ? ` · ${v.current_operation}` : ""}
-                          </Badge>
-                        ) : (
-                          <Badge>متوقفة</Badge>
-                        )}
-                      </TD>
-                    </TR>
-                  ))}
-                </tbody>
-              </Table>
-            )}
-          </Card>
+        {live || (summary && cases) ? (
+          <div className="flex flex-wrap items-stretch gap-6">
+            {live ? (
+              <div className="min-w-0 flex-[999_1_620px]">
+                <FleetNow tiles={tileConfig()} vehicles={data.vehicles} initial={live} />
+              </div>
+            ) : null}
+            {summary && cases ? (
+              <div className="flex min-w-0 flex-[1_1_340px]">
+                <ReviewPanel total={summary.active} cases={cases.items} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
-          <Card>
-            <CardHeader title="تكليفات السائقين الحالية" />
-            {data.assignments.length === 0 ? (
-              <EmptyState title="لا توجد تكليفات حالية" />
-            ) : (
-              <ul className="divide-y divide-line">
-                {data.assignments.map((a) => (
-                  <li
-                    key={a.id}
-                    className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-sm"
-                  >
-                    <span>
-                      <Link
-                        href={`/drivers/${a.driver_id}`}
-                        className="font-medium hover:underline"
-                      >
-                        {a.driver_name}
-                      </Link>
-                      <span className="text-ink-muted"> ← </span>
-                      <Link href={`/vehicles/${a.vehicle_id}`} className="ltr-nums hover:underline">
-                        {a.vehicle_code}
-                      </Link>
-                    </span>
-                    <Badge tone={a.role === "PRIMARY" ? "active" : "info"}>
-                      {a.role === "PRIMARY" ? "أساسي" : "بديل"}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </div>
+        <OperationsToday operations={today.operations} />
 
-        <div className="space-y-6">
+        {today.week.length ? <WeekFinance week={today.week} /> : null}
+
+        <div className="grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader title="رخص وتأمينات تحتاج متابعة" />
             {data.expiring_documents.length === 0 ? (
@@ -303,14 +208,13 @@ export default async function DashboardPage() {
               </ul>
             )}
           </Card>
-
           <Card>
             <CardHeader title="آخر النشاطات" />
             {data.recent_activity.length === 0 ? (
               <p className="px-5 py-4 text-sm text-ink-muted">لا توجد نشاطات بعد.</p>
             ) : (
               <ol className="divide-y divide-line">
-                {data.recent_activity.map((a) => {
+                {data.recent_activity.slice(0, 8).map((a) => {
                   const base = a.entity_type ? ENTITY_PATHS[a.entity_type] : undefined;
                   const label = actionLabel(a.action);
                   return (

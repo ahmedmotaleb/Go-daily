@@ -8,15 +8,21 @@ import { DEFAULT_CENTER, type MapMarker, type MapViewProps, type MarkerTone } fr
 
 /** Leaflet implementation of the provider-neutral MapView. */
 
+/** Design system status colours: active = forest with a lime ring, stale = amber, gap = red. */
 const TONE_COLORS: Record<MarkerTone, string> = {
-  online: colors.lime[500],
-  stale: "#d99a1b",
-  offline: colors.neutral[500],
+  online: colors.status.active,
+  stale: colors.status.stale,
+  offline: colors.status.critical,
   stop: colors.forest[600],
   start: colors.forest[800],
-  end: "#b42318",
+  end: colors.status.critical,
   replay: colors.lime[400],
   geofence: colors.forest[500],
+};
+
+const RING: Partial<Record<MarkerTone, string>> = {
+  online: colors.status.activeRing,
+  replay: colors.forest[800],
 };
 
 function markerIcon(m: MapMarker): L.DivIcon {
@@ -29,7 +35,7 @@ function markerIcon(m: MapMarker): L.DivIcon {
     className: "",
     iconSize: [18, 18],
     iconAnchor: [9, 9],
-    html: `<span style="position:relative;display:block;width:18px;height:18px;border-radius:9999px;background:${color};border:3px solid #fff;box-shadow:0 0 0 1px ${colors.forest[900]}">${arrow}</span>`,
+    html: `<span style="position:relative;display:block;width:18px;height:18px;border-radius:9999px;background:${color};border:3px solid #fff;box-shadow:0 0 0 2px ${RING[m.tone] ?? colors.forest[900]},0 4px 12px rgba(8,43,36,0.22)">${arrow}</span>`,
   });
 }
 
@@ -59,8 +65,15 @@ export default function LeafletMap({
   center = DEFAULT_CENTER,
   height = 420,
   className,
+  onMarkerClick,
+  focus,
+  flush = false,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const clickRef = useRef(onMarkerClick);
+  useEffect(() => {
+    clickRef.current = onMarkerClick;
+  }, [onMarkerClick]);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
   const fittedRef = useRef(false);
@@ -101,13 +114,16 @@ export default function LeafletMap({
       L.polyline(
         line.points.map((p) => [p.lat, p.lng] as [number, number]),
         line.tone === "track"
-          ? { color: colors.forest[700], weight: 4, opacity: 0.85 }
-          : { color: colors.neutral[400], weight: 3, opacity: 0.6, dashArray: "6 6" },
+          ? { color: colors.forest[800], weight: 5, opacity: 0.9 }
+          : line.tone === "gap"
+            ? { color: colors.status.critical, weight: 4, opacity: 0.9, dashArray: "2 8" }
+            : { color: colors.neutral[500], weight: 4, opacity: 0.7, dashArray: "10 9" },
       ).addTo(layer);
     }
     for (const m of markers) {
       L.marker([m.position.lat, m.position.lng], { icon: markerIcon(m), title: m.label })
         .bindPopup(() => popupContent(m))
+        .on("click", () => clickRef.current?.(m.id))
         .addTo(layer);
     }
     const bounds = fitTo && fitTo.length ? fitTo : markers.map((m) => m.position);
@@ -120,6 +136,11 @@ export default function LeafletMap({
     }
   }, [markers, polylines, circles, fitTo]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && focus) map.panTo([focus.lat, focus.lng]);
+  }, [focus]);
+
   return (
     <div
       ref={containerRef}
@@ -127,7 +148,7 @@ export default function LeafletMap({
       style={{
         height,
         width: "100%",
-        borderRadius: "var(--radius-card)",
+        borderRadius: flush ? 0 : "var(--radius-card)",
         overflow: "hidden",
         zIndex: 0,
       }}

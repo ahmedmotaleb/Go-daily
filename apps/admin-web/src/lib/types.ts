@@ -452,3 +452,28 @@ export type RouteRevenueRate = {
   notes: string | null;
   created_at: string;
 };
+
+export type MoneySplit = { approved: string; pending: string; total: string };
+
+/** GET /dashboard/today — money fields are null without finance permissions. */
+export type TodayOverview = {
+  generated_at: string;
+  oldest_shift_started_at: string | null;
+  revenue: MoneySplit | null;
+  fuel: MoneySplit | null;
+  other_expenses: MoneySplit | null;
+  week: { day: string; revenue: string; expenses: string }[];
+  operations: {
+    kind: string;
+    name_ar: string;
+    vehicles: number;
+    active_sessions: number;
+    sessions_today: number;
+    activity_label: string;
+    activity_value: string;
+    progress_pct: number | null;
+    note: string | null;
+    note_is_warning: boolean;
+    collection: string | null;
+  }[];
+};
