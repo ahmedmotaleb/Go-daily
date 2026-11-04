@@ -127,6 +127,16 @@ class Settings(BaseSettings):
     exception_fuel_ratio: float = 1.6
     exception_fuel_min_week_km: int = 150
     exception_fuel_history_weeks: int = 8
+    # Refuelling plausibility (U15).
+    fuel_max_quantity_liter: Decimal = Decimal("100")
+    fuel_max_quantity_cubic_meter: Decimal = Decimal("40")
+    fuel_max_quantity_kg: Decimal = Decimal("30")
+    fuel_quantity_ratio: float = 2.0
+    fuel_quantity_min_history: int = 5
+    fuel_repeat_hours: int = 6
+    fuel_repeat_min_minutes: int = 60
+    fuel_repeat_min_km: int = 50
+    fuel_odometer_tolerance_km: int = 5
     # Vehicle fuel baselines (U14).
     fuel_baseline_weeks: int = 12
     fuel_recent_weeks: int = 4

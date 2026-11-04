@@ -662,3 +662,17 @@ class FleetPnl(BaseModel):
     date_to: date
     vehicles: list[VehiclePnl]
     totals: dict[str, Decimal]
+
+
+class PlausibilityCheckOut(BaseModel):
+    """One fuel plausibility check (U15): pass, fail or not checkable, with its evidence."""
+
+    code: Literal[
+        "ASSIGNMENT", "SHIFT_TIME", "ODOMETER", "LOCATION", "QUANTITY", "RAPID_REPEAT", "DUPLICATE"
+    ]
+    result: Literal["PASS", "FAIL", "NOT_CHECKABLE"]
+    observed: Any = None
+    threshold: Any = None
+    note: str | None = None
+    covered_by: str | None = None
+    details: dict[str, Any] = {}

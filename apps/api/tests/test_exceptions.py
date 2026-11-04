@@ -113,6 +113,7 @@ def fuel(
     status: RecordStatus = RecordStatus.APPROVED,
     code: str = "CNG",
     quantity: str = "40",
+    unit: QuantityUnit = QuantityUnit.CUBIC_METER,
     **extra: Any,
 ) -> FuelTransaction:
     tx = FuelTransaction(
@@ -120,7 +121,7 @@ def fuel(
         driver_id=driver.id if driver else None,
         fuel_type_id=uuid.UUID(fuel_type_id(db, code)),
         quantity=Decimal(quantity),
-        unit=QuantityUnit.CUBIC_METER,
+        unit=unit,
         total_amount=Decimal(amount),
         occurred_at=at,
         payment_method=PaymentMethod.CASH,

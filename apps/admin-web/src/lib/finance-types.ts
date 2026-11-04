@@ -309,3 +309,21 @@ export type FleetPnl = {
   vehicles: VehiclePnl[];
   totals: Record<string, string>;
 };
+
+/** One fuel plausibility check (U15). */
+export type PlausibilityCheck = {
+  code:
+    | "ASSIGNMENT"
+    | "SHIFT_TIME"
+    | "ODOMETER"
+    | "LOCATION"
+    | "QUANTITY"
+    | "RAPID_REPEAT"
+    | "DUPLICATE";
+  result: "PASS" | "FAIL" | "NOT_CHECKABLE";
+  observed: unknown;
+  threshold: unknown;
+  note: string | null;
+  covered_by: string | null;
+  details: Record<string, unknown>;
+};

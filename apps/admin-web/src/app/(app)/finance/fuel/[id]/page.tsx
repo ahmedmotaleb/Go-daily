@@ -3,6 +3,7 @@ import Link from "next/link";
 import { saveFuelAction } from "@/app/(app)/finance/actions";
 import { DetailRow } from "@/components/finance/filters";
 import { FuelForm } from "@/components/finance/fuel-form";
+import { FuelPlausibility } from "@/components/finance/fuel-plausibility";
 import { AttachmentsPanel } from "@/components/attachments/attachments-panel";
 import { ReviewPanel } from "@/components/finance/review";
 import { Notice } from "@/components/notice";
@@ -17,7 +18,7 @@ import {
   FUEL_CATEGORY_LABELS,
 } from "@/lib/finance-labels";
 import { fleetOptions } from "@/lib/finance-refs";
-import type { FuelTx, FuelType } from "@/lib/finance-types";
+import type { FuelTx, FuelType, PlausibilityCheck } from "@/lib/finance-types";
 import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 
 export const metadata: Metadata = { title: "سجل وقود" };
@@ -29,7 +30,10 @@ export default async function FuelDetailPage({
   const me = await requirePermission("fuel:read");
   const { id } = await params;
   const { notice } = await searchParams;
-  const tx = await api.get<FuelTx>(`/fuel/${id}`);
+  const [tx, checks] = await Promise.all([
+    api.get<FuelTx>(`/fuel/${id}`),
+    api.get<PlausibilityCheck[]>(`/fuel/${id}/plausibility`),
+  ]);
   const canEdit = can(me, "fuel:write") && (tx.status === "SUBMITTED" || tx.status === "REJECTED");
   const canReview = can(me, "expenses:approve");
   const needsForm = canEdit || (canReview && tx.status === "APPROVED");
@@ -107,6 +111,7 @@ export default async function FuelDetailPage({
         </Card>
         <ReviewPanel resource="fuel" record={tx} canReview={canReview} />
       </div>
+      <FuelPlausibility checks={checks} />
       <div className="mt-6">
         <AttachmentsPanel
           ownerType="fuel_transaction"

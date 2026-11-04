@@ -51,6 +51,7 @@ from app.models.tracking import (
 )
 from app.services import expected_revenue, fuel_baselines, ride_hailing
 from app.services import finance_common as fc
+from app.services import fuel_plausibility as fuel_checks
 from app.services.odometer_reconciliation import ReconciliationStatus, reconcile
 from app.services.track_analysis import TrackPoint, find_gaps, find_stops
 
@@ -1221,6 +1222,67 @@ def fuel_consumption(ctx: Context) -> RuleResult:
     return result
 
 
+_CHECK_AR = {
+    "ASSIGNMENT": "السائق غير مسند للمركبة",
+    "ODOMETER": "قراءة عداد غير متسقة",
+    "QUANTITY": "كمية غير معتادة",
+    "RAPID_REPEAT": "تكرار تموين سريع",
+}
+
+
+def fuel_plausibility(ctx: Context) -> RuleResult:
+    """Fuel purchases failing plausibility checks not covered by another rule (U15)."""
+    result = RuleResult()
+    result.scopes |= ctx.active_keys("FUEL_PLAUSIBILITY")
+    for tx in _fuel_in_window(ctx):
+        key = f"FUEL_PLAUSIBILITY:{tx.id}"
+        result.scopes.add(key)
+        checks = fuel_checks.check(ctx.db, tx)
+        # Shift time is context only: company refuels at the depot are normal.
+        failed = [
+            c
+            for c in checks
+            if c.result is fuel_checks.CheckResult.FAIL
+            and c.covered_by is None
+            and c.code in _CHECK_AR
+        ]
+        if not failed:
+            continue
+        serious = any(c.code in ("ODOMETER", "QUANTITY") for c in failed) or len(failed) > 1
+        names = "، ".join(_CHECK_AR.get(c.code, c.code) for c in failed)
+        result.candidates.append(
+            Candidate(
+                rule_code="FUEL_PLAUSIBILITY",
+                severity=MEDIUM if serious else LOW,
+                summary=f"عملية وقود تحتاج مراجعة: {names}",
+                evidence={
+                    "fuel_at": tx.occurred_at,
+                    "quantity": tx.quantity,
+                    "amount": tx.total_amount,
+                    "checks": [
+                        {
+                            "check": c.code,
+                            "result": c.result.value,
+                            "observed": c.observed,
+                            "threshold": c.threshold,
+                            "note": c.note,
+                            "covered_by": c.covered_by,
+                        }
+                        for c in checks
+                    ],
+                },
+                occurred_at=tx.occurred_at,
+                dedupe_key=key,
+                vehicle_id=tx.vehicle_id,
+                driver_id=tx.driver_id,
+                shift_id=tx.shift_id,
+                subject_type="fuel_transaction",
+                subject_id=tx.id,
+            )
+        )
+    return result
+
+
 def _fuel_in_window(ctx: Context) -> list[FuelTransaction]:
     return list(
         ctx.db.scalars(
@@ -1772,6 +1834,16 @@ RULES: list[tuple[RuleInfo, Rule]] = [
             U,
         ),
         fuel_outside_shift,
+    ),
+    (
+        RuleInfo(
+            "FUEL_PLAUSIBILITY",
+            "عملية وقود غير متسقة",
+            "فحوص معقولية الوقود: إسناد السائق، قراءة العداد، الكمية، والتكرار السريع "
+            "(الموقع والتكرار والوقت لها قواعدها الخاصة).",
+            R,
+        ),
+        fuel_plausibility,
     ),
     (
         RuleInfo(

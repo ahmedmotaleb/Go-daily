@@ -214,6 +214,13 @@ export const EVIDENCE_KEYS: Record<string, string> = {
   operation_kind: "التشغيل الغالب",
   excluded_weeks: "أسابيع مستبعدة لنقص البيانات",
   min_week_km: "أقل مسافة أسبوعية (كم)",
+  // Fuel plausibility (U15).
+  checks: "الفحوص",
+  check: "الفحص",
+  result: "النتيجة",
+  observed: "القيمة المسجلة",
+  threshold: "الحد",
+  covered_by: "قاعدة مستقلة",
 };
 
 export const EVIDENCE_VALUES: Record<string, string> = {
@@ -229,6 +236,16 @@ export const EVIDENCE_VALUES: Record<string, string> = {
   OFFLINE_QUEUE_BACKLOG: "تراكم بيانات غير مرسلة",
   BATTERY_OPTIMIZATION_ENABLED: "توفير البطارية مفعّل",
   BACKGROUND_PERMISSION_DENIED: "إذن الخلفية غير ممنوح",
+  PASS: "سليم",
+  FAIL: "مراجعة مطلوبة",
+  NOT_CHECKABLE: "لا يمكن الفحص",
+  ASSIGNMENT: "إسناد السائق",
+  SHIFT_TIME: "وقت الورديات",
+  ODOMETER: "قراءة العداد",
+  LOCATION: "الموقع",
+  QUANTITY: "الكمية",
+  RAPID_REPEAT: "تكرار التموين",
+  DUPLICATE: "تكرار السجل",
   km_per_unit: "كم لكل وحدة وقود",
   egp_per_km: "التكلفة لكل كم (وقود مختلط)",
   FIXED_ROUTE: "خط ثابت",

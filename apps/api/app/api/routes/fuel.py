@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
 from datetime import date
 from typing import Annotated
 
@@ -23,11 +24,13 @@ from app.schemas.finance import (
     FuelTypeOut,
     FuelTypeUpdate,
     FuelUpdate,
+    PlausibilityCheckOut,
     RejectAction,
     ReviewAction,
     VoidAction,
 )
 from app.services import fuel as fuel_service
+from app.services import fuel_plausibility as plausibility
 
 router = APIRouter(tags=["fuel"])
 
@@ -104,6 +107,13 @@ def create_fuel(body: FuelCreate, actor: Writer, db: DbSession) -> FuelOut:
         can_approve=has_permission(actor.role, Permission.EXPENSES_APPROVE),
     )
     return fuel_outs(db, [tx])[0]
+
+
+@router.get("/fuel/{tx_id}/plausibility", response_model=list[PlausibilityCheckOut])
+def fuel_plausibility(tx_id: uuid.UUID, _: Reader, db: DbSession) -> list[PlausibilityCheckOut]:
+    return [
+        PlausibilityCheckOut.model_validate(asdict(c)) for c in plausibility.get_checks(db, tx_id)
+    ]
 
 
 @router.get("/fuel/{tx_id}", response_model=FuelOut)

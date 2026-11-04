@@ -255,6 +255,24 @@ Tests: `test_fuel_efficiency.py`.
 
 Tests: `test_fuel_baselines.py`, `test_exceptions.py` (unusual use flagged; a price-only rise not flagged).
 
+### Refuelling plausibility (U15)
+
+`app/services/fuel_plausibility.py` checks one purchase at a time. The fuel record page shows the checks as *فحوص المعقولية*, from `GET /api/v1/fuel/{id}/plausibility`. Each check passes, fails, or is "لا يمكن الفحص" when the data it needs is missing; nothing is assumed.
+
+| Check | Fails when | Threshold settings |
+| --- | --- | --- |
+| Assignment | The recorded driver was neither assigned to the vehicle nor driving it in a shift | — |
+| Shift time | No shift of the vehicle around the purchase. Context only (depot refuels are normal); driver-paid cases are raised by `FUEL_OUTSIDE_SHIFT` | `EXCEPTION_FUEL_OUTSIDE_SHIFT_MINUTES` |
+| Odometer | The reading is below the previous fuel record's, or outside the covering shift's readings | `FUEL_ODOMETER_TOLERANCE_KM` (5) |
+| Location | The purchase position is far from the vehicle's GPS at that time. Raised by `FUEL_FAR` | `EXCEPTION_FUEL_DISTANCE_M` |
+| Quantity | Above the per-purchase maximum for its unit, or more than `FUEL_QUANTITY_RATIO` (2×) the vehicle's median purchase of that fuel once it has `FUEL_QUANTITY_MIN_HISTORY` (5) purchases | `FUEL_MAX_QUANTITY_LITER` (100), `_CUBIC_METER` (40), `_KG` (30) |
+| Rapid repeat | Another purchase of the same fuel within `FUEL_REPEAT_HOURS` (6) and either less than `FUEL_REPEAT_MIN_MINUTES` (60) apart or less than `FUEL_REPEAT_MIN_KM` (50) driven in between | as listed |
+| Duplicate | Same vehicle, fuel and amount close in time. Raised by `DUPLICATE_TRANSACTION`. A pair that is both a duplicate and a rapid repeat gives one case | `EXCEPTION_DUPLICATE_WINDOW_MINUTES` |
+
+The review rule `FUEL_PLAUSIBILITY` ("مراجعة مطلوبة") raises one case per purchase for failed assignment, odometer, quantity or rapid-repeat checks, with every check as evidence. Failures that have their own rule are not raised twice. There is no tank-capacity field yet, so the absolute quantity limits are fleet-wide settings.
+
+Tests: `test_fuel_plausibility.py`.
+
 ### Expected collection per loop (U10)
 
 `app/services/expected_revenue.py` compares what a fixed route should have collected with what was recorded.
