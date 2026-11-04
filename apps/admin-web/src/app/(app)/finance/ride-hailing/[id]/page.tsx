@@ -91,7 +91,7 @@ export default async function StatementDetailPage({
                 <DetailRow label="الإيراد الناتج">
                   <Link
                     href={`/finance/revenue/${s.revenue_entry_id}`}
-                    className="text-forest-700 hover:underline"
+                    className="text-primary hover:underline"
                   >
                     عرض سجل الإيراد
                   </Link>

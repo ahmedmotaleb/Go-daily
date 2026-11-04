@@ -235,7 +235,7 @@ export default async function ProfitabilityPage({
                     <TD>
                       <a
                         href={`#v-${v.vehicle.id}`}
-                        className="ltr-nums font-semibold text-forest-700 hover:underline"
+                        className="ltr-nums font-semibold text-primary hover:underline"
                       >
                         {v.vehicle.name}
                       </a>

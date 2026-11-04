@@ -39,14 +39,14 @@ export function CurrentAssignments({
               {side === "vehicle" ? (
                 <Link
                   href={`/drivers/${a.driver_id}`}
-                  className="font-semibold text-forest-700 hover:underline"
+                  className="font-semibold text-primary hover:underline"
                 >
                   {a.driver_name}
                 </Link>
               ) : (
                 <Link
                   href={`/vehicles/${a.vehicle_id}`}
-                  className="font-semibold text-forest-700 hover:underline"
+                  className="font-semibold text-primary hover:underline"
                 >
                   <span className="ltr-nums">{a.vehicle_code}</span> · {a.vehicle_plate}
                 </Link>

@@ -116,7 +116,7 @@ export default async function SettlementPage({
             </dl>
             <Link
               href={`/drivers/${s.driver.id}/account`}
-              className="mt-3 inline-block text-sm text-forest-700 hover:underline"
+              className="mt-3 inline-block text-sm text-primary hover:underline"
             >
               كشف حساب السائق
             </Link>

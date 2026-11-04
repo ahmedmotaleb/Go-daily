@@ -120,7 +120,7 @@ export default async function OperationsPage({ searchParams }: PageProps<"/opera
                     <TD>
                       <Link
                         href={`/operations/routes/${r.id}`}
-                        className="font-semibold text-forest-700 hover:underline"
+                        className="font-semibold text-primary hover:underline"
                       >
                         {r.name}
                       </Link>

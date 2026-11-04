@@ -123,7 +123,7 @@ export default async function RevenuePage({ searchParams }: PageProps<"/finance/
                   <TD>
                     <Link
                       href={`/finance/revenue/${r.id}`}
-                      className="font-semibold text-forest-700 hover:underline"
+                      className="font-semibold text-primary hover:underline"
                     >
                       {formatDate(r.occurred_on)}
                     </Link>

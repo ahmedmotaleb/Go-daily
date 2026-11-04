@@ -63,7 +63,7 @@ export default async function StatementsPage({ searchParams }: PageProps<"/finan
       {platforms.length === 0 ? (
         <p className="mb-4 rounded-[var(--radius-card)] border border-dashed border-line bg-surface px-4 py-3 text-sm text-ink-muted">
           لا توجد منصات بعد. أضف المنصات من{" "}
-          <Link href="/finance/settings" className="text-forest-700 hover:underline">
+          <Link href="/finance/settings" className="text-primary hover:underline">
             إعدادات المالية
           </Link>
           .
@@ -114,7 +114,7 @@ export default async function StatementsPage({ searchParams }: PageProps<"/finan
                   <TD>
                     <Link
                       href={`/finance/ride-hailing/${s.id}`}
-                      className="font-semibold text-forest-700 hover:underline"
+                      className="font-semibold text-primary hover:underline"
                     >
                       {formatDate(s.period_start)} — {formatDate(s.period_end)}
                     </Link>

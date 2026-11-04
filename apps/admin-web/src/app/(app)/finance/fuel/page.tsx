@@ -140,7 +140,7 @@ export default async function FuelPage({ searchParams }: PageProps<"/finance/fue
                   <TD>
                     <Link
                       href={`/finance/fuel/${tx.id}`}
-                      className="font-semibold text-forest-700 hover:underline"
+                      className="font-semibold text-primary hover:underline"
                     >
                       {formatDateTime(tx.occurred_at)}
                     </Link>

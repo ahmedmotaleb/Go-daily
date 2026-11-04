@@ -116,7 +116,7 @@ export default async function SchoolRunsPage({
                         {r.shift_id ? (
                           <Link
                             href={`/shifts/${r.shift_id}`}
-                            className="ms-2 text-xs text-forest-700 hover:underline"
+                            className="ms-2 text-xs text-primary hover:underline"
                           >
                             الوردية
                           </Link>

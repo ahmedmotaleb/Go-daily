@@ -124,7 +124,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/users">) {
                   <TD className="text-end">
                     <Link
                       href={`/users/${u.id}`}
-                      className="text-sm font-medium text-forest-700 hover:underline"
+                      className="text-sm font-medium text-primary hover:underline"
                     >
                       {can(me, "users:manage") ? "تعديل" : "عرض"}
                     </Link>

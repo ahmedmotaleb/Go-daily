@@ -26,7 +26,7 @@ export function FilterBar({
       {fields.map((f) => (
         <div key={f.name} className="flex flex-col gap-1">
           {f.type === "checkbox" ? (
-            <label className="inline-flex h-10 items-center gap-2 text-sm">
+            <label className="inline-flex h-11 items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 name={f.name}
@@ -71,7 +71,10 @@ export function FilterBar({
       <Button type="submit" variant="secondary">
         تطبيق
       </Button>
-      <Link href={basePath} className="h-10 px-2 text-sm leading-10 text-ink-muted hover:underline">
+      <Link
+        href={basePath}
+        className="h-11 px-2 text-sm leading-[44px] text-ink-muted hover:underline"
+      >
         مسح
       </Link>
     </form>

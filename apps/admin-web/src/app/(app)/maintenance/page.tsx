@@ -122,7 +122,7 @@ export default async function MaintenancePage({ searchParams }: PageProps<"/main
                   <TD>
                     <Link
                       href={`/maintenance/records/${r.id}`}
-                      className="font-semibold text-forest-700 hover:underline"
+                      className="font-semibold text-primary hover:underline"
                     >
                       {formatDate(r.performed_on)}
                     </Link>

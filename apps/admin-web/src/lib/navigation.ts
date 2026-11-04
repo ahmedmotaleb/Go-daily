@@ -31,28 +31,16 @@ export type NavItem = {
 };
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "لوحة التحكم", icon: "dashboard" },
-  { href: "/vehicles", label: "الأسطول", icon: "fleet", permission: "vehicles:read" },
+  { href: "/", label: "لوحة التشغيل", icon: "dashboard" },
+  { href: "/tracking", label: "التتبع المباشر", icon: "map", permission: "tracking:read" },
+  { href: "/vehicles", label: "السيارات", icon: "fleet", permission: "vehicles:read" },
   { href: "/drivers", label: "السائقون", icon: "drivers", permission: "drivers:read" },
+  { href: "/shifts", label: "الورديات", icon: "shifts", permission: "shifts:read" },
   {
     href: "/operations",
-    label: "التشغيل",
+    label: "التشغيل والمسارات",
     icon: "operations",
     permission: "operations:read",
-  },
-  { href: "/shifts", label: "الورديات", icon: "shifts", permission: "shifts:read" },
-  { href: "/finance/fuel", label: "الوقود والزيوت", icon: "fuel", permission: "fuel:read" },
-  {
-    href: "/finance/expenses",
-    label: "المصروفات",
-    icon: "expenses",
-    permission: "expenses:read",
-  },
-  {
-    href: "/finance/revenue",
-    label: "الإيرادات والتحصيل",
-    icon: "collections",
-    permission: "revenue:read",
   },
   {
     href: "/finance/ride-hailing",
@@ -60,9 +48,22 @@ export const NAV_ITEMS: NavItem[] = [
     icon: "rides",
     permission: "revenue:read",
   },
+  { href: "/finance/fuel", label: "الوقود والزيوت", icon: "fuel", permission: "fuel:read" },
+  {
+    href: "/finance/revenue",
+    label: "الإيرادات والتحصيل",
+    icon: "collections",
+    permission: "revenue:read",
+  },
+  {
+    href: "/finance/expenses",
+    label: "المصروفات",
+    icon: "expenses",
+    permission: "expenses:read",
+  },
   {
     href: "/finance/settlements",
-    label: "تسويات السائقين",
+    label: "التسويات",
     icon: "wallet",
     permission: "settlements:read",
   },
@@ -78,13 +79,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: "maintenance",
     permission: "maintenance:read",
   },
-  { href: "/reports", label: "التقارير", icon: "reports", permission: "reports:read" },
   {
     href: "/exceptions",
-    label: "حالات للمراجعة",
+    label: "مركز المراجعة",
     icon: "review",
     permission: "exceptions:read",
   },
+  { href: "/reports", label: "التقارير", icon: "reports", permission: "reports:read" },
   {
     href: "/notifications",
     label: "التنبيهات",
@@ -94,7 +95,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/users", label: "المستخدمون", icon: "users", permission: "users:read" },
   {
     href: "/finance/settings",
-    label: "إعدادات المالية",
+    label: "الإعدادات",
     icon: "settings",
     permission: "settings:manage",
   },

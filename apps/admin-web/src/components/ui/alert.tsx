@@ -3,10 +3,10 @@ import type { ReactNode } from "react";
 import type { Tone } from "./badge";
 
 const tones: Record<Exclude<Tone, "active" | "neutral">, string> = {
-  success: "border-forest-200 bg-success-soft text-success",
-  warning: "border-amber-200 bg-warning-soft text-warning",
-  danger: "border-red-200 bg-danger-soft text-danger",
-  info: "border-teal-200 bg-info-soft text-info",
+  success: "border-lime-200 bg-success-soft text-success",
+  warning: "border-[#f3d9a8] bg-warning-soft text-warning",
+  danger: "border-[#f6d3d2] bg-danger-soft text-danger",
+  info: "border-[#c9daee] bg-info-soft text-info",
 };
 
 export function Alert({

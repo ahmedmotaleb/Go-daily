@@ -2,23 +2,31 @@ import clsx from "clsx";
 import Link from "next/link";
 import type { ComponentProps } from "react";
 
+/**
+ * Design system buttons:
+ * - accent (lime): the single most important action on a screen;
+ * - primary (forest): confirm;
+ * - secondary (outlined), ghost (text), danger (outlined critical action).
+ * Controls are at least 44 px tall; `lg` is the 60 px mobile button.
+ */
 export type ButtonVariant = "primary" | "accent" | "secondary" | "danger" | "ghost";
-export type ButtonSize = "sm" | "md";
+export type ButtonSize = "sm" | "md" | "lg";
 
 const base =
-  "inline-flex items-center justify-center gap-2 rounded-[var(--radius-control)] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 whitespace-nowrap";
+  "inline-flex items-center justify-center gap-2 rounded-[var(--radius-control)] font-semibold transition-colors whitespace-nowrap disabled:cursor-not-allowed disabled:border-transparent disabled:bg-neutral-100 disabled:text-neutral-500 disabled:shadow-none";
 
 const variants: Record<ButtonVariant, string> = {
   primary: "bg-primary text-white hover:bg-primary-hover",
-  accent: "bg-accent text-on-accent hover:bg-accent-hover",
-  secondary: "border border-line bg-surface text-ink hover:bg-neutral-50",
-  danger: "bg-danger text-white hover:bg-red-800",
-  ghost: "text-ink-muted hover:bg-neutral-100 hover:text-ink",
+  accent: "bg-accent font-bold text-on-accent hover:bg-accent-hover",
+  secondary: "border border-line-strong bg-surface text-primary hover:bg-neutral-50",
+  danger: "border-[1.5px] border-danger-action bg-surface text-danger-action hover:bg-danger-soft",
+  ghost: "text-primary hover:bg-neutral-100",
 };
 
 const sizes: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-sm",
-  md: "h-10 px-4 text-sm",
+  sm: "h-9 px-3 text-sm",
+  md: "h-11 px-5 text-sm",
+  lg: "h-[60px] rounded-[18px] px-6 text-lg",
 };
 
 export function buttonClasses(

@@ -115,10 +115,7 @@ export default async function DashboardPage() {
             <CardHeader
               title="الخريطة المباشرة"
               actions={
-                <Link
-                  href="/tracking"
-                  className="text-sm font-medium text-forest-700 hover:underline"
-                >
+                <Link href="/tracking" className="text-sm font-medium text-primary hover:underline">
                   عرض كامل
                 </Link>
               }
@@ -171,7 +168,7 @@ export default async function DashboardPage() {
                       <TD>
                         <Link
                           href={`/shifts/${s.id}`}
-                          className="font-semibold text-forest-700 hover:underline"
+                          className="font-semibold text-primary hover:underline"
                         >
                           {s.driver.full_name}
                         </Link>
@@ -220,7 +217,7 @@ export default async function DashboardPage() {
                       <TD>
                         <Link
                           href={`/vehicles/${v.id}`}
-                          className="font-semibold text-forest-700 hover:underline"
+                          className="font-semibold text-primary hover:underline"
                         >
                           <span className="ltr-nums">{v.internal_code}</span>
                         </Link>

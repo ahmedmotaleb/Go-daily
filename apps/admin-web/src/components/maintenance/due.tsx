@@ -54,7 +54,7 @@ export function DueTable({ rows, showVehicle = true }: { rows: DueItem[]; showVe
               <TD>
                 <Link
                   href={`/vehicles/${row.vehicle.id}`}
-                  className="ltr-nums font-semibold text-forest-700 hover:underline"
+                  className="ltr-nums font-semibold text-primary hover:underline"
                 >
                   {row.vehicle.name}
                 </Link>

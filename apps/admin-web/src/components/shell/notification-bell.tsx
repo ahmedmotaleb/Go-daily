@@ -20,13 +20,13 @@ export async function NotificationBell() {
       href="/notifications"
       aria-label={label}
       title={label}
-      className="relative inline-flex size-9 items-center justify-center rounded-full text-ink-muted hover:bg-forest-50 hover:text-forest-800"
+      className="relative inline-flex size-11 items-center justify-center rounded-[var(--radius-control)] border border-line bg-surface text-ink hover:bg-neutral-50"
     >
-      <Bell className="size-5" aria-hidden="true" />
+      <Bell className="size-5" strokeWidth={1.7} aria-hidden="true" />
       {counts.unread ? (
         <span
-          className={`ltr-nums absolute -top-0.5 -left-0.5 min-w-5 rounded-full px-1 text-center text-[11px] leading-5 font-bold text-white ${
-            counts.critical ? "bg-danger" : "bg-forest-700"
+          className={`ltr-nums absolute -top-1.5 -left-1.5 min-w-5 rounded-full border-2 border-surface px-1 text-center text-[11px] leading-4 font-bold text-white ${
+            counts.critical ? "bg-red-400" : "bg-forest-800"
           }`}
         >
           {counts.unread > 99 ? "99+" : formatNumber(counts.unread)}

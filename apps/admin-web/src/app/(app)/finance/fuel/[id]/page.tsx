@@ -71,7 +71,7 @@ export default async function FuelDetailPage({
               </DetailRow>
               {tx.shift_id ? (
                 <DetailRow label="الوردية">
-                  <Link href={`/shifts/${tx.shift_id}`} className="text-forest-700 hover:underline">
+                  <Link href={`/shifts/${tx.shift_id}`} className="text-primary hover:underline">
                     عرض الوردية
                   </Link>
                 </DetailRow>

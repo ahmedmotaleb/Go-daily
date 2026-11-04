@@ -108,7 +108,7 @@ export function LiveFleetMap({
               <span>
                 <Link
                   href={`/shifts/${p.shift_id}`}
-                  className="font-semibold text-forest-700 hover:underline"
+                  className="font-semibold text-primary hover:underline"
                 >
                   <span className="ltr-nums">{p.vehicle_code}</span> — {p.driver_name}
                 </Link>

@@ -41,7 +41,7 @@ function Value({ k, v, row, kind }: { k: string; v: unknown; row: Row; kind: unk
     const target = href(k, v, row, kind);
     if (target) {
       return (
-        <Link href={target} className="text-forest-700 hover:underline" prefetch={false}>
+        <Link href={target} className="text-primary hover:underline" prefetch={false}>
           عرض
         </Link>
       );

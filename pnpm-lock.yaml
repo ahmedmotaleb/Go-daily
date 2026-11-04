@@ -13,6 +13,9 @@ importers:
       '@fontsource/ibm-plex-sans-arabic':
         specifier: ^5.3.0
         version: 5.3.0
+      '@fontsource/inter':
+        specifier: 5.2.5
+        version: 5.2.5
       '@go-daily/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -213,6 +216,9 @@ packages:
 
   '@fontsource/ibm-plex-sans-arabic@5.3.0':
     resolution: {integrity: sha512-ZZ4g+JDgQY0NqSh4o0MNWU1sHQmtcee1g++aKAwyJvZxnT5y51JXsN1cIXnaQaMd40dcbK6QFYa+Z1LbaiNuqA==}
+
+  '@fontsource/inter@5.2.5':
+    resolution: {integrity: sha512-kbsPKj0S4p44JdYRFiW78Td8Ge2sBVxi/PIBwmih+RpSXUdvS9nbs1HIiuUSPtRMi14CqLEZ/fbk7dj7vni1Sg==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -2595,6 +2601,8 @@ snapshots:
       levn: 0.4.1
 
   '@fontsource/ibm-plex-sans-arabic@5.3.0': {}
+
+  '@fontsource/inter@5.2.5': {}
 
   '@humanfs/core@0.19.2':
     dependencies:

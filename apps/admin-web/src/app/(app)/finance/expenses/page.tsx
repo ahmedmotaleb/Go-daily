@@ -134,7 +134,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/finance
                   <TD>
                     <Link
                       href={`/finance/expenses/${e.id}`}
-                      className="font-semibold text-forest-700 hover:underline"
+                      className="font-semibold text-primary hover:underline"
                     >
                       {formatDateTime(e.occurred_at)}
                     </Link>

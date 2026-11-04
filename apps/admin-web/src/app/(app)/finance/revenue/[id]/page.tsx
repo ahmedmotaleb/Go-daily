@@ -115,7 +115,7 @@ export default async function RevenueDetailPage({
                 هذا الإيراد ناتج عن{" "}
                 <Link
                   href={`/finance/ride-hailing/${r.statement_id}`}
-                  className="text-forest-700 hover:underline"
+                  className="text-primary hover:underline"
                 >
                   كشف منصة
                 </Link>{" "}

@@ -1,8 +1,9 @@
 import clsx from "clsx";
 import type { ComponentProps, ReactNode } from "react";
 
+/** 44 px fields, 12 px radius; focus = forest border + lime ring (globals.css). */
 const control =
-  "block w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 text-sm text-ink placeholder:text-neutral-400 focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-lime-300 disabled:bg-neutral-50 aria-[invalid=true]:border-danger";
+  "block w-full rounded-[var(--radius-control)] border border-line-strong bg-surface px-3 text-sm text-ink placeholder:text-neutral-500 disabled:bg-neutral-50 disabled:text-ink-muted aria-[invalid=true]:border-[1.5px] aria-[invalid=true]:border-danger-action";
 
 export function Field({
   label,
@@ -23,7 +24,7 @@ export function Field({
 }) {
   return (
     <div className={clsx("space-y-1.5", className)}>
-      <label htmlFor={htmlFor} className="block text-sm font-medium text-ink">
+      <label htmlFor={htmlFor} className="block text-[13px] font-semibold text-ink">
         {label}
         {required ? (
           <span className="ms-1 text-danger" aria-hidden="true">
@@ -54,7 +55,7 @@ export function Input({
     <input
       aria-invalid={invalid || undefined}
       aria-describedby={invalid && props.id ? `${props.id}-error` : undefined}
-      className={clsx(control, "h-10", className)}
+      className={clsx(control, "h-11", className)}
       {...props}
     />
   );
@@ -68,7 +69,7 @@ export function Select({
   return (
     <select
       aria-invalid={invalid || undefined}
-      className={clsx(control, "h-10 pe-8", className)}
+      className={clsx(control, "h-11 pe-8", className)}
       {...props}
     />
   );

@@ -72,10 +72,7 @@ export function ReviewPanel({
           {record.void_reason ? <Row label="سبب الإلغاء">{record.void_reason}</Row> : null}
           {record.corrects_id ? (
             <Row label="يصحح السجل">
-              <Link
-                href={`${page}/${record.corrects_id}`}
-                className="text-forest-700 hover:underline"
-              >
+              <Link href={`${page}/${record.corrects_id}`} className="text-primary hover:underline">
                 عرض السجل الأصلي
               </Link>
             </Row>
@@ -84,7 +81,7 @@ export function ReviewPanel({
             <Row label="صُحح بالسجل">
               <Link
                 href={`${page}/${record.corrected_by_id}`}
-                className="text-forest-700 hover:underline"
+                className="text-primary hover:underline"
               >
                 عرض السجل المصحح
               </Link>

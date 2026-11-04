@@ -96,7 +96,7 @@ export default async function MaintenanceRecordPage({
                 <DetailRow label="شراء الزيت المرتبط">
                   <Link
                     href={`/finance/fuel/${r.fuel_transaction_id}`}
-                    className="text-forest-700 hover:underline"
+                    className="text-primary hover:underline"
                   >
                     عرض سجل الشراء
                   </Link>

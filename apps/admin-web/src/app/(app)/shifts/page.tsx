@@ -103,7 +103,7 @@ export default async function ShiftsPage({ searchParams }: PageProps<"/shifts">)
                   <TD>
                     <Link
                       href={`/shifts/${s.id}`}
-                      className="font-semibold text-forest-700 hover:underline"
+                      className="font-semibold text-primary hover:underline"
                     >
                       {s.driver.full_name}
                     </Link>

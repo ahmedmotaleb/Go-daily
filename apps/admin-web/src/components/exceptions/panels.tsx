@@ -37,7 +37,7 @@ export async function ExceptionsSummaryCard() {
           )}
           <Link
             href="/exceptions"
-            className="mt-2 inline-block text-sm font-medium text-forest-700 hover:underline"
+            className="mt-2 inline-block text-sm font-medium text-primary hover:underline"
           >
             عرض الحالات
           </Link>
@@ -67,7 +67,7 @@ export async function ShiftExceptions({ shiftId }: { shiftId: string }) {
               <div className="min-w-0">
                 <Link
                   href={`/exceptions/${e.id}`}
-                  className="font-semibold text-forest-700 hover:underline"
+                  className="font-semibold text-primary hover:underline"
                 >
                   {e.rule_title}
                 </Link>

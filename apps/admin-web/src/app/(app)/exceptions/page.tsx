@@ -182,7 +182,7 @@ export default async function ExceptionsPage({ searchParams }: PageProps<"/excep
                   <TD>
                     <Link
                       href={`/exceptions/${e.id}`}
-                      className="font-semibold text-forest-700 hover:underline"
+                      className="font-semibold text-primary hover:underline"
                     >
                       {e.rule_title}
                     </Link>

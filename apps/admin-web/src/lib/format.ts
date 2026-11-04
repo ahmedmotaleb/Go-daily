@@ -25,6 +25,14 @@ const dateFormatter = new Intl.DateTimeFormat(LOCALE, {
   day: "2-digit",
 });
 
+const longDateFormatter = new Intl.DateTimeFormat(LOCALE, {
+  timeZone: DISPLAY_TIMEZONE,
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
 const dateTimeFormatter = new Intl.DateTimeFormat(LOCALE, {
   timeZone: DISPLAY_TIMEZONE,
   year: "numeric",
@@ -62,6 +70,12 @@ export function formatDate(value: string | Date | null | undefined): string {
   }
   const d = toDate(value);
   return d ? dateFormatter.format(d) : "—";
+}
+
+/** "الأربعاء، 4 نوفمبر 2026" in Cairo time. */
+export function formatLongDate(value: string | Date): string {
+  const d = toDate(value);
+  return d ? longDateFormatter.format(d) : "—";
 }
 
 export function formatDateTime(value: string | Date | null | undefined): string {

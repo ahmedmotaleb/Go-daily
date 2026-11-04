@@ -97,7 +97,7 @@ export default async function SettlementsPage({ searchParams }: PageProps<"/fina
                   <TD>
                     <Link
                       href={`/finance/settlements/${s.id}`}
-                      className="font-semibold text-forest-700 hover:underline"
+                      className="font-semibold text-primary hover:underline"
                     >
                       {s.driver.name}
                     </Link>

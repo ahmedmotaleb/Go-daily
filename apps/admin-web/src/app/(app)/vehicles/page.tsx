@@ -134,7 +134,7 @@ export default async function VehiclesPage({ searchParams }: PageProps<"/vehicle
                     <TD>
                       <Link
                         href={`/vehicles/${v.id}`}
-                        className="ltr-nums font-semibold text-forest-700 hover:underline"
+                        className="ltr-nums font-semibold text-primary hover:underline"
                       >
                         {v.internal_code}
                       </Link>

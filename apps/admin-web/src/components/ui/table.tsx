@@ -12,19 +12,24 @@ export function Table({ className, ...props }: ComponentProps<"table">) {
 }
 
 export function THead(props: ComponentProps<"thead">) {
-  return <thead className="border-b border-line bg-neutral-50 text-xs text-ink-muted" {...props} />;
+  return (
+    <thead
+      className="border-b border-line bg-neutral-50 text-xs font-semibold text-ink-muted"
+      {...props}
+    />
+  );
 }
 
 export function TH({ className, ...props }: ComponentProps<"th">) {
   return (
-    <th scope="col" className={clsx("px-4 py-2.5 text-start font-medium", className)} {...props} />
+    <th scope="col" className={clsx("px-4 py-3 text-start font-semibold", className)} {...props} />
   );
 }
 
 export function TR({ className, ...props }: ComponentProps<"tr">) {
   return (
     <tr
-      className={clsx("border-b border-line last:border-0 hover:bg-neutral-50/60", className)}
+      className={clsx("border-b border-neutral-100 last:border-0 hover:bg-neutral-50", className)}
       {...props}
     />
   );

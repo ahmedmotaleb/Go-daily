@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { daysUntil, formatDate, formatDateTime, formatMoney, formatNumber } from "./format";
+import {
+  daysUntil,
+  formatDate,
+  formatDateTime,
+  formatLongDate,
+  formatMoney,
+  formatNumber,
+} from "./format";
 
 describe("formatMoney", () => {
   it("formats EGP with two decimals and Latin digits", () => {
@@ -43,5 +50,15 @@ describe("daysUntil", () => {
     const now = new Date("2026-03-01T10:00:00Z");
     expect(daysUntil("2026-03-11", now)).toBe(10);
     expect(daysUntil("2026-02-27", now)).toBe(-2);
+  });
+});
+
+describe("formatLongDate", () => {
+  it("shows the weekday and month name in Cairo time", () => {
+    // 22:30 UTC on 3 Nov is already Wednesday 4 Nov in Cairo (UTC+2).
+    const out = formatLongDate("2026-11-03T22:30:00Z");
+    expect(out).toContain("الأربعاء");
+    expect(out).toContain("نوفمبر");
+    expect(out).toContain("4");
   });
 });

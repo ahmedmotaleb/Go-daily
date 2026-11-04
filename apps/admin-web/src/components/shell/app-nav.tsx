@@ -51,23 +51,32 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   settings: Settings,
 };
 
-function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
+function NavList({
+  items,
+  badges,
+  onNavigate,
+}: {
+  items: NavItem[];
+  badges: Record<string, number>;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   return (
     <ul className="space-y-0.5">
       {items.map((item) => {
         const Icon = ICONS[item.icon];
         const active = !item.soon && isActivePath(pathname, item.href);
+        const badge = badges[item.href] ?? 0;
         if (item.soon) {
           return (
             <li key={item.href}>
               <span
-                className="flex cursor-default items-center gap-3 rounded-[var(--radius-control)] px-3 py-2 text-sm text-forest-200/60"
+                className="flex min-h-10 cursor-default items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm text-forest-200/60"
                 aria-disabled="true"
               >
-                <Icon className="size-4 shrink-0" aria-hidden="true" />
+                <Icon className="size-5 shrink-0" strokeWidth={1.7} aria-hidden="true" />
                 <span className="flex-1">{item.label}</span>
-                <span className="rounded-full bg-forest-900 px-2 py-0.5 text-[10px] text-forest-200">
+                <span className="rounded-full bg-forest-800 px-2 py-0.5 text-[10px] text-forest-200">
                   قريبًا
                 </span>
               </span>
@@ -81,17 +90,20 @@ function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => v
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               className={clsx(
-                "flex items-center gap-3 rounded-[var(--radius-control)] px-3 py-2 text-sm transition-colors",
+                "flex min-h-10 items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm transition-colors",
                 active
-                  ? "bg-forest-700 font-semibold text-white shadow-[inset_-3px_0_0_var(--color-lime-400)]"
-                  : "text-forest-100 hover:bg-forest-700/60 hover:text-white",
+                  ? "bg-forest-800 font-semibold text-white shadow-[inset_-3px_0_0_var(--color-lime-400)]"
+                  : "font-medium text-[#c9d6d0] hover:bg-forest-800/70 hover:text-white",
               )}
             >
-              <Icon
-                className={clsx("size-4 shrink-0", active && "text-lime-400")}
-                aria-hidden="true"
-              />
-              {item.label}
+              <Icon className="size-5 shrink-0" strokeWidth={1.7} aria-hidden="true" />
+              <span className="flex-1">{item.label}</span>
+              {badge > 0 ? (
+                <span className="ltr-nums rounded-full bg-lime-400 px-2 text-xs leading-5 font-bold text-forest-900">
+                  <span className="sr-only">عدد الحالات المفتوحة: </span>
+                  {badge > 99 ? "99+" : badge}
+                </span>
+              ) : null}
             </Link>
           </li>
         );
@@ -100,27 +112,65 @@ function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => v
   );
 }
 
-export function AppNav({ items }: { items: NavItem[] }) {
+/** Initials of the first two words of a name ("إدارة التشغيل" -> "إ ت"). */
+export function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join(" ");
+}
+
+function UserBlock({ name, role }: { name: string; role: string }) {
+  return (
+    <div className="flex items-center gap-2.5 border-t border-white/10 px-2 pt-4">
+      <span
+        aria-hidden="true"
+        className="flex size-9 items-center justify-center rounded-full border border-forest-600 bg-forest-800 text-sm font-semibold text-white"
+      >
+        {initials(name)}
+      </span>
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate text-sm font-semibold text-white">{name}</span>
+        <span className="text-xs text-[#a9bdb5]">صلاحية: {role}</span>
+      </span>
+    </div>
+  );
+}
+
+export function AppNav({
+  items,
+  badges = {},
+  userName,
+  roleLabel,
+}: {
+  items: NavItem[];
+  badges?: Record<string, number>;
+  userName: string;
+  roleLabel: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col bg-forest-800 lg:flex">
-        <div className="px-5 py-5">
-          <Logo inverted />
+      {/* Desktop sidebar (right in RTL) */}
+      <aside className="sticky top-0 hidden h-screen w-[248px] shrink-0 flex-col gap-6 bg-sidebar px-4 py-6 text-white lg:flex">
+        <div className="px-2 pb-2">
+          <Logo inverted tagline width={184} />
         </div>
-        <nav aria-label="القائمة الرئيسية" className="flex-1 overflow-y-auto px-3 pb-6">
-          <NavList items={items} />
+        <nav aria-label="القائمة الرئيسية" className="-mx-1 flex-1 overflow-y-auto px-1">
+          <NavList items={items} badges={badges} />
         </nav>
+        <UserBlock name={userName} role={roleLabel} />
       </aside>
 
       {/* Mobile top bar + drawer */}
-      <div className="flex items-center justify-between bg-forest-800 px-4 py-3 lg:hidden">
-        <Logo inverted />
+      <div className="flex items-center justify-between bg-sidebar px-4 py-3 lg:hidden">
+        <Logo inverted width={96} />
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="rounded-[var(--radius-control)] p-2 text-white hover:bg-forest-700"
+          className="flex size-11 items-center justify-center rounded-[var(--radius-control)] text-white hover:bg-forest-800"
           aria-label="فتح القائمة"
           aria-expanded={open}
         >
@@ -136,25 +186,26 @@ export function AppNav({ items }: { items: NavItem[] }) {
         >
           <button
             type="button"
-            className="absolute inset-0 bg-neutral-950/40"
+            className="absolute inset-0 bg-forest-900/50"
             aria-label="إغلاق القائمة"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute inset-y-0 start-0 flex w-72 flex-col bg-forest-800">
-            <div className="flex items-center justify-between px-5 py-4">
-              <Logo inverted />
+          <div className="absolute inset-y-0 start-0 flex w-72 flex-col gap-4 bg-sidebar px-4 py-4">
+            <div className="flex items-center justify-between px-1">
+              <Logo inverted width={110} />
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-[var(--radius-control)] p-2 text-white hover:bg-forest-700"
+                className="flex size-11 items-center justify-center rounded-[var(--radius-control)] text-white hover:bg-forest-800"
                 aria-label="إغلاق القائمة"
               >
                 <X className="size-5" />
               </button>
             </div>
-            <nav aria-label="القائمة الرئيسية" className="flex-1 overflow-y-auto px-3 pb-6">
-              <NavList items={items} onNavigate={() => setOpen(false)} />
+            <nav aria-label="القائمة الرئيسية" className="flex-1 overflow-y-auto">
+              <NavList items={items} badges={badges} onNavigate={() => setOpen(false)} />
             </nav>
+            <UserBlock name={userName} role={roleLabel} />
           </div>
         </div>
       ) : null}

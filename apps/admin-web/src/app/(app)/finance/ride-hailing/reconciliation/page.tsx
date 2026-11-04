@@ -45,7 +45,7 @@ function Rows({ rows, withStatement }: { rows: ReconciliationRow[]; withStatemen
               {r.statement ? (
                 <Link
                   href={`/finance/ride-hailing/${r.statement.id}`}
-                  className="font-semibold text-forest-700 hover:underline"
+                  className="font-semibold text-primary hover:underline"
                 >
                   {formatDate(r.period_start)} — {formatDate(r.period_end)}
                 </Link>

@@ -142,10 +142,7 @@ export default async function ExceptionPage({
                 ) : null}
                 {e.shift_id ? (
                   <DetailRow label="الوردية">
-                    <Link
-                      href={`/shifts/${e.shift_id}`}
-                      className="text-forest-700 hover:underline"
-                    >
+                    <Link href={`/shifts/${e.shift_id}`} className="text-primary hover:underline">
                       عرض الوردية والمسار
                     </Link>
                   </DetailRow>
@@ -154,7 +151,7 @@ export default async function ExceptionPage({
                   <DetailRow label="السجل">
                     <Link
                       href={`${subjectBase}/${e.subject_id}`}
-                      className="text-forest-700 hover:underline"
+                      className="text-primary hover:underline"
                     >
                       عرض {SUBJECT_AR[e.subject_type]}
                     </Link>

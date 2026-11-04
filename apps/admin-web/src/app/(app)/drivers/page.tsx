@@ -123,7 +123,7 @@ export default async function DriversPage({ searchParams }: PageProps<"/drivers"
                   <TD>
                     <Link
                       href={`/drivers/${d.id}`}
-                      className="font-semibold text-forest-700 hover:underline"
+                      className="font-semibold text-primary hover:underline"
                     >
                       {d.full_name}
                     </Link>

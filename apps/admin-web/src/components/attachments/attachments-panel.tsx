@@ -68,7 +68,7 @@ export async function AttachmentsPanel({
                         href={`/files/${a.id}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="truncate font-medium text-forest-700 hover:underline"
+                        className="truncate font-medium text-primary hover:underline"
                       >
                         {a.original_filename}
                       </a>
