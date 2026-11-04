@@ -33,7 +33,8 @@ export type MapViewProps = {
   /** Points to fit the initial view to; falls back to `center`. */
   fitTo?: LatLng[];
   center?: LatLng;
-  height?: number;
+  /** Pixels, or a CSS length such as "100%" to fill a sized parent. */
+  height?: number | string;
   className?: string;
   /** Called with the marker id when a marker is clicked (in addition to its popup). */
   onMarkerClick?: (id: string) => void;

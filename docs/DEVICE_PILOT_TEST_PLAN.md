@@ -39,7 +39,7 @@ Cover the oldest Android version the fleet's drivers use (the app supports Andro
 | Driver state | The tracking card on the driver app's home screen and the ongoing notification |
 | Points and gaps | Admin web → *الورديات* → the shift → card *المسار الفعلي حسب GPS*: *نقاط GPS*, *انقطاعات البيانات*, replay and timeline |
 | Device events | The same card's timeline: `TRACKING_STARTED`/`TRACKING_STOPPED`, `SERVICE_RESTARTED`, `PERMISSION_DENIED`/`PERMISSION_GRANTED`, `BACKGROUND_PERMISSION_DENIED`, `LOCATION_DISABLED`/`LOCATION_ENABLED`, `GPS_SIGNAL_LOST`/`GPS_SIGNAL_RESTORED`, `BATTERY_OPTIMIZATION_ENABLED`, `OFFLINE_QUEUE_BACKLOG` |
-| Live position | Admin web → *التشغيل* → *الخريطة المباشرة* (`/tracking`; a vehicle counts as online for 120 s after its last point) |
+| Live position | Admin web → *التتبع المباشر* (`/tracking`, live mode; a vehicle counts as online for 120 s after its last point). Replay a finished shift from the same screen (*إعادة المسار*) |
 | Review cases | Admin web → *حالات للمراجعة* (long interruptions raise "مراجعة مطلوبة") |
 | Battery use | Phone *Settings → Battery → App battery usage* (percentage for Go Daily) plus battery level at start and end |
 

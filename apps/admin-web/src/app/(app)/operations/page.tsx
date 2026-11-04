@@ -37,7 +37,7 @@ export default async function OperationsPage({ searchParams }: PageProps<"/opera
           <>
             <ButtonLink href="/operations/school-runs">دورات المدارس</ButtonLink>
             {can(me, "tracking:read") ? (
-              <ButtonLink href="/tracking">الخريطة المباشرة</ButtonLink>
+              <ButtonLink href="/tracking">مركز التتبع</ButtonLink>
             ) : null}
             {can(me, "operations:write") ? (
               <ButtonLink href="/operations/routes/new" variant="accent">

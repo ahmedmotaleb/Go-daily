@@ -45,6 +45,7 @@ export default async function ExceptionsPage({ searchParams }: PageProps<"/excep
     rule_code: spString(sp, "rule_code"),
     vehicle_id: spUuid(sp, "vehicle_id"),
     driver_id: spUuid(sp, "driver_id"),
+    shift_id: spUuid(sp, "shift_id"),
     date_from: spDate(sp, "date_from"),
     date_to: spDate(sp, "date_to"),
   };
