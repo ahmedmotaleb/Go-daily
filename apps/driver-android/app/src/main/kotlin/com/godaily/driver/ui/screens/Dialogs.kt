@@ -5,20 +5,15 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,33 +24,50 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.godaily.driver.core.api.DriverCatalog
 import com.godaily.driver.core.api.Shift
 import com.godaily.driver.receipt.ReceiptPhotos
 import com.godaily.driver.ui.MainViewModel
 import com.godaily.driver.ui.UiState
+import com.godaily.driver.ui.theme.Brand
 
 @Composable
-private fun Choice(label: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .selectable(selected = selected, onClick = onClick, role = Role.RadioButton),
-    ) {
-        RadioButton(selected = selected, onClick = null)
-        Text(label)
-    }
-}
+private fun Choice(label: String, selected: Boolean, onClick: () -> Unit) = ChoiceRow(label, selected, onClick)
 
 @Composable
-private fun DialogError(error: String?) {
-    if (error != null) Text(error, color = MaterialTheme.colorScheme.error)
+private fun DialogError(error: String?) = FormError(error)
+
+/** Numeric field in the sheets: large bold digits, label above (design: start sheet). */
+@Composable
+private fun NumberField(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    hint: String? = null,
+    decimal: Boolean = false,
+) {
+    FieldLabel(label)
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        singleLine = true,
+        textStyle = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+        supportingText = if (hint != null) {
+            { Text(hint) }
+        } else {
+            null
+        },
+        keyboardOptions = KeyboardOptions(keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Number),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+    )
 }
 
 /** Operation type + optional route pickers, shared by start-shift and change-operation. */
@@ -69,13 +81,13 @@ private fun OperationPicker(
     optional: Boolean,
 ) {
     val types = catalog?.operationTypes?.filter { it.isActive }.orEmpty()
-    Text("نوع التشغيل", fontWeight = FontWeight.SemiBold)
+    FieldLabel("نوع التشغيل")
     if (optional) Choice("بدون تحديد الآن", typeId == null) { onType(null); onRoute(null) }
     types.forEach { t -> Choice(t.nameAr, typeId == t.id) { onType(t.id); onRoute(null) } }
     val selected = types.firstOrNull { it.id == typeId }
     val routes = catalog?.routes?.filter { it.operationTypeId == typeId }.orEmpty()
     if (selected?.usesRoutes == true && routes.isNotEmpty()) {
-        Text("الخط", fontWeight = FontWeight.SemiBold)
+        FieldLabel("الخط")
         Choice("بدون خط", routeId == null) { onRoute(null) }
         routes.forEach { r -> Choice(r.name, routeId == r.id) { onRoute(r.id) } }
     }
@@ -92,49 +104,37 @@ fun StartShiftDialog(state: UiState, planned: Shift?, vm: MainViewModel) {
     var routeId by remember { mutableStateOf(planned?.plannedRoute?.id) }
     val vehicle = vehicles.firstOrNull { it.id == vehicleId }
 
-    AlertDialog(
-        onDismissRequest = vm::closeDialog,
-        title = { Text(if (planned != null) "بدء الوردية المخططة" else "بدء وردية") },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-            ) {
-                Text("المركبة", fontWeight = FontWeight.SemiBold)
-                vehicles.forEach { v ->
-                    Choice("${v.internalCode} — ${v.plateNumber}", vehicleId == v.id) {
-                        if (planned == null) vehicleId = v.id
-                    }
-                }
-                OutlinedTextField(
-                    value = odometer,
-                    onValueChange = { odometer = it },
-                    label = { Text("قراءة العداد (كم)") },
-                    supportingText = {
-                        vehicle?.lastOdometerKm?.let { Text("آخر قراءة: $it كم") }
-                    },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OperationPicker(state.catalog, typeId, routeId, { typeId = it }, { routeId = it }, optional = true)
-                Text(
-                    "سيبدأ تتبع موقع المركبة تلقائيًا ويتوقف عند إنهاء الوردية.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                DialogError(state.dialogError)
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    vehicle?.let { vm.startShift(it, odometer, planned, typeId, routeId) }
-                },
+    GdSheet(
+        title = if (planned != null) "بدء الوردية المخططة" else "بدء الوردية",
+        onDismiss = vm::closeDialog,
+        confirm = {
+            PrimaryButton(
+                "تأكيد بدء الوردية",
+                { vehicle?.let { vm.startShift(it, odometer, planned, typeId, routeId) } },
                 enabled = vehicle != null && !state.busy,
-            ) { Text("بدء") }
+            )
         },
-        dismissButton = { TextButton(onClick = vm::closeDialog) { Text("إلغاء") } },
-    )
+    ) {
+        FieldLabel("السيارة")
+        vehicles.forEach { v ->
+            Choice("${v.plateNumber} · ${v.internalCode}", vehicleId == v.id) {
+                if (planned == null) vehicleId = v.id
+            }
+        }
+        NumberField(
+            "قراءة العداد الآن (كم)",
+            odometer,
+            { odometer = it },
+            hint = vehicle?.lastOdometerKm?.let { "آخر قراءة: ${formatKm(it)} كم" },
+        )
+        OperationPicker(state.catalog, typeId, routeId, { typeId = it }, { routeId = it }, optional = true)
+        Text(
+            "يبدأ تتبع موقع السيارة تلقائيًا ويتوقف عند إنهاء الوردية.",
+            fontSize = 13.sp,
+            color = Brand.InkSoft,
+        )
+        DialogError(state.dialogError)
+    }
 }
 
 @Composable
@@ -144,42 +144,41 @@ fun EndShiftDialog(state: UiState, vm: MainViewModel) {
     var notes by remember { mutableStateOf("") }
     val pending = state.tracking?.pendingPoints ?: 0
 
-    AlertDialog(
-        onDismissRequest = vm::closeDialog,
-        title = { Text("إنهاء الوردية") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = odometer,
-                    onValueChange = { odometer = it },
-                    label = { Text("قراءة العداد عند الانتهاء (كم)") },
-                    supportingText = {
-                        shift.startOdometerKm?.let { Text("عداد البداية: $it كم") }
-                    },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = notes,
-                    onValueChange = { notes = it.take(1000) },
-                    label = { Text("ملاحظات (اختياري)") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (pending > 0) {
-                    Text(
-                        "يوجد $pending نقطة لم تُرسل بعد. سيتوقف التتبع الآن وتُرسل النقاط تلقائيًا عند توفر الإنترنت.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                DialogError(state.dialogError)
-            }
+    GdSheet(
+        title = "إنهاء الوردية",
+        onDismiss = vm::closeDialog,
+        dismissLabel = "رجوع",
+        confirm = {
+            ForestButton("تأكيد إنهاء الوردية", { vm.endShift(odometer, notes) }, enabled = !state.busy, height = 60.dp)
         },
-        confirmButton = {
-            Button(onClick = { vm.endShift(odometer, notes) }, enabled = !state.busy) { Text("تأكيد الإنهاء") }
-        },
-        dismissButton = { TextButton(onClick = vm::closeDialog) { Text("رجوع") } },
-    )
+    ) {
+        NumberField(
+            "قراءة العداد عند الانتهاء (كم)",
+            odometer,
+            { odometer = it },
+            hint = shift.startOdometerKm?.let { "عداد البداية: ${formatKm(it)} كم" },
+        )
+        FieldLabel("ملاحظات (اختياري)")
+        OutlinedTextField(
+            value = notes,
+            onValueChange = { notes = it.take(1000) },
+            minLines = 2,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (pending > 0) {
+            Text(
+                "يوجد $pending نقطة لم تُرسل بعد. سيتوقف التتبع الآن وتُرسل النقاط تلقائيًا عند توفر الإنترنت.",
+                fontSize = 13.sp,
+                color = Brand.Warning,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Brand.WarningSoft)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            )
+        }
+        DialogError(state.dialogError)
+    }
 }
 
 @Composable
@@ -187,25 +186,16 @@ fun OperationDialog(state: UiState, vm: MainViewModel) {
     var typeId by remember { mutableStateOf<String?>(null) }
     var routeId by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
-        onDismissRequest = vm::closeDialog,
-        title = { Text("تغيير التشغيل الحالي") },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-            ) {
-                OperationPicker(state.catalog, typeId, routeId, { typeId = it }, { routeId = it }, optional = false)
-                DialogError(state.dialogError)
-            }
+    GdSheet(
+        title = "تغيير التشغيل الحالي",
+        onDismiss = vm::closeDialog,
+        confirm = {
+            PrimaryButton("تأكيد", { vm.startSession(typeId, routeId) }, enabled = typeId != null && !state.busy)
         },
-        confirmButton = {
-            Button(onClick = { vm.startSession(typeId, routeId) }, enabled = typeId != null && !state.busy) {
-                Text("تأكيد")
-            }
-        },
-        dismissButton = { TextButton(onClick = vm::closeDialog) { Text("إلغاء") } },
-    )
+    ) {
+        OperationPicker(state.catalog, typeId, routeId, { typeId = it }, { routeId = it }, optional = false)
+        DialogError(state.dialogError)
+    }
 }
 
 @Composable
@@ -232,100 +222,86 @@ fun FuelDialog(state: UiState, vm: MainViewModel) {
         if (uri != null) receipt = uri
     }
 
-    AlertDialog(
-        onDismissRequest = vm::closeDialog,
-        title = { Text("تسجيل وقود أو زيت") },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-            ) {
-                Text("النوع", fontWeight = FontWeight.SemiBold)
-                if (types.isEmpty()) Text("حدّث الشاشة لتحميل الأنواع", color = MaterialTheme.colorScheme.error)
-                types.forEach { t -> Choice(t.nameAr, typeId == t.id) { typeId = t.id } }
-                OutlinedTextField(
-                    value = quantity,
-                    onValueChange = { quantity = it },
-                    label = { Text("الكمية") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = total,
-                    onValueChange = { total = it },
-                    label = { Text("المبلغ المدفوع (جنيه)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = odometer,
-                    onValueChange = { odometer = it },
-                    label = { Text("قراءة العداد (اختياري)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text("من دفع؟", fontWeight = FontWeight.SemiBold)
-                Choice("دفعت أنا (يُضاف لحسابي بعد المراجعة)", paidByDriver) { paidByDriver = true }
-                Choice("دفعت الشركة", !paidByDriver) { paidByDriver = false }
-
-                Text("صورة الإيصال (اختياري)", fontWeight = FontWeight.SemiBold)
-                if (receipt == null) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = {
-                            val target = ReceiptPhotos.newCaptureUri(context)
-                            pendingCapture = target
-                            try {
-                                takePicture.launch(target)
-                            } catch (_: ActivityNotFoundException) {
-                                vm.showDialogError("لا يوجد تطبيق كاميرا؛ اختر صورة من المعرض")
-                            }
-                        }) { Text("تصوير") }
-                        OutlinedButton(onClick = {
-                            pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                        }) { Text("اختيار صورة") }
-                    }
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("✓ تم إرفاق صورة الإيصال", modifier = Modifier.weight(1f))
-                        TextButton(onClick = { receipt = null }) { Text("إزالة") }
-                    }
-                }
-                Text(
-                    "يُرفق موقع المركبة الحالي من تتبع الوردية إن كان حديثًا (آخر دقيقتين).",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                DialogError(state.dialogError)
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { vm.recordFuel(typeId, quantity, total, odometer, paidByDriver, receipt) },
+    GdSheet(
+        title = "تسجيل وقود أو زيت",
+        onDismiss = vm::closeDialog,
+        confirm = {
+            PrimaryButton(
+                "حفظ",
+                { vm.recordFuel(typeId, quantity, total, odometer, paidByDriver, receipt) },
                 enabled = !state.busy,
-            ) { Text("حفظ") }
+            )
         },
-        dismissButton = { TextButton(onClick = vm::closeDialog) { Text("إلغاء") } },
-    )
+    ) {
+        FieldLabel("النوع")
+        if (types.isEmpty()) FormError("حدّث الشاشة لتحميل الأنواع")
+        types.forEach { t -> Choice(t.nameAr, typeId == t.id) { typeId = t.id } }
+        NumberField("الكمية", quantity, { quantity = it }, decimal = true)
+        NumberField("المبلغ المدفوع (ج.م)", total, { total = it }, decimal = true)
+        NumberField("قراءة العداد (اختياري)", odometer, { odometer = it })
+        FieldLabel("من دفع؟")
+        Choice("دفعت أنا (يُضاف لحسابي بعد المراجعة)", paidByDriver) { paidByDriver = true }
+        Choice("دفعت الشركة", !paidByDriver) { paidByDriver = false }
+
+        FieldLabel("صورة الإيصال (اختياري)")
+        if (receipt == null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SecondaryButton(
+                    "تصوير",
+                    {
+                        val target = ReceiptPhotos.newCaptureUri(context)
+                        pendingCapture = target
+                        try {
+                            takePicture.launch(target)
+                        } catch (_: ActivityNotFoundException) {
+                            vm.showDialogError("لا يوجد تطبيق كاميرا؛ اختر صورة من المعرض")
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                SecondaryButton(
+                    "اختيار صورة",
+                    { pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFFF4FAE6))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    "تم إرفاق صورة الإيصال",
+                    color = Brand.Success,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { receipt = null }) { Text("إزالة") }
+            }
+        }
+        Text(
+            "يُرفق موقع السيارة الحالي من تتبع الوردية إن كان حديثًا (آخر دقيقتين).",
+            fontSize = 13.sp,
+            color = Brand.InkSoft,
+        )
+        DialogError(state.dialogError)
+    }
 }
 
 /** The fuel entry is saved; only its receipt photo is missing. */
 @Composable
 private fun ReceiptRetryDialog(state: UiState, vm: MainViewModel) {
-    AlertDialog(
-        onDismissRequest = vm::closeDialog,
-        title = { Text("صورة الإيصال") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DialogError(state.dialogError)
-                Text("يمكنك إعادة المحاولة الآن، أو الإغلاق وتسليم الإيصال للمكتب لإرفاقه.")
-            }
-        },
-        confirmButton = {
-            Button(onClick = vm::retryReceipt, enabled = !state.busy) { Text("إعادة رفع الصورة") }
-        },
-        dismissButton = { TextButton(onClick = vm::closeDialog) { Text("إغلاق") } },
-    )
+    GdSheet(
+        title = "صورة الإيصال",
+        onDismiss = vm::closeDialog,
+        dismissLabel = "إغلاق",
+        confirm = { PrimaryButton("إعادة رفع الصورة", vm::retryReceipt, enabled = !state.busy) },
+    ) {
+        DialogError(state.dialogError)
+        Text("تم حفظ التسجيل. يمكنك إعادة رفع الصورة الآن، أو الإغلاق وتسليم الإيصال للمكتب لإرفاقه.")
+    }
 }

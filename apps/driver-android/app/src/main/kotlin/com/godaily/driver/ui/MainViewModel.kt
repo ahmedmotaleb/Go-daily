@@ -60,6 +60,8 @@ data class UiState(
     val pendingEnd: Boolean = false,
     val dialog: Dialog? = null,
     val showPermissions: Boolean = false,
+    /** The "حالة التتبع" screen is open over the home screen. */
+    val showTracking: Boolean = false,
     val busy: Boolean = false,
     val refreshing: Boolean = false,
     /** Last refresh failed for lack of connectivity: data may be outdated. */
@@ -411,6 +413,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun showPermissions(show: Boolean) = _state.update { it.copy(showPermissions = show) }
+
+    fun showTracking(show: Boolean) = _state.update { it.copy(showTracking = show) }
 
     fun acceptDisclosure() {
         c.shiftState.disclosureAccepted = true
