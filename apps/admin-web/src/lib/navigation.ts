@@ -10,6 +10,7 @@ export type NavIcon =
   | "shifts"
   | "map"
   | "collections"
+  | "handover"
   | "rides"
   | "wallet"
   | "profit"
@@ -36,6 +37,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/vehicles", label: "السيارات", icon: "fleet", permission: "vehicles:read" },
   { href: "/drivers", label: "السائقون", icon: "drivers", permission: "drivers:read" },
   { href: "/shifts", label: "الورديات", icon: "shifts", permission: "shifts:read" },
+  { href: "/cash", label: "تحصيل نقدية السائقين", icon: "handover", permission: "cash:read" },
   {
     href: "/operations",
     label: "التشغيل والمسارات",

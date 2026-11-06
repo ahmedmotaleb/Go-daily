@@ -4,7 +4,10 @@ export type AttachmentOwner =
   | "revenue_entry"
   | "ride_hailing_statement"
   | "maintenance_record"
-  | "vehicle";
+  | "vehicle"
+  | "shift"
+  | "shift_closeout"
+  | "driver";
 
 export type Attachment = {
   id: string;
