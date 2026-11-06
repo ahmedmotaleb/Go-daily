@@ -21,6 +21,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.godaily.driver.ui.MainViewModel
 import com.godaily.driver.ui.Screen
+import com.godaily.driver.ui.screens.AccountScreen
+import com.godaily.driver.ui.screens.CloseoutScreen
 import com.godaily.driver.ui.screens.HomeScreen
 import com.godaily.driver.ui.screens.LoginScreen
 import com.godaily.driver.ui.screens.PermissionScreen
@@ -65,6 +67,8 @@ class MainActivity : ComponentActivity() {
                                 onFinished = vm::permissionsUpdated,
                                 onCancel = { vm.showPermissions(false) },
                             )
+                        } else if (state.closeoutShift != null) {
+                            CloseoutScreen(state, vm)
                         } else if (state.showTracking) {
                             TrackingScreen(
                                 status = state.tracking,
@@ -72,6 +76,12 @@ class MainActivity : ComponentActivity() {
                                 onRestart = vm::restartTracking,
                                 onPermissions = { vm.showPermissions(true) },
                                 onRetrySync = vm::retrySync,
+                            )
+                        } else if (state.showAccount) {
+                            AccountScreen(
+                                account = state.account,
+                                onBack = { vm.showAccount(false) },
+                                onRefresh = vm::refresh,
                             )
                         } else {
                             HomeScreen(state, vm)

@@ -186,6 +186,8 @@ data class StartShiftRequest(
     @SerialName("planned_shift_id") val plannedShiftId: String? = null,
     @SerialName("operation_type_id") val operationTypeId: String? = null,
     @SerialName("route_id") val routeId: String? = null,
+    /** Odometer photo uploaded just before (POST /driver/odometer-photo). */
+    @SerialName("start_odometer_photo_id") val startOdometerPhotoId: String? = null,
 )
 
 @Serializable
@@ -298,4 +300,112 @@ data class ServerTrackingStatus(
     val lastPointRecordedAt: Instant? = null,
     @SerialName("last_point_received_at") @Serializable(InstantSerializer::class)
     val lastPointReceivedAt: Instant? = null,
+)
+
+// --- Daily workflow: day-off, start photo, close-out, cash account ------------
+
+@Serializable
+data class PersonRef(
+    val id: String,
+    @SerialName("full_name") val fullName: String,
+)
+
+@Serializable
+data class DayOff(
+    val id: String,
+    @Serializable(LocalDateSerializer::class) val day: LocalDate,
+    val note: String? = null,
+    val source: String,
+    @SerialName("created_at") @Serializable(InstantSerializer::class) val createdAt: Instant,
+)
+
+@Serializable
+data class DayOffRequest(val note: String? = null)
+
+@Serializable
+data class PhotoUpload(
+    @SerialName("attachment_id") val attachmentId: String,
+    @SerialName("created_at") @Serializable(InstantSerializer::class) val createdAt: Instant,
+)
+
+/** «تقفيل الوردية». Money and quantities travel as decimal strings; zero means none. */
+@Serializable
+data class CloseoutRequest(
+    @SerialName("end_odometer_km") val endOdometerKm: Int,
+    @SerialName("collection_amount") val collectionAmount: String,
+    @SerialName("gas_quantity") val gasQuantity: String? = null,
+    @SerialName("gas_amount") val gasAmount: String = "0",
+    @SerialName("gasoline_quantity") val gasolineQuantity: String? = null,
+    @SerialName("gasoline_amount") val gasolineAmount: String = "0",
+    @SerialName("toll_amount") val tollAmount: String,
+    @SerialName("maintenance_kind") val maintenanceKind: String = "NONE",
+    @SerialName("maintenance_amount") val maintenanceAmount: String = "0",
+    @SerialName("maintenance_note") val maintenanceNote: String? = null,
+    val notes: String? = null,
+)
+
+@Serializable
+data class CloseoutLine(
+    val key: String,
+    val label: String,
+    val quantity: String? = null,
+    val unit: String? = null,
+    val amount: String,
+    @SerialName("record_status") val recordStatus: String? = null,
+    val deducted: Boolean,
+)
+
+@Serializable
+data class CashCollection(
+    val id: String,
+    val amount: String,
+    @SerialName("collected_at") @Serializable(InstantSerializer::class) val collectedAt: Instant,
+    val note: String? = null,
+    @SerialName("collected_by") val collectedBy: PersonRef? = null,
+    @SerialName("voided_at") @Serializable(InstantSerializer::class) val voidedAt: Instant? = null,
+)
+
+@Serializable
+data class Closeout(
+    val id: String,
+    @SerialName("shift_id") val shiftId: String,
+    val vehicle: VehicleRef,
+    @SerialName("service_date") @Serializable(LocalDateSerializer::class) val serviceDate: LocalDate,
+    @SerialName("submitted_at") @Serializable(InstantSerializer::class) val submittedAt: Instant,
+    @SerialName("operation_label") val operationLabel: String,
+    @SerialName("end_odometer_km") val endOdometerKm: Int,
+    @SerialName("collection_amount") val collectionAmount: String,
+    val lines: List<CloseoutLine> = emptyList(),
+    @SerialName("net_amount") val netAmount: String,
+    @SerialName("carried_before") val carriedBefore: String,
+    @SerialName("total_due") val totalDue: String,
+    val collected: String,
+    val remaining: String,
+    /** WAITING, PARTIAL, COLLECTED or NOTHING_DUE. */
+    val status: String,
+    val collections: List<CashCollection> = emptyList(),
+)
+
+@Serializable
+data class AccountDay(
+    @Serializable(LocalDateSerializer::class) val day: LocalDate,
+    /** CLOSEOUT, DAY_OFF or COLLECTION (an older remainder handed over). */
+    val kind: String,
+    val closeout: Closeout? = null,
+    @SerialName("day_off") val dayOff: DayOff? = null,
+    val collection: CashCollection? = null,
+)
+
+/** «حسابي مع الإدارة». */
+@Serializable
+data class CashAccount(
+    val outstanding: String,
+    @SerialName("date_from") @Serializable(LocalDateSerializer::class) val dateFrom: LocalDate,
+    @SerialName("date_to") @Serializable(LocalDateSerializer::class) val dateTo: LocalDate,
+    @SerialName("due_total") val dueTotal: String,
+    @SerialName("collected_total") val collectedTotal: String,
+    @SerialName("day_off_days") val dayOffDays: Int,
+    val days: List<AccountDay> = emptyList(),
+    @SerialName("today_day_off") val todayDayOff: DayOff? = null,
+    @SerialName("today_closeout") val todayCloseout: Closeout? = null,
 )

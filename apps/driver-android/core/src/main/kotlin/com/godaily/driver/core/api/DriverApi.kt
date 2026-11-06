@@ -40,6 +40,27 @@ interface DriverApi {
     suspend fun uploadEvents(request: TrackingEventsRequest): TrackingEventsResult
 
     suspend fun trackingStatus(): ServerTrackingStatus
+
+    /** Today's day-off, if registered. */
+    suspend fun todayDayOff(): DayOff?
+
+    suspend fun registerDayOff(request: DayOffRequest, idempotencyKey: String): DayOff
+
+    suspend fun cancelDayOff(): DayOff
+
+    /** Odometer photo for the next shift start; returns the id to send with the start. */
+    suspend fun uploadOdometerPhoto(image: ByteArray, contentType: String = "image/jpeg"): PhotoUpload
+
+    /** Ends the shift (if still running) and records the day's money in one step. */
+    suspend fun submitCloseout(shiftId: String, request: CloseoutRequest, idempotencyKey: String): Closeout
+
+    suspend fun uploadCloseoutReceipt(
+        closeoutId: String,
+        image: ByteArray,
+        contentType: String = "image/jpeg",
+    ): PhotoUpload
+
+    suspend fun account(): CashAccount
 }
 
 /** Supplies the current bearer token; null when logged out. */

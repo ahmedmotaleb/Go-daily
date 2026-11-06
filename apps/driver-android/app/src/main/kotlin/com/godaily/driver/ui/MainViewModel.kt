@@ -7,6 +7,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.godaily.driver.container
 import com.godaily.driver.core.api.ApiError
+import com.godaily.driver.core.api.CashAccount
+import com.godaily.driver.core.api.DayOffRequest
 import com.godaily.driver.core.api.DriverCatalog
 import com.godaily.driver.core.api.DriverMe
 import com.godaily.driver.core.api.DriverVehicle
@@ -15,6 +17,9 @@ import com.godaily.driver.core.api.LoginRequest
 import com.godaily.driver.core.api.Shift
 import com.godaily.driver.core.api.StartSessionRequest
 import com.godaily.driver.core.api.StartShiftRequest
+import com.godaily.driver.core.cash.CloseoutCheck
+import com.godaily.driver.core.cash.CloseoutDraft
+import com.godaily.driver.core.cash.checkCloseout
 import com.godaily.driver.core.sync.PendingShiftEnd
 import com.godaily.driver.core.text.DecimalInput
 import com.godaily.driver.core.text.OdometerInput
@@ -42,7 +47,7 @@ enum class Screen { LOADING, LOGIN, HOME }
 sealed interface Dialog {
     data class StartShift(val planned: Shift?) : Dialog
 
-    data object EndShift : Dialog
+    data object DayOff : Dialog
 
     data object ChangeOperation : Dialog
 
@@ -62,6 +67,15 @@ data class UiState(
     val showPermissions: Boolean = false,
     /** The "حالة التتبع" screen is open over the home screen. */
     val showTracking: Boolean = false,
+    /** «حسابي مع الإدارة», today's day-off and close-out (null until loaded). */
+    val account: CashAccount? = null,
+    val showAccount: Boolean = false,
+    /** The shift whose close-out screen is open (active, or ended without a close-out). */
+    val closeoutShift: Shift? = null,
+    val closeoutDraft: CloseoutDraft = CloseoutDraft(),
+    val closeoutErrors: Map<String, String> = emptyMap(),
+    /** The last close-out attempt failed for lack of internet: offer ending the shift only. */
+    val closeoutOffline: Boolean = false,
     val busy: Boolean = false,
     val refreshing: Boolean = false,
     /** Last refresh failed for lack of connectivity: data may be outdated. */
@@ -85,6 +99,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var startShiftKey: String? = null
     private var sessionKey: String? = null
     private var fuelKey: String? = null
+    private var dayOffKey: String? = null
+    private var closeoutKey: String? = null
+    private var closeoutKeyShiftId: String? = null
+
+    // The start photo is uploaded once per capture, so a retried start sends the same id.
+    private var startPhoto: Pair<Uri, String>? = null
 
     init {
         if (c.tokenStore.isLoggedIn()) {
@@ -157,6 +177,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val me = async { c.api.me() }
                     val catalog = async { c.api.catalog() }
                     val today = async { c.api.todayShifts() }
+                    // The account is secondary: the home screen works without it.
+                    val account = async {
+                        try {
+                            c.api.account()
+                        } catch (e: ApiError) {
+                            if (e is ApiError.Unauthorized) throw e
+                            null
+                        }
+                    }
                     val driver = me.await()
                     _state.update {
                         it.copy(
@@ -165,6 +194,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             catalog = catalog.await(),
                             today = today.await(),
                             active = driver.activeShift,
+                            account = account.await() ?: it.account,
                             stale = false,
                         )
                     }
@@ -209,7 +239,132 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(dialog = Dialog.StartShift(planned), dialogError = null) }
     }
 
-    fun openEndShift() = _state.update { it.copy(dialog = Dialog.EndShift, dialogError = null) }
+    fun openDayOff() {
+        dayOffKey = UUID.randomUUID().toString()
+        _state.update { it.copy(dialog = Dialog.DayOff, dialogError = null) }
+    }
+
+    fun showAccount(show: Boolean) = _state.update { it.copy(showAccount = show) }
+
+    /** «إنهاء وتقفيل الوردية» for the running shift, or a close-out still missing for an ended one. */
+    fun openCloseout(shift: Shift) {
+        // Same shift, same key: a retry after a lost response replays instead of failing.
+        if (closeoutKeyShiftId != shift.id) {
+            closeoutKey = UUID.randomUUID().toString()
+            closeoutKeyShiftId = shift.id
+        }
+        _state.update {
+            it.copy(
+                closeoutShift = shift,
+                closeoutErrors = emptyMap(),
+                closeoutOffline = false,
+            )
+        }
+    }
+
+    fun closeCloseout() = _state.update { it.copy(closeoutShift = null, closeoutErrors = emptyMap()) }
+
+    fun editCloseout(draft: CloseoutDraft) = _state.update { it.copy(closeoutDraft = draft) }
+
+    fun registerDayOff(note: String) {
+        val key = dayOffKey ?: UUID.randomUUID().toString().also { dayOffKey = it }
+        busy {
+            try {
+                c.api.registerDayOff(DayOffRequest(note.trim().ifEmpty { null }), key)
+                dayOffKey = null
+                _state.update { it.copy(dialog = null, message = "تم تسجيل اليوم إجازة وظهر للإدارة") }
+                refresh()
+            } catch (e: ApiError) {
+                _state.update { it.copy(dialogError = e.message) }
+            }
+        }
+    }
+
+    fun cancelDayOff() {
+        busy {
+            try {
+                c.api.cancelDayOff()
+                _state.update { it.copy(message = "تم إلغاء الإجازة") }
+                refresh()
+            } catch (e: ApiError) {
+                _state.update { it.copy(message = e.message) }
+            }
+        }
+    }
+
+    fun submitCloseout(receipt: Uri?) {
+        val st = _state.value
+        val shift = st.closeoutShift ?: return
+        val fixedEnd = if (shift.isActive) null else shift.endOdometerKm
+        val request = when (val check = checkCloseout(st.closeoutDraft, shift.startOdometerKm, fixedEnd)) {
+            is CloseoutCheck.Invalid -> {
+                _state.update { it.copy(closeoutErrors = check.errors) }
+                return
+            }
+            is CloseoutCheck.Valid -> check.request
+        }
+        val key = closeoutKey ?: UUID.randomUUID().toString().also { closeoutKey = it }
+        val app = getApplication<Application>()
+        busy {
+            try {
+                // Send the shift's queued points first so the path is complete when it ends.
+                if (shift.isActive) c.syncer.syncNow()
+                val closeout = c.api.submitCloseout(shift.id, request, key)
+                closeoutKey = null
+                if (shift.isActive) {
+                    c.shiftState.clearActive()
+                    TrackingController.stop(app)
+                }
+                var message = "تم إرسال تقفيل اليوم — التتبع متوقف"
+                if (receipt != null) {
+                    try {
+                        c.api.uploadCloseoutReceipt(closeout.id, ReceiptPhotos.prepare(app, receipt))
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        message = "تم إرسال التقفيل، لكن تعذر رفع صورة الإيصال — سلّم الإيصال للمكتب"
+                    } finally {
+                        ReceiptPhotos.clearCache(app)
+                    }
+                }
+                _state.update {
+                    it.copy(
+                        closeoutShift = null,
+                        closeoutDraft = CloseoutDraft(),
+                        closeoutErrors = emptyMap(),
+                        closeoutOffline = false,
+                        active = if (shift.isActive) null else it.active,
+                        message = message,
+                    )
+                }
+                refresh()
+            } catch (e: ApiError.Network) {
+                _state.update {
+                    it.copy(
+                        closeoutOffline = true,
+                        closeoutErrors = mapOf("form" to "لا يوجد اتصال بالإنترنت — لم يُرسل التقفيل"),
+                    )
+                }
+            } catch (e: ApiError.Rejected) {
+                _state.update {
+                    it.copy(closeoutErrors = e.fieldErrors.ifEmpty { mapOf("form" to (e.message ?: "")) })
+                }
+            } catch (e: ApiError) {
+                _state.update { it.copy(closeoutErrors = mapOf("form" to (e.message ?: "تعذر الإرسال"))) }
+            }
+        }
+    }
+
+    /**
+     * Offline: stop tracking and queue the shift end now; the close-out is sent
+     * later from the home screen for that ended shift (the draft is kept).
+     */
+    fun endShiftWithoutCloseout() {
+        val st = _state.value
+        val shift = st.closeoutShift ?: return
+        _state.update { it.copy(closeoutShift = null, closeoutOffline = false, closeoutErrors = emptyMap()) }
+        if (shift.isActive) endShift(st.closeoutDraft.endOdometer, "")
+    }
 
     fun openChangeOperation() {
         sessionKey = UUID.randomUUID().toString()
@@ -316,28 +471,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         planned: Shift?,
         operationTypeId: String?,
         routeId: String?,
+        photo: Uri?,
     ) {
         val reading = parseOdometer(odometer, vehicle.lastOdometerKm)
         if (reading is OdometerInput.Invalid) {
             _state.update { it.copy(dialogError = reading.message) }
             return
         }
+        if (photo == null) {
+            _state.update { it.copy(dialogError = "صوّر العداد أولًا لبدء الوردية") }
+            return
+        }
         val km = (reading as OdometerInput.Valid).km
         val key = startShiftKey ?: UUID.randomUUID().toString().also { startShiftKey = it }
+        val app = getApplication<Application>()
         busy {
             try {
+                val photoId = startPhoto?.takeIf { it.first == photo }?.second
+                    ?: c.api.uploadOdometerPhoto(ReceiptPhotos.prepare(app, photo)).attachmentId
+                        .also { startPhoto = photo to it }
                 val shift = c.api.startShift(
-                    StartShiftRequest(vehicle.id, km, planned?.id, operationTypeId, routeId),
+                    StartShiftRequest(vehicle.id, km, planned?.id, operationTypeId, routeId, photoId),
                     key,
                 )
                 startShiftKey = null
+                startPhoto = null
+                ReceiptPhotos.clearCache(app)
                 c.shiftState.setActive(shift)
-                TrackingController.start(getApplication())
+                TrackingController.start(app)
                 _state.update {
                     it.copy(active = shift, dialog = null, message = "بدأت الوردية — تتبع الموقع يعمل الآن")
                 }
                 refresh()
+            } catch (e: IOException) {
+                _state.update { it.copy(dialogError = e.message ?: "تعذر قراءة صورة العداد") }
             } catch (e: ApiError) {
+                // A stale or refused photo is taken again on the next attempt.
+                if (e is ApiError.Rejected) startPhoto = null
                 _state.update { it.copy(dialogError = e.message) }
             }
         }

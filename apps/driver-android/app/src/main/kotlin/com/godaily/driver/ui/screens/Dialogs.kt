@@ -102,6 +102,8 @@ fun StartShiftDialog(state: UiState, planned: Shift?, vm: MainViewModel) {
     var odometer by remember { mutableStateOf("") }
     var typeId by remember { mutableStateOf(planned?.plannedOperationType?.id) }
     var routeId by remember { mutableStateOf(planned?.plannedRoute?.id) }
+    // Saveable: the activity can be recreated while the camera app is open.
+    var photo by rememberSaveable { mutableStateOf<Uri?>(null) }
     val vehicle = vehicles.firstOrNull { it.id == vehicleId }
 
     GdSheet(
@@ -109,9 +111,9 @@ fun StartShiftDialog(state: UiState, planned: Shift?, vm: MainViewModel) {
         onDismiss = vm::closeDialog,
         confirm = {
             PrimaryButton(
-                "تأكيد بدء الوردية",
-                { vehicle?.let { vm.startShift(it, odometer, planned, typeId, routeId) } },
-                enabled = vehicle != null && !state.busy,
+                if (photo == null) "صوّر العداد أولًا لبدء الوردية" else "تأكيد بدء الوردية",
+                { vehicle?.let { vm.startShift(it, odometer, planned, typeId, routeId, photo) } },
+                enabled = vehicle != null && photo != null && !state.busy,
             )
         },
     ) {
@@ -122,10 +124,19 @@ fun StartShiftDialog(state: UiState, planned: Shift?, vm: MainViewModel) {
             }
         }
         NumberField(
-            "قراءة العداد الآن (كم)",
+            "1 · قراءة العداد الآن (كم)",
             odometer,
             { odometer = it },
             hint = vehicle?.lastOdometerKm?.let { "آخر قراءة: ${formatKm(it)} كم" },
+        )
+        FieldLabel("2 · صورة العداد (مطلوبة)")
+        PhotoCapture(
+            photo = photo,
+            onPhoto = { photo = it },
+            takeLabel = "صوّر العداد",
+            hint = "لازم تكون الأرقام واضحة في الصورة",
+            takenLabel = "تم التقاط الصورة",
+            onCameraMissing = { vm.showDialogError("لا يوجد تطبيق كاميرا على الهاتف") },
         )
         OperationPicker(state.catalog, typeId, routeId, { typeId = it }, { routeId = it }, optional = true)
         Text(
@@ -137,46 +148,31 @@ fun StartShiftDialog(state: UiState, planned: Shift?, vm: MainViewModel) {
     }
 }
 
+/** «تسجيل اليوم إجازة؟»: no shift and no tracking today; management sees it. */
 @Composable
-fun EndShiftDialog(state: UiState, vm: MainViewModel) {
-    val shift = state.active ?: return
-    var odometer by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
-    val pending = state.tracking?.pendingPoints ?: 0
-
+fun DayOffDialog(state: UiState, vm: MainViewModel) {
+    var note by remember { mutableStateOf("") }
     GdSheet(
-        title = "إنهاء الوردية",
+        title = "تسجيل اليوم إجازة؟",
         onDismiss = vm::closeDialog,
         dismissLabel = "رجوع",
         confirm = {
-            ForestButton("تأكيد إنهاء الوردية", { vm.endShift(odometer, notes) }, enabled = !state.busy, height = 60.dp)
+            ForestButton("تأكيد الإجازة", { vm.registerDayOff(note) }, enabled = !state.busy, height = 56.dp)
         },
     ) {
-        NumberField(
-            "قراءة العداد عند الانتهاء (كم)",
-            odometer,
-            { odometer = it },
-            hint = shift.startOdometerKm?.let { "عداد البداية: ${formatKm(it)} كم" },
+        Text(
+            "${formatLongDate(System.currentTimeMillis())} · لن تبدأ وردية ولن يعمل التتبع اليوم، وسيظهر ذلك للإدارة.",
+            fontSize = 13.sp,
+            color = Brand.InkSoft,
         )
-        FieldLabel("ملاحظات (اختياري)")
+        FieldLabel("ملاحظة (اختياري)")
         OutlinedTextField(
-            value = notes,
-            onValueChange = { notes = it.take(1000) },
-            minLines = 2,
+            value = note,
+            onValueChange = { note = it.take(300) },
+            placeholder = { Text("مثال: السيارة في الصيانة") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        if (pending > 0) {
-            Text(
-                "يوجد $pending نقطة لم تُرسل بعد. سيتوقف التتبع الآن وتُرسل النقاط تلقائيًا عند توفر الإنترنت.",
-                fontSize = 13.sp,
-                color = Brand.Warning,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Brand.WarningSoft)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-            )
-        }
         DialogError(state.dialogError)
     }
 }

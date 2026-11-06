@@ -2,6 +2,8 @@ package com.godaily.driver.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -49,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.godaily.driver.R
 import com.godaily.driver.core.api.Shift
+import com.godaily.driver.core.cash.collectionStatusLabel
+import com.godaily.driver.core.cash.egp
 import com.godaily.driver.core.text.ArabicText
 import com.godaily.driver.ui.Dialog
 import com.godaily.driver.ui.MainViewModel
@@ -114,6 +119,7 @@ fun HomeScreen(state: UiState, vm: MainViewModel) {
                     ActiveShift(active, state, vm, now)
                 } else {
                     StartShiftSection(state, vm)
+                    if (state.account?.todayDayOff == null) AccountCard(state, vm)
                 }
                 OtherVehicles(state)
             }
@@ -122,7 +128,7 @@ fun HomeScreen(state: UiState, vm: MainViewModel) {
 
     when (val dialog = state.dialog) {
         is Dialog.StartShift -> StartShiftDialog(state, dialog.planned, vm)
-        Dialog.EndShift -> EndShiftDialog(state, vm)
+        Dialog.DayOff -> DayOffDialog(state, vm)
         Dialog.ChangeOperation -> OperationDialog(state, vm)
         Dialog.RecordFuel -> FuelDialog(state, vm)
         null -> Unit
@@ -343,13 +349,48 @@ private fun ActiveShift(shift: Shift, state: UiState, vm: MainViewModel, now: Lo
         enabled = !state.busy,
         icon = R.drawable.ic_fuel,
     )
-    ForestButton("إنهاء الوردية", vm::openEndShift, enabled = !state.busy, height = 64.dp, icon = R.drawable.ic_stop)
+    Row(
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brand.Surface)
+            .padding(14.dp),
+    ) {
+        Icon(
+            painterResource(R.drawable.ic_info),
+            contentDescription = null,
+            tint = Brand.Forest,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            "التحصيل والوقود والكارتة والصيانة تُسجَّل كلها مرة واحدة عند تقفيل الوردية في آخر اليوم.",
+            fontSize = 13.sp,
+            color = Brand.InkSoft,
+        )
+    }
+    ForestButton(
+        "إنهاء وتقفيل الوردية",
+        { vm.openCloseout(shift) },
+        enabled = !state.busy,
+        height = 64.dp,
+        icon = R.drawable.ic_stop,
+    )
 }
 
 @Composable
 private fun StartShiftSection(state: UiState, vm: MainViewModel) {
     val planned = state.today.filter { it.isPlanned }
     val hasVehicle = state.me?.vehicles?.isNotEmpty() == true
+    val account = state.account
+    val dayOff = account?.todayDayOff
+    if (dayOff != null) {
+        DayOffCard(dayOff.note, formatTime(dayOff.createdAt), enabled = !state.busy, onCancel = vm::cancelDayOff)
+        AccountCard(state, vm)
+        return
+    }
+    TodayCloseouts(state, vm)
     if (planned.isNotEmpty()) {
         GdCard {
             Text("ورديات اليوم المخططة", fontSize = 15.sp, fontWeight = FontWeight.Bold)
@@ -385,6 +426,16 @@ private fun StartShiftSection(state: UiState, vm: MainViewModel) {
         height = 72.dp,
         icon = R.drawable.ic_play,
     )
+    // A day-off is only possible before any shift today.
+    if (state.today.none { it.status == "ACTIVE" || it.status == "COMPLETED" } && !state.pendingEnd) {
+        SecondaryButton(
+            "تسجيل اليوم إجازة",
+            vm::openDayOff,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !state.busy,
+            icon = R.drawable.ic_calendar,
+        )
+    }
     val done = state.today.filter { it.status == "COMPLETED" }
     if (done.isNotEmpty()) {
         GdCard {
@@ -397,6 +448,168 @@ private fun StartShiftSection(state: UiState, vm: MainViewModel) {
                     Text(it.vehicle.plateNumber, fontSize = 14.sp, color = Brand.InkSoft)
                     Text("${formatTime(it.startedAt)} – ${formatTime(it.endedAt)}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DayOffCard(note: String?, at: String, enabled: Boolean, onCancel: () -> Unit) {
+    GdCard(padding = 20.dp) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            IconTile(R.drawable.ic_calendar, Brand.ForestSoft, Brand.Forest, size = 56.dp, shape = RoundedCornerShape(18.dp))
+            Text("اليوم إجازة", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "سُجّلت الساعة $at وظهرت للإدارة. لا يوجد تتبع ولا معاملات اليوم." +
+                    (note?.let { "\nملاحظة: $it" } ?: ""),
+                fontSize = 13.sp,
+                color = Brand.InkSoft,
+                textAlign = TextAlign.Center,
+            )
+            SecondaryButton("إلغاء الإجازة", onCancel, enabled = enabled, height = 48.dp)
+        }
+    }
+}
+
+/** Today's close-outs: sent (with the collection state) or still to send for an ended shift. */
+@Composable
+private fun TodayCloseouts(state: UiState, vm: MainViewModel) {
+    val account = state.account ?: return
+    val sent = account.todayCloseout
+    if (sent != null) {
+        GdCard(padding = 18.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                IconTile(R.drawable.ic_check, Brand.SuccessSoft, Brand.Success, size = 44.dp, shape = RoundedCornerShape(14.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("تم إرسال تقفيل اليوم", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "أُرسل ${formatTime(sent.submittedAt)} · التتبع متوقف",
+                        fontSize = 12.sp,
+                        color = Brand.InkMuted,
+                    )
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Brand.Page)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+            ) {
+                Text("صافي للتسليم", fontSize = 14.sp, color = Brand.InkSoft, modifier = Modifier.weight(1f))
+                Text("${egp(sent.netAmount)} ج.م", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+            val (soft, tone, dot) = when (sent.status) {
+                "COLLECTED" -> Triple(Brand.SuccessSoft, Brand.Success, Brand.SuccessDot)
+                "PARTIAL" -> Triple(Brand.DangerSoft, Brand.Danger, Brand.DangerDot)
+                "WAITING" -> Triple(Brand.WarningSoft, Brand.Warning, Brand.WarningDot)
+                else -> Triple(Brand.NeutralSoft, Brand.Neutral, Brand.NeutralDot)
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(soft)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Box(Modifier.size(8.dp).clip(RoundedCornerShape(99.dp)).background(dot))
+                Text(
+                    collectionStatusLabel(sent.status) +
+                        if (sent.status == "PARTIAL") " — متبقي ${egp(sent.remaining)} ج.م" else "",
+                    color = tone,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+    val closed = account.days.mapNotNull { it.closeout?.shiftId }.toSet()
+    state.today
+        .filter { it.status == "COMPLETED" && it.id !in closed }
+        .forEach { shift ->
+            GdCard {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    IconTile(R.drawable.ic_alert, Brand.WarningSoft, Brand.Warning, size = 44.dp, shape = RoundedCornerShape(14.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("تقفيل الوردية لم يُرسل", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            "${shift.vehicle.plateNumber} · انتهت ${formatTime(shift.endedAt)}",
+                            fontSize = 12.sp,
+                            color = Brand.InkMuted,
+                        )
+                    }
+                }
+                PrimaryButton("إرسال تقفيل الوردية", { vm.openCloseout(shift) }, enabled = !state.busy, height = 52.dp)
+            }
+        }
+}
+
+/** «حسابي مع الإدارة» summary; opens the full account. */
+@Composable
+private fun AccountCard(state: UiState, vm: MainViewModel) {
+    val account = state.account ?: return
+    val lastCollection = account.days
+        .flatMap { day -> day.closeout?.collections.orEmpty() + listOfNotNull(day.collection) }
+        .maxByOrNull { it.collectedAt }
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Brand.Surface)
+            .border(1.dp, Brand.Line, shape)
+            .clickable(role = Role.Button, onClickLabel = "فتح التفاصيل") { vm.showAccount(true) }
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("حسابي مع الإدارة", fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("التفاصيل", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Brand.Forest)
+            Icon(
+                painterResource(R.drawable.ic_chevron_start),
+                contentDescription = null,
+                tint = Brand.Forest,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Brand.SuccessSoft)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Text(
+                    lastCollection?.let { "تم التحصيل · ${formatTime(it.collectedAt)}" } ?: "تم التحصيل",
+                    fontSize = 11.sp,
+                    color = Brand.Success,
+                )
+                Text(
+                    lastCollection?.let { "${egp(it.amount)} ج.م" } ?: "—",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Brand.Success,
+                )
+            }
+            Column(
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Brand.DangerSoft)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Text("متبقي لم يُحصَّل", fontSize = 11.sp, color = Brand.Danger)
+                Text("${egp(account.outstanding)} ج.م", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Brand.Danger)
             }
         }
     }

@@ -1,6 +1,11 @@
 package com.godaily.driver.core.sync
 
 import com.godaily.driver.core.api.ApiError
+import com.godaily.driver.core.api.CashAccount
+import com.godaily.driver.core.api.Closeout
+import com.godaily.driver.core.api.CloseoutRequest
+import com.godaily.driver.core.api.DayOff
+import com.godaily.driver.core.api.DayOffRequest
 import com.godaily.driver.core.api.DriverApi
 import com.godaily.driver.core.api.DriverCatalog
 import com.godaily.driver.core.api.DriverMe
@@ -10,6 +15,7 @@ import com.godaily.driver.core.api.FuelEntryRequest
 import com.godaily.driver.core.api.GpsPoint
 import com.godaily.driver.core.api.LoginRequest
 import com.godaily.driver.core.api.LoginResponse
+import com.godaily.driver.core.api.PhotoUpload
 import com.godaily.driver.core.api.PointBatch
 import com.godaily.driver.core.api.PointBatchResult
 import com.godaily.driver.core.api.ReceiptUploadResult
@@ -173,6 +179,15 @@ class FakeDriverApi : DriverApi {
     override suspend fun myFuel(): List<FuelEntry> = error("unused")
     override suspend fun uploadFuelReceipt(entryId: String, image: ByteArray, contentType: String): ReceiptUploadResult =
         error("unused")
+    override suspend fun todayDayOff(): DayOff? = error("unused")
+    override suspend fun registerDayOff(request: DayOffRequest, idempotencyKey: String): DayOff = error("unused")
+    override suspend fun cancelDayOff(): DayOff = error("unused")
+    override suspend fun uploadOdometerPhoto(image: ByteArray, contentType: String): PhotoUpload = error("unused")
+    override suspend fun submitCloseout(shiftId: String, request: CloseoutRequest, idempotencyKey: String): Closeout =
+        error("unused")
+    override suspend fun uploadCloseoutReceipt(closeoutId: String, image: ByteArray, contentType: String): PhotoUpload =
+        error("unused")
+    override suspend fun account(): CashAccount = error("unused")
 }
 
 fun offline() = ApiError.Network(IOException("offline"))

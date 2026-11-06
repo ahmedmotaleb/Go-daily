@@ -140,6 +140,52 @@ class OkHttpDriverApi(
     override suspend fun trackingStatus(): ServerTrackingStatus =
         get("driver/tracking/status", ServerTrackingStatus.serializer())
 
+    override suspend fun todayDayOff(): DayOff? = get("driver/day-off", DayOff.serializer().nullable)
+
+    override suspend fun registerDayOff(request: DayOffRequest, idempotencyKey: String): DayOff =
+        post(
+            "driver/day-off",
+            request,
+            DayOffRequest.serializer(),
+            DayOff.serializer(),
+            idempotencyKey = idempotencyKey,
+        )
+
+    override suspend fun cancelDayOff(): DayOff =
+        execute(build("driver/day-off/cancel").post(EMPTY_BODY)) { decode(it, DayOff.serializer()) }
+
+    override suspend fun uploadOdometerPhoto(image: ByteArray, contentType: String): PhotoUpload =
+        upload("driver/odometer-photo", "odometer", image, contentType)
+
+    override suspend fun submitCloseout(
+        shiftId: String,
+        request: CloseoutRequest,
+        idempotencyKey: String,
+    ): Closeout =
+        post(
+            "driver/shifts/${segment(shiftId)}/closeout",
+            request,
+            CloseoutRequest.serializer(),
+            Closeout.serializer(),
+            idempotencyKey = idempotencyKey,
+        )
+
+    override suspend fun uploadCloseoutReceipt(
+        closeoutId: String,
+        image: ByteArray,
+        contentType: String,
+    ): PhotoUpload = upload("driver/closeouts/${segment(closeoutId)}/receipt", "receipt", image, contentType)
+
+    override suspend fun account(): CashAccount = get("driver/account", CashAccount.serializer())
+
+    private suspend fun upload(path: String, name: String, image: ByteArray, contentType: String): PhotoUpload {
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("file", "$name.${extensionFor(contentType)}", image.toRequestBody(contentType.toMediaType()))
+            .build()
+        return execute(build(path).post(body)) { decode(it, PhotoUpload.serializer()) }
+    }
+
     private suspend fun <T> get(path: String, serializer: KSerializer<T>): T =
         execute(build(path).get()) { decode(it, serializer) }
 
