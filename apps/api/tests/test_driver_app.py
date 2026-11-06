@@ -12,6 +12,7 @@ from tests.factories import (
     make_route,
     make_vehicle,
     operation_type_id,
+    start_photo,
 )
 
 DA = "/api/v1/driver"
@@ -36,6 +37,7 @@ def test_driver_start_and_end_shift_with_idempotency(client: TestClient, db: Ses
         "start_odometer_km": 50_010,
         "operation_type_id": operation_type_id(db),
         "route_id": str(route.id),
+        "start_odometer_photo_id": start_photo(client, h),
     }
     headers = {**h, "Idempotency-Key": "start-abc-1"}
     first = client.post(f"{DA}/shifts/start", headers=headers, json=body)
@@ -83,7 +85,11 @@ def test_driver_cannot_backdate_or_touch_other_shifts(client: TestClient, db: Se
     shift = client.post(
         f"{DA}/shifts/start",
         headers=h1,
-        json={"vehicle_id": str(v1.id), "start_odometer_km": 50_000},
+        json={
+            "vehicle_id": str(v1.id),
+            "start_odometer_km": 50_000,
+            "start_odometer_photo_id": start_photo(client, h1),
+        },
     ).json()
     res = client.post(
         f"{DA}/shifts/{shift['id']}/end", headers=h2, json={"end_odometer_km": 50_100}
@@ -97,7 +103,11 @@ def test_driver_switches_operation(client: TestClient, db: Session) -> None:
     shift = client.post(
         f"{DA}/shifts/start",
         headers=h,
-        json={"vehicle_id": str(vehicle.id), "start_odometer_km": 50_000},
+        json={
+            "vehicle_id": str(vehicle.id),
+            "start_odometer_km": 50_000,
+            "start_odometer_photo_id": start_photo(client, h),
+        },
     ).json()
     res = client.post(
         f"{DA}/shifts/{shift['id']}/sessions",
@@ -123,7 +133,11 @@ def test_driver_catalog_and_today(client: TestClient, db: Session) -> None:
     client.post(
         f"{DA}/shifts/start",
         headers=h,
-        json={"vehicle_id": str(vehicle.id), "start_odometer_km": 50_000},
+        json={
+            "vehicle_id": str(vehicle.id),
+            "start_odometer_km": 50_000,
+            "start_odometer_photo_id": start_photo(client, h),
+        },
     )
     assert len(client.get(f"{DA}/shifts/today", headers=h).json()) == 1
 

@@ -422,6 +422,7 @@ class LedgerSource(StrEnum):
     EXPENSE = "EXPENSE"
     FUEL = "FUEL"
     REVENUE_RECEIPT = "REVENUE_RECEIPT"
+    CASH_COLLECTION = "CASH_COLLECTION"
 
 
 class DriverLedgerEntry(UUIDPrimaryKeyMixin, Base):

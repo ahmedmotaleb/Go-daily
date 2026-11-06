@@ -15,7 +15,13 @@ from app.core.config import get_settings
 from app.core.permissions import UserRole
 from app.core.storage import LocalStorage, S3Storage, StorageError, sniff_content_type
 from app.core.time import utcnow
-from tests.factories import fuel_type_id, login_as, make_driver_account, make_vehicle
+from tests.factories import (
+    fuel_type_id,
+    login_as,
+    make_driver_account,
+    make_vehicle,
+    start_photo,
+)
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00\x10JFIF" + b"x" * 200
 PNG = b"\x89PNG\r\n\x1a\n" + b"y" * 100
@@ -155,7 +161,11 @@ def test_driver_can_attach_a_receipt_to_own_entry(client: TestClient, db: Sessio
     _, _, h, vehicle = make_driver_account(client, db)
     client.post(
         "/api/v1/driver/shifts/start",
-        json={"vehicle_id": str(vehicle.id), "start_odometer_km": 50_000},
+        json={
+            "vehicle_id": str(vehicle.id),
+            "start_odometer_km": 50_000,
+            "start_odometer_photo_id": start_photo(client, h),
+        },
         headers=h,
     )
     entry = client.post(

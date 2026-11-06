@@ -39,6 +39,8 @@ class DriverMeOut(BaseModel):
 class DriverShiftStart(BaseModel):
     vehicle_id: uuid.UUID
     start_odometer_km: Odometer
+    # Photo of the odometer uploaded just before (POST /driver/odometer-photo).
+    start_odometer_photo_id: uuid.UUID | None = None
     # Start a shift that operations planned for this driver, if any.
     planned_shift_id: uuid.UUID | None = None
     operation_type_id: uuid.UUID | None = None

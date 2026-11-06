@@ -40,7 +40,10 @@ class OwnerRule:
 
 def owner_rules() -> dict[AttachmentOwner, OwnerRule]:
     # Imported lazily: maintenance depends on this module for its own attachments.
+    from app.models.cash import ShiftCloseout  # noqa: PLC0415
+    from app.models.driver import Driver  # noqa: PLC0415
     from app.models.maintenance import MaintenanceRecord  # noqa: PLC0415
+    from app.models.shift import Shift  # noqa: PLC0415
 
     return {
         AttachmentOwner.FUEL_TRANSACTION: OwnerRule(
@@ -78,6 +81,27 @@ def owner_rules() -> dict[AttachmentOwner, OwnerRule]:
             Permission.VEHICLES_READ,
             Permission.VEHICLES_WRITE,
             AttachmentKind.VEHICLE_DOCUMENT,
+        ),
+        # Odometer start photo, once the shift exists.
+        AttachmentOwner.SHIFT: OwnerRule(
+            Shift,
+            Permission.SHIFTS_READ,
+            Permission.SHIFTS_WRITE,
+            AttachmentKind.ODOMETER_PHOTO,
+        ),
+        # Fuel receipt photo sent with the end-of-shift close-out.
+        AttachmentOwner.SHIFT_CLOSEOUT: OwnerRule(
+            ShiftCloseout,
+            Permission.CASH_READ,
+            Permission.CASH_COLLECT,
+            AttachmentKind.FUEL_RECEIPT,
+        ),
+        # A start photo the driver uploaded but has not used for a shift yet.
+        AttachmentOwner.DRIVER: OwnerRule(
+            Driver,
+            Permission.DRIVERS_READ,
+            Permission.DRIVERS_WRITE,
+            AttachmentKind.ODOMETER_PHOTO,
         ),
     }
 

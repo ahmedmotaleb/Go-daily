@@ -7,8 +7,10 @@ from app.api.routes import (
     attachments,
     audit,
     auth,
+    cash,
     dashboard,
     driver_app,
+    driver_cash,
     driver_finance,
     drivers,
     exceptions,
@@ -40,6 +42,7 @@ api_router.include_router(operations.router)
 api_router.include_router(shifts.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(driver_app.router)
+api_router.include_router(driver_cash.router)
 api_router.include_router(tracking.router)
 api_router.include_router(route_events.router)
 api_router.include_router(fuel.router)
@@ -48,6 +51,7 @@ api_router.include_router(revenue.router)
 api_router.include_router(expected_revenue.router)
 api_router.include_router(ride_hailing.router)
 api_router.include_router(driver_finance.router)
+api_router.include_router(cash.router)
 api_router.include_router(profitability.router)
 api_router.include_router(attachments.router)
 api_router.include_router(maintenance.router)

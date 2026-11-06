@@ -66,6 +66,9 @@ class Permission(StrEnum):
     ATTACHMENTS_READ = "attachments:read"
     ATTACHMENTS_WRITE = "attachments:write"
     SETTINGS_MANAGE = "settings:manage"
+    # End-of-shift close-outs and the cash drivers hand over.
+    CASH_READ = "cash:read"
+    CASH_COLLECT = "cash:collect"
 
 
 P = Permission
@@ -93,6 +96,7 @@ _OPERATIONS = frozenset(
         P.NOTIFICATIONS_READ,
         P.ATTACHMENTS_READ,
         P.ATTACHMENTS_WRITE,
+        P.CASH_READ,
     }
 )
 
@@ -117,6 +121,8 @@ _ACCOUNTANT = frozenset(
         P.SETTLEMENTS_WRITE,
         P.SETTLEMENTS_FINALIZE,
         P.PROFITABILITY_READ,
+        P.CASH_READ,
+        P.CASH_COLLECT,
         P.EXCEPTIONS_READ,
         P.EXCEPTIONS_REVIEW,
         P.MAINTENANCE_READ,

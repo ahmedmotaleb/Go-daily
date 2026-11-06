@@ -26,6 +26,7 @@ class AttachmentKind(StrEnum):
     PLATFORM_STATEMENT = "PLATFORM_STATEMENT"
     MAINTENANCE_INVOICE = "MAINTENANCE_INVOICE"
     VEHICLE_DOCUMENT = "VEHICLE_DOCUMENT"
+    ODOMETER_PHOTO = "ODOMETER_PHOTO"
     OTHER = "OTHER"
 
 
@@ -36,6 +37,10 @@ class AttachmentOwner(StrEnum):
     RIDE_HAILING_STATEMENT = "ride_hailing_statement"
     MAINTENANCE_RECORD = "maintenance_record"
     VEHICLE = "vehicle"
+    SHIFT = "shift"
+    SHIFT_CLOSEOUT = "shift_closeout"
+    # Taken by the driver before the shift exists (start photo); moved to the shift on start.
+    DRIVER = "driver"
 
 
 class Attachment(UUIDPrimaryKeyMixin, Base):

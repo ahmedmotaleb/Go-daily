@@ -4,6 +4,7 @@ from app.models.assignment import AssignmentRole, DriverVehicleAssignment
 from app.models.attachment import Attachment, AttachmentKind, AttachmentOwner
 from app.models.audit import AuditLog
 from app.models.base import Base
+from app.models.cash import CashCollection, DriverDayOff, MaintenanceKind, ShiftCloseout
 from app.models.driver import CompensationMethod, Driver, DriverCompensationPlan, EmploymentStatus
 from app.models.exceptions import (
     ExceptionLabel,
@@ -77,10 +78,12 @@ __all__ = [
     "AuditLog",
     "AuthSession",
     "Base",
+    "CashCollection",
     "ClientType",
     "CompensationMethod",
     "Driver",
     "DriverCompensationPlan",
+    "DriverDayOff",
     "DriverLedgerEntry",
     "DriverSettlement",
     "DriverVehicleAssignment",
@@ -103,6 +106,7 @@ __all__ = [
     "LedgerEntryType",
     "LedgerSource",
     "LegDirection",
+    "MaintenanceKind",
     "MaintenanceRecord",
     "MaintenanceSchedule",
     "MaintenanceType",
@@ -135,6 +139,7 @@ __all__ = [
     "SessionStatus",
     "SettlementStatus",
     "Shift",
+    "ShiftCloseout",
     "ShiftSource",
     "ShiftStatus",
     "StopKind",

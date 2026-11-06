@@ -158,6 +158,7 @@ def shift_out(s: Shift, counts: dict[uuid.UUID, dict[str, int]] | None = None) -
         end_odometer_km=s.end_odometer_km,
         original_start_odometer_km=s.original_start_odometer_km,
         original_end_odometer_km=s.original_end_odometer_km,
+        start_odometer_photo_id=s.start_odometer_photo_id,
         odometer_distance_km=s.odometer_distance_km,
         duration_minutes=duration,
         assignment_override_reason=s.assignment_override_reason,

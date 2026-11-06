@@ -23,9 +23,18 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import ConflictError, NotFoundError, PermissionDenied, ValidationFailed
-from app.core.time import local_day_bounds_utc, utcnow
+from app.core.config import get_settings
+from app.core.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDenied,
+    ValidationFailed,
+    field_error,
+)
+from app.core.time import local_day_bounds_utc, to_local_date, utcnow
 from app.models.assignment import DriverVehicleAssignment
+from app.models.attachment import Attachment, AttachmentKind, AttachmentOwner
+from app.models.cash import DriverDayOff
 from app.models.driver import Driver, EmploymentStatus
 from app.models.fleet import Vehicle
 from app.models.operations import OperationType
@@ -61,6 +70,7 @@ SHIFT_AUDITED = (
     "ended_at",
     "start_odometer_km",
     "end_odometer_km",
+    "start_odometer_photo_id",
     "assignment_override_reason",
     "cancel_reason",
     "notes",
@@ -260,11 +270,53 @@ def _commit(db: Session) -> None:
         raise
 
 
+def _ensure_not_day_off(db: Session, driver_id: uuid.UUID, at: datetime) -> None:
+    day = to_local_date(at)
+    off = db.scalar(
+        select(DriverDayOff.id).where(
+            DriverDayOff.driver_id == driver_id,
+            DriverDayOff.day == day,
+            DriverDayOff.cancelled_at.is_(None),
+        )
+    )
+    if off is not None:
+        raise ConflictError(
+            "اليوم مسجّل إجازة لهذا السائق؛ ألغِ الإجازة أولًا لبدء وردية", code="day_off"
+        )
+
+
+def _claim_start_photo(db: Session, shift: Shift, attachment_id: uuid.UUID) -> None:
+    """Move the driver's fresh odometer photo onto the shift (one photo, one shift)."""
+    attachment = db.get(Attachment, attachment_id, with_for_update=True)
+    max_age = timedelta(minutes=get_settings().driver_start_photo_max_age_minutes)
+    if (
+        attachment is None
+        or attachment.deleted_at is not None
+        or attachment.owner_type is not AttachmentOwner.DRIVER
+        or attachment.owner_id != shift.driver_id
+        or attachment.kind is not AttachmentKind.ODOMETER_PHOTO
+        or attachment.created_at < utcnow() - max_age
+    ):
+        raise field_error(
+            "start_odometer_photo_id",
+            "صورة العداد غير صالحة أو قديمة؛ صوّر العداد مرة أخرى",
+            code="start_photo_invalid",
+        )
+    attachment.owner_type = AttachmentOwner.SHIFT
+    attachment.owner_id = shift.id
+    shift.start_odometer_photo_id = attachment.id
+
+
 # ------------------------------------------------------------------ lifecycle
 
 
 def create_shift(
-    db: Session, *, actor: User, data: ShiftCreate, source: ShiftSource = ShiftSource.ADMIN
+    db: Session,
+    *,
+    actor: User,
+    data: ShiftCreate,
+    source: ShiftSource = ShiftSource.ADMIN,
+    start_odometer_photo_id: uuid.UUID | None = None,
 ) -> Shift:
     driver = _lock(db, Driver, data.driver_id)
     vehicle = _lock(db, Vehicle, data.vehicle_id)
@@ -313,6 +365,7 @@ def create_shift(
             assignment_override_reason=data.assignment_override_reason,
         ),
         source=source,
+        start_odometer_photo_id=start_odometer_photo_id,
     )
 
 
@@ -323,6 +376,7 @@ def start_shift(
     shift_id: uuid.UUID,
     data: ShiftStart,
     source: ShiftSource = ShiftSource.ADMIN,
+    start_odometer_photo_id: uuid.UUID | None = None,
 ) -> Shift:
     shift = get_shift(db, shift_id, for_update=True)
     if shift.status is not ShiftStatus.PLANNED:
@@ -334,6 +388,7 @@ def start_shift(
     _ensure_no_active_conflict(db, driver_id=driver.id, vehicle_id=vehicle.id)
 
     started_at = _resolve_time(data.started_at, source=source, label="وقت البدء")
+    _ensure_not_day_off(db, driver.id, started_at)
     override = data.assignment_override_reason if source is ShiftSource.ADMIN else None
     if not _has_assignment(db, driver.id, vehicle.id, started_at):
         if source is ShiftSource.DRIVER_APP:
@@ -345,6 +400,16 @@ def start_shift(
             )
     else:
         override = None
+    if (
+        source is ShiftSource.DRIVER_APP
+        and start_odometer_photo_id is None
+        and get_settings().driver_start_photo_required
+    ):
+        raise field_error(
+            "start_odometer_photo_id",
+            "صوّر العداد أولًا لبدء الوردية",
+            code="start_photo_required",
+        )
 
     last = vehicle.current_odometer_km
     if last is not None and data.start_odometer_km < last:
@@ -363,6 +428,8 @@ def start_shift(
     if source is ShiftSource.DRIVER_APP:
         shift.source = ShiftSource.DRIVER_APP
     vehicle.current_odometer_km = max(last or 0, data.start_odometer_km)
+    if start_odometer_photo_id is not None:
+        _claim_start_photo(db, shift, start_odometer_photo_id)
     db.flush()
 
     op_type_id = data.operation_type_id or shift.planned_operation_type_id
@@ -381,6 +448,8 @@ def start_shift(
             notes=None,
         )
     details: dict[str, Any] = {"source": source.value}
+    if shift.start_odometer_photo_id is not None:
+        details["start_odometer_photo_id"] = shift.start_odometer_photo_id
     if last is not None and data.start_odometer_km - last > 0:
         details["odometer_gap_km"] = data.start_odometer_km - last
     _record(
@@ -404,7 +473,9 @@ def end_shift(
     shift_id: uuid.UUID,
     data: ShiftEnd,
     source: ShiftSource = ShiftSource.ADMIN,
+    commit: bool = True,
 ) -> Shift:
+    """End an active shift. With commit=False the caller commits (close-out)."""
     shift = get_shift(db, shift_id, for_update=True)
     if shift.status is not ShiftStatus.ACTIVE:
         raise ConflictError("الوردية ليست نشطة", code="invalid_shift_state")
@@ -444,6 +515,9 @@ def end_shift(
         before=before,
         details={"source": source.value, "odometer_distance_km": shift.odometer_distance_km},
     )
+    if not commit:
+        db.flush()
+        return shift
     _commit(db)
     db.refresh(shift)
     return shift

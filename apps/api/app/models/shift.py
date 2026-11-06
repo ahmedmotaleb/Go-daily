@@ -64,6 +64,8 @@ class Shift(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     started_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     ended_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    # Photo of the odometer the driver took when starting (required from the app).
+    start_odometer_photo_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("attachments.id"))
 
     driver: Mapped[Driver] = relationship(lazy="joined")
     vehicle: Mapped[Vehicle] = relationship(lazy="joined")

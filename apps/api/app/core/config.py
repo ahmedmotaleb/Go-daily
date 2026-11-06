@@ -111,6 +111,10 @@ class Settings(BaseSettings):
     route_dwell_seconds: int = 20
     route_min_points: int = 2
     route_min_leg_minutes: int = 3
+    # Driver workflows: a start photo of the odometer is required from the app.
+    driver_start_photo_required: bool = True
+    # The photo must have been uploaded at most this long before the start.
+    driver_start_photo_max_age_minutes: int = 120
     # School run verification (U12).
     school_late_grace_minutes: int = 10
     school_min_gps_coverage_pct: float = 60.0

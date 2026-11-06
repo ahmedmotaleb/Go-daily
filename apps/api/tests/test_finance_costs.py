@@ -21,6 +21,7 @@ from tests.factories import (
     make_driver,
     make_driver_account,
     make_vehicle,
+    start_photo,
 )
 
 
@@ -255,7 +256,11 @@ def test_driver_fuel_entry_needs_active_shift_and_is_idempotent(
 
     started = client.post(
         "/api/v1/driver/shifts/start",
-        json={"vehicle_id": str(vehicle.id), "start_odometer_km": 50_000},
+        json={
+            "vehicle_id": str(vehicle.id),
+            "start_odometer_km": 50_000,
+            "start_odometer_photo_id": start_photo(client, h),
+        },
         headers=h,
     )
     assert started.status_code == 201, started.text

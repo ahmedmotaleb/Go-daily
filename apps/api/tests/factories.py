@@ -250,3 +250,18 @@ def fuel_type_id(db: Session, code: str) -> str:
 
 def expense_category_id(db: Session, code: str) -> str:
     return str(db.scalar(select(ExpenseCategory.id).where(ExpenseCategory.code == code)))
+
+
+ODOMETER_PNG = b"\x89PNG\r\n\x1a\n" + b"o" * 100
+
+
+def start_photo(client: TestClient, headers: dict[str, str]) -> str:
+    """Upload an odometer start photo as the driver; returns its attachment id."""
+    res = client.post(
+        "/api/v1/driver/odometer-photo",
+        headers=headers,
+        files={"file": ("odometer.png", ODOMETER_PNG, "image/png")},
+    )
+    assert res.status_code == 201, res.text
+    photo_id: str = res.json()["attachment_id"]
+    return photo_id

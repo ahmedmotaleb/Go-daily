@@ -163,6 +163,7 @@ def start_shift(
                     route_id=body.route_id,
                 ),
                 source=ShiftSource.DRIVER_APP,
+                start_odometer_photo_id=body.start_odometer_photo_id,
             )
         else:
             shift = shifts_service.create_shift(
@@ -177,6 +178,7 @@ def start_shift(
                     planned_route_id=body.route_id,
                 ),
                 source=ShiftSource.DRIVER_APP,
+                start_odometer_photo_id=body.start_odometer_photo_id,
             )
         return shift_out(shift)
 

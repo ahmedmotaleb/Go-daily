@@ -139,6 +139,8 @@ class ShiftOut(BaseModel):
     # First-entered readings when corrected (null = never corrected).
     original_start_odometer_km: int | None = None
     original_end_odometer_km: int | None = None
+    # Odometer photo taken by the driver at the start (attachment id).
+    start_odometer_photo_id: uuid.UUID | None = None
     odometer_distance_km: int | None
     duration_minutes: int | None
     assignment_override_reason: str | None

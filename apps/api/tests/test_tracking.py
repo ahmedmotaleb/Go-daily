@@ -12,7 +12,7 @@ from app.core.permissions import UserRole
 from app.core.time import utcnow
 from app.models.tracking import GpsPoint
 from app.services.track_analysis import TrackPoint, find_gaps, find_stops, recorded_distance_m
-from tests.factories import login_as, make_driver_account
+from tests.factories import login_as, make_driver_account, start_photo
 
 DA = "/api/v1/driver"
 BASE = (31.0409, 31.3785)
@@ -22,7 +22,11 @@ def _start(client: TestClient, h: dict[str, str], vehicle_id: object) -> dict[st
     res = client.post(
         f"{DA}/shifts/start",
         headers=h,
-        json={"vehicle_id": str(vehicle_id), "start_odometer_km": 50_000},
+        json={
+            "vehicle_id": str(vehicle_id),
+            "start_odometer_km": 50_000,
+            "start_odometer_photo_id": start_photo(client, h),
+        },
     )
     assert res.status_code == 201, res.text
     body: dict[str, Any] = res.json()
