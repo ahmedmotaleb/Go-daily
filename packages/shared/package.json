@@ -1,0 +1,10 @@
+{
+  "name": "@go-daily/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared domain constants and Arabic labels",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
