@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.core.time import local_day_bounds_utc
 from app.models.assignment import DriverVehicleAssignment
 from app.models.cash import CashCollection, ShiftCloseout
-from app.models.exceptions import OperationalException
+from app.models.exceptions import ExceptionStatus, OperationalException
 from app.models.finance import Expense, FuelTransaction, RecordStatus, RevenueEntry
 from app.models.maintenance import MaintenanceRecord
 from app.models.route_events import EventStatus, RouteEvent, RouteEventType, SchoolRun
@@ -35,6 +35,14 @@ STATUS_AR = {
     RecordStatus.APPROVED: "معتمد",
     RecordStatus.REJECTED: "مرفوض",
     RecordStatus.VOIDED: "ملغي",
+}
+CASE_STATUS_AR = {
+    ExceptionStatus.OPEN: "مفتوحة",
+    ExceptionStatus.UNDER_REVIEW: "قيد المراجعة",
+    ExceptionStatus.ESCALATED: "مُصعّدة",
+    ExceptionStatus.EXPLAINED: "تم التوضيح",
+    ExceptionStatus.CORRECTED: "تم التصحيح",
+    ExceptionStatus.DISMISSED: "مستبعدة",
 }
 ROUTE_EVENT_AR = {
     RouteEventType.LOOP_COMPLETED: "دورة مكتملة",
@@ -306,7 +314,7 @@ def timeline(db: Session, vehicle_id: uuid.UUID, day: date, sections: set[Sectio
                     c.occurred_at,
                     "REVIEW",
                     c.summary,
-                    status=c.status.value,
+                    status=CASE_STATUS_AR[c.status],
                     link=f"/exceptions/{c.id}",
                 )
             )

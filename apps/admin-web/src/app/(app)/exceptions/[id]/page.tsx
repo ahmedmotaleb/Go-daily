@@ -11,6 +11,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { AuditTrail } from "@/components/audit-trail";
+import { AttachmentsPanel } from "@/components/attachments/attachments-panel";
+import { ShiftTrackView } from "@/components/map/shift-track-view";
+import { DayTimeline } from "@/components/vehicles/day-timeline";
+import type { AttachmentOwner } from "@/lib/attachment-types";
+import { tileConfig } from "@/lib/map-config";
+import { cairoDate } from "@/lib/search";
+import type { ShiftTrack, TimelineItem } from "@/lib/types";
 import { api } from "@/lib/api";
 import { can, requirePermission } from "@/lib/auth";
 import {
@@ -29,6 +36,16 @@ import { reviewExceptionAction } from "../actions";
 
 export const metadata: Metadata = { title: "حالة للمراجعة" };
 
+/** Who may see each record's files (mirrors the API's attachment rules). */
+const ATTACHMENT_READ: Partial<Record<AttachmentOwner, string>> = {
+  fuel_transaction: "fuel:read",
+  expense: "expenses:read",
+  revenue_entry: "revenue:read",
+  ride_hailing_statement: "revenue:read",
+  maintenance_record: "maintenance:read",
+  vehicle: "vehicles:read",
+};
+
 export default async function ExceptionPage({
   params,
   searchParams,
@@ -42,6 +59,20 @@ export default async function ExceptionPage({
   if (!e) notFound();
   const subjectBase = e.subject_type ? SUBJECT_PATH[e.subject_type] : undefined;
   const canReview = can(me, "exceptions:review") && e.allowed_transitions.length > 0;
+  // Investigation workspace (U28): everything recorded around the case, each
+  // part only for users allowed to read it (the API checks again).
+  const day = cairoDate(e.occurred_at);
+  const subjectOwner = e.subject_type as AttachmentOwner | null;
+  const subjectRead = subjectOwner ? ATTACHMENT_READ[subjectOwner] : undefined;
+  const [related, track, timeline] = await Promise.all([
+    api.get<OperationalException[]>(`/exceptions/${e.id}/related`),
+    e.shift_id && can(me, "tracking:read")
+      ? api.get<ShiftTrack>(`/shifts/${e.shift_id}/track`)
+      : null,
+    e.vehicle && can(me, "vehicles:read")
+      ? api.get<TimelineItem[]>(`/vehicles/${e.vehicle.id}/timeline`, { day })
+      : null,
+  ]);
 
   return (
     <>
@@ -97,6 +128,46 @@ export default async function ExceptionPage({
                 <Evidence evidence={e.thresholds} />
               </CardBody>
             </Card>
+          ) : null}
+          {track ? (
+            <Card>
+              <CardHeader
+                title="المسار والتتبع"
+                description="مسار الوردية ونقاط التتبع والانقطاعات ومقارنة العداد كما سُجلت"
+              />
+              <CardBody>
+                <ShiftTrackView tiles={tileConfig()} track={track} />
+              </CardBody>
+            </Card>
+          ) : null}
+          {timeline && e.vehicle ? (
+            <DayTimeline
+              vehicleId={e.vehicle.id}
+              day={day}
+              items={timeline}
+              picker={false}
+              title={`يوم السيارة ${day}`}
+            />
+          ) : null}
+          {subjectOwner && subjectRead && e.subject_id && can(me, subjectRead) ? (
+            <AttachmentsPanel
+              ownerType={subjectOwner}
+              ownerId={e.subject_id}
+              returnPath={`/exceptions/${e.id}`}
+              canWrite={false}
+              locked
+              title={`مرفقات ${SUBJECT_AR[subjectOwner] ?? "السجل"}`}
+            />
+          ) : null}
+          {e.shift_id && can(me, "shifts:read") ? (
+            <AttachmentsPanel
+              ownerType="shift"
+              ownerId={e.shift_id}
+              returnPath={`/exceptions/${e.id}`}
+              canWrite={false}
+              locked
+              title="صور الوردية (العداد)"
+            />
           ) : null}
           {canReview ? (
             <Card>
@@ -185,6 +256,33 @@ export default async function ExceptionPage({
                 {e.resolution ? <DetailRow label="النتيجة">{e.resolution}</DetailRow> : null}
               </dl>
             </CardBody>
+          </Card>
+          <Card>
+            <CardHeader
+              title="حالات قريبة"
+              description="حالات على نفس السيارة أو السائق خلال يوم؛ القرب وحده ليس دليلًا"
+            />
+            {related.length === 0 ? (
+              <p className="px-5 py-4 text-sm text-ink-muted">لا توجد حالات أخرى قريبة.</p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {related.map((r) => (
+                  <li key={r.id} className="px-5 py-3">
+                    <Link
+                      href={`/exceptions/${r.id}`}
+                      className="text-sm font-medium hover:underline"
+                    >
+                      {r.rule_title}
+                    </Link>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+                      <span className="ltr-nums">{formatDateTime(r.occurred_at)}</span>
+                      <Badge tone={SEVERITY_TONE[r.severity]}>{SEVERITY_AR[r.severity]}</Badge>
+                      <Badge tone={STATUS_TONE[r.status]}>{STATUS_AR[r.status]}</Badge>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
           {can(me, "audit:read") ? (
             <AuditTrail entityType="operational_exception" entityId={e.id} />

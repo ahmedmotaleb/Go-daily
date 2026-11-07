@@ -39,6 +39,11 @@ export function cairoToday(offsetDays = 0): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo" }).format(now);
 }
 
+/** YYYY-MM-DD in Cairo of an ISO timestamp. */
+export function cairoDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo" }).format(new Date(iso));
+}
+
 export function firstOfMonth(): string {
   return `${cairoToday().slice(0, 8)}01`;
 }

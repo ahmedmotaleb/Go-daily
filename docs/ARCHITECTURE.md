@@ -390,6 +390,18 @@ ExceptionRun (window, per-rule counts, per-rule errors)
 - **Failure isolation.** Each rule runs in a savepoint; a failing rule is logged and recorded on the run, and the others still run.
 - **Audit.** Every review step is an audit entry with the status change, the note and the resolution.
 
+### Investigation workspace (U28)
+
+- **Where:** the case page (`/exceptions/[id]`) is the workspace. Nothing new is stored.
+- **What it shows**, beside the rule's reason, observed values and thresholds:
+  - the shift's map and path, GPS timeline, gaps, data quality and the odometer vs GPS comparison (`/shifts/{id}/track`);
+  - the vehicle's day on the case date (`/vehicles/{id}/timeline`): shift, operations, route and school events, fuel, expenses, revenue, close-out, cash handed over and other cases;
+  - the files of the flagged record (read-only) and the shift's odometer photos;
+  - related cases on the same vehicle, driver or shift within a day (`GET /exceptions/{id}/related`, `exceptions:read`), described as context, not evidence.
+- **Permissions:** each part is shown only with its own read permission, and the API checks every request again.
+- **Review actions:** unchanged (تحت المراجعة / تم التوضيح / تم التصحيح / مرفوض كإنذار / تم التصعيد). Closing needs a written result; escalating or reopening needs a reason; every change is audited.
+- **Tests:** `test_investigation.py`.
+
 ### Exception engine V2 (U26)
 
 - **27 rules:**

@@ -39,6 +39,8 @@ def test_timeline_lists_the_day_in_order(client: TestClient, db: Session) -> Non
     for kind in ("SHIFT_START", "FUEL", "EXPENSE", "SHIFT_END", "CLOSEOUT"):
         assert kind in kinds, kind
     assert kinds.index("SHIFT_START") < kinds.index("SHIFT_END")
+    # Statuses are shown in Arabic, never as raw codes.
+    assert all(not (i["status"] or "").isascii() or not i["status"] for i in items)
 
     # Operations cannot read revenue: those items are left out, not blanked
     # (close-outs stay: operations has cash:read).

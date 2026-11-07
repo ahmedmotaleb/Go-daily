@@ -162,6 +162,12 @@ def get_exception(exception_id: uuid.UUID, _: Reader, db: DbSession) -> Exceptio
     return _out(exception_service.get(db, exception_id))
 
 
+@router.get("/{exception_id}/related", response_model=list[ExceptionOut])
+def related(exception_id: uuid.UUID, _: Reader, db: DbSession) -> list[ExceptionOut]:
+    exc = exception_service.get(db, exception_id)
+    return [_out(e) for e in exception_service.related(db, exc)]
+
+
 @router.post("/{exception_id}/review", response_model=ExceptionOut)
 def review(exception_id: uuid.UUID, body: ReviewIn, actor: Reviewer, db: DbSession) -> ExceptionOut:
     return _out(

@@ -35,17 +35,22 @@ export function DayTimeline({
   vehicleId,
   day,
   items,
+  picker = true,
+  title = "يوم السيارة",
 }: {
   vehicleId: string;
   day: string;
   items: TimelineItem[];
+  /** Off where the day is fixed by the page (the investigation workspace). */
+  picker?: boolean;
+  title?: string;
 }) {
   return (
     <Card>
       <CardHeader
-        title="يوم السيارة"
+        title={title}
         description="كل ما سُجل للسيارة في اليوم: الورديات والتشغيل والتتبع والوقود والمصروفات والتحصيل والصيانة وحالات المراجعة."
-        actions={<DayPicker value={day} basePath={`/vehicles/${vehicleId}`} />}
+        actions={picker ? <DayPicker value={day} basePath={`/vehicles/${vehicleId}`} /> : undefined}
       />
       {items.length === 0 ? (
         <p className="px-5 py-6 text-sm text-ink-muted">

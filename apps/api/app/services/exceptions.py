@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -256,6 +256,42 @@ def get(db: Session, exception_id: uuid.UUID) -> OperationalException:
     if exc is None:
         raise NotFoundError("الحالة غير موجودة")
     return exc
+
+
+def related(
+    db: Session,
+    exc: OperationalException,
+    *,
+    window: timedelta = timedelta(days=1),
+    limit: int = 20,
+) -> list[OperationalException]:
+    """Other cases on the same vehicle or driver within a day of this one (U28).
+
+    Shown beside the case so a reviewer sees what else was flagged around
+    it; being related is not evidence by itself.
+    """
+    who = []
+    if exc.vehicle_id is not None:
+        who.append(OperationalException.vehicle_id == exc.vehicle_id)
+    if exc.driver_id is not None:
+        who.append(OperationalException.driver_id == exc.driver_id)
+    if exc.shift_id is not None:
+        who.append(OperationalException.shift_id == exc.shift_id)
+    if not who:
+        return []
+    return list(
+        db.scalars(
+            select(OperationalException)
+            .where(
+                OperationalException.id != exc.id,
+                or_(*who),
+                OperationalException.occurred_at >= exc.occurred_at - window,
+                OperationalException.occurred_at <= exc.occurred_at + window,
+            )
+            .order_by(OperationalException.occurred_at)
+            .limit(limit)
+        ).all()
+    )
 
 
 def summary(db: Session) -> dict[str, Any]:
