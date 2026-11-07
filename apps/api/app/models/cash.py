@@ -74,6 +74,10 @@ class ShiftCloseout(UUIDPrimaryKeyMixin, Base):
     # Local (Cairo) date the shift started: the day the close-out belongs to.
     service_date: Mapped[date]
     submitted_at: Mapped[datetime]
+    # Close-outs queued on the phone (U45): the phone's id for the entry and
+    # its clock when the driver confirmed it (submitted_at is the server's).
+    client_entry_id: Mapped[str | None] = mapped_column(String(64))
+    device_recorded_at: Mapped[datetime | None]
     source: Mapped[RecordSource] = mapped_column(enum_column_type(RecordSource, "record_source"))
     end_odometer_km: Mapped[int] = mapped_column(Integer)
     collection_amount: Mapped[Decimal]
@@ -130,6 +134,13 @@ class ShiftCloseout(UUIDPrimaryKeyMixin, Base):
             "shift_id",
             unique=True,
             postgresql_where=text("voided_at IS NULL"),
+        ),
+        Index(
+            "uq_shift_closeouts_client_entry",
+            "driver_id",
+            "client_entry_id",
+            unique=True,
+            postgresql_where=text("client_entry_id IS NOT NULL"),
         ),
         Index("ix_shift_closeouts_driver", "driver_id", "service_date"),
         Index("ix_shift_closeouts_day", "service_date"),

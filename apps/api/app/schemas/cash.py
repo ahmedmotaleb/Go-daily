@@ -7,11 +7,11 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import AwareDatetime, BaseModel, Field, StringConstraints
 
 from app.models.cash import MaintenanceKind
 from app.models.finance import RecordSource, RecordStatus
-from app.schemas.finance import Money, MoneyOrZero, Notes, Odometer, Reason
+from app.schemas.finance import ClientEntryId, Money, MoneyOrZero, Notes, Odometer, Reason
 from app.schemas.shift import PersonRef, VehicleRef
 
 ShortNote = Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)]
@@ -64,6 +64,9 @@ class CloseoutIn(BaseModel):
     maintenance_amount: MoneyOrZero = Decimal("0")
     maintenance_note: Notes | None = None
     notes: Notes | None = None
+    # Close-outs queued on the phone (U45): stable id and the phone's clock.
+    client_entry_id: ClientEntryId | None = None
+    recorded_at: AwareDatetime | None = None
 
 
 class CloseoutLine(BaseModel):

@@ -196,11 +196,6 @@ fun OperationDialog(state: UiState, vm: MainViewModel) {
 
 @Composable
 fun FuelDialog(state: UiState, vm: MainViewModel) {
-    val retry = state.receiptRetry
-    if (retry != null) {
-        ReceiptRetryDialog(state, vm)
-        return
-    }
     val context = LocalContext.current
     val types = state.catalog?.fuelTypes.orEmpty()
     var typeId by remember { mutableStateOf(types.firstOrNull()?.id) }
@@ -285,19 +280,5 @@ fun FuelDialog(state: UiState, vm: MainViewModel) {
             color = Brand.InkSoft,
         )
         DialogError(state.dialogError)
-    }
-}
-
-/** The fuel entry is saved; only its receipt photo is missing. */
-@Composable
-private fun ReceiptRetryDialog(state: UiState, vm: MainViewModel) {
-    GdSheet(
-        title = "صورة الإيصال",
-        onDismiss = vm::closeDialog,
-        dismissLabel = "إغلاق",
-        confirm = { PrimaryButton("إعادة رفع الصورة", vm::retryReceipt, enabled = !state.busy) },
-    ) {
-        DialogError(state.dialogError)
-        Text("تم حفظ التسجيل. يمكنك إعادة رفع الصورة الآن، أو الإغلاق وتسليم الإيصال للمكتب لإرفاقه.")
     }
 }

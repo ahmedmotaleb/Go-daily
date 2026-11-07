@@ -139,6 +139,10 @@ class FuelTransaction(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Base):
     latitude: Mapped[float | None]
     longitude: Mapped[float | None]
     location_accuracy_m: Mapped[float | None]
+    # Driver-app entries queued on the phone (U45): the phone's own id for the
+    # entry, and the phone's clock when it was recorded (kept as submitted).
+    client_entry_id: Mapped[str | None] = mapped_column(String(64))
+    device_recorded_at: Mapped[datetime | None]
     corrects_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fuel_transactions.id"))
 
     vehicle: Mapped[Vehicle] = relationship(lazy="joined")
@@ -155,6 +159,13 @@ class FuelTransaction(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Base):
         Index("ix_fuel_transactions_vehicle", "vehicle_id", "occurred_at"),
         Index("ix_fuel_transactions_driver", "driver_id", "occurred_at"),
         Index("ix_fuel_transactions_status", "status"),
+        Index(
+            "uq_fuel_transactions_client_entry",
+            "driver_id",
+            "client_entry_id",
+            unique=True,
+            postgresql_where=text("client_entry_id IS NOT NULL"),
+        ),
     )
 
 

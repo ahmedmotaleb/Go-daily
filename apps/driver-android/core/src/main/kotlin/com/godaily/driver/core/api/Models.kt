@@ -101,6 +101,12 @@ data class FuelEntryRequest(
     val latitude: Double? = null,
     val longitude: Double? = null,
     @SerialName("location_accuracy_m") val locationAccuracyM: Double? = null,
+    /** Stable id of this entry on the phone: a resend is recognised by the server (U45). */
+    @SerialName("client_entry_id") val clientEntryId: String? = null,
+    /** Shift the entry was recorded in, so it is accepted after the shift ended. */
+    @SerialName("shift_id") val shiftId: String? = null,
+    /** Phone clock when the driver saved it (ISO-8601), kept as sent by the server. */
+    @SerialName("recorded_at") val recordedAt: String? = null,
 )
 
 @Serializable
@@ -342,6 +348,8 @@ data class CloseoutRequest(
     @SerialName("maintenance_amount") val maintenanceAmount: String = "0",
     @SerialName("maintenance_note") val maintenanceNote: String? = null,
     val notes: String? = null,
+    @SerialName("client_entry_id") val clientEntryId: String? = null,
+    @SerialName("recorded_at") val recordedAt: String? = null,
 )
 
 @Serializable

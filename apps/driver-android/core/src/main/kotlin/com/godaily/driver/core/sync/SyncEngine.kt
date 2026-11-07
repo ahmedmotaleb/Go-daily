@@ -35,12 +35,17 @@ data class SyncReport(
     /** Arabic message from the server when a queued shift end was refused. */
     val shiftEndError: String? = null,
     val error: ApiError? = null,
+    /** Queued fuel entries and close-outs the server accepted in this run (U45). */
+    val entriesSent: Int = 0,
+    /** Queued entries the server refused in this run (kept on the phone as failed). */
+    val entriesFailed: Int = 0,
 )
 
 /**
  * Uploads everything queued on the phone: device events first (small and
  * important for management), then GPS batches oldest first, then a shift
- * end confirmed while offline.
+ * end confirmed while offline, then queued fuel entries and close-outs
+ * (after the end, so a close-out for that shift finds it ended).
  *
  * Safe to run repeatedly and concurrently with recording: every request is
  * idempotent (event ids, batch ids, point ids, Idempotency-Key). Callers
@@ -56,6 +61,7 @@ class SyncEngine(
     /** Caps one run so a huge backlog is spread over several runs. */
     private val maxBatchesPerRun: Int = 20,
     private val clock: () -> Instant = Instant::now,
+    private val financial: FinancialSync? = null,
 ) {
     private class Progress {
         var outcome = SyncOutcome.COMPLETE
@@ -66,9 +72,12 @@ class SyncEngine(
         var failed = 0
         var endedShift: Shift? = null
         var shiftEndError: String? = null
+        var entriesSent = 0
+        var entriesFailed = 0
 
         fun report(error: ApiError? = null) = SyncReport(
             outcome, eventsSent, accepted, duplicates, rejected, failed, endedShift, shiftEndError, error,
+            entriesSent, entriesFailed,
         )
     }
 
@@ -78,6 +87,10 @@ class SyncEngine(
             sendEvents(progress)
             sendPoints(progress)
             sendShiftEnd(progress)
+            financial?.run()?.let {
+                progress.entriesSent = it.sent
+                progress.entriesFailed = it.failed
+            }
         } catch (e: ApiError) {
             progress.outcome = if (e is ApiError.Unauthorized) SyncOutcome.AUTH_REQUIRED else SyncOutcome.RETRY
             return progress.report(e)

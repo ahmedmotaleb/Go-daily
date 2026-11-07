@@ -22,6 +22,7 @@ import kotlinx.coroutines.withContext
  */
 object ReceiptPhotos {
     private const val DIR = "receipts"
+    private const val PENDING_DIR = "pending-receipts"
 
     fun newCaptureUri(context: Context): Uri {
         val dir = File(context.cacheDir, DIR).apply { mkdirs() }
@@ -58,6 +59,25 @@ object ReceiptPhotos {
             if (prepared !== decoded) prepared.recycle()
             decoded.recycle()
         }
+    }
+
+    /**
+     * Prepares the photo and keeps it in the app's private storage until the
+     * queued entry it belongs to is sent (U45); returns the file's path.
+     */
+    suspend fun keep(context: Context, uri: Uri, entryId: String): String {
+        val bytes = prepare(context, uri)
+        return withContext(Dispatchers.IO) {
+            val dir = File(context.filesDir, PENDING_DIR).apply { mkdirs() }
+            val file = File(dir, "$entryId.jpg")
+            file.writeBytes(bytes)
+            file.absolutePath
+        }
+    }
+
+    /** A kept photo, or null when the file is gone. */
+    suspend fun read(path: String): ByteArray? = withContext(Dispatchers.IO) {
+        File(path).takeIf { it.isFile }?.readBytes()
     }
 
     /** Removes photos taken for receipts once they are uploaded or abandoned. */

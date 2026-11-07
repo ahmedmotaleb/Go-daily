@@ -6,7 +6,8 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
 /**
- * On-device queue for GPS points and device events awaiting upload.
+ * On-device queue for GPS points, device events and financial entries
+ * (fuel, close-outs) awaiting upload.
  *
  * Plain SQLite (no annotation processing) keeps the queue dependency-free.
  * Rows are deleted as soon as the server acknowledges them, so location
@@ -43,16 +44,40 @@ class QueueDatabase(context: Context) : SQLiteOpenHelper(context, NAME, null, VE
             )
             """.trimIndent(),
         )
+        createEntries(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Version 1 is the first schema. Future versions must migrate in
-        // place: the queue may hold points that were never uploaded.
+        // Migrate in place: the queue may hold points that were never uploaded.
+        if (oldVersion < 2) createEntries(db)
+    }
+
+    /** Version 2 (U45): fuel entries and close-outs saved before they are sent. */
+    private fun createEntries(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE entries (
+                client_id TEXT PRIMARY KEY,
+                kind TEXT NOT NULL,
+                shift_id TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                title TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                state TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                server_id TEXT,
+                receipt_path TEXT,
+                receipt_done INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX entries_open ON entries (state, created_at)")
     }
 
     companion object {
         private const val NAME = "godaily-queue.db"
-        private const val VERSION = 1
+        private const val VERSION = 2
     }
 }
 

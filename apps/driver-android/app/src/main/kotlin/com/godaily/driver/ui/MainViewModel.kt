@@ -20,7 +20,9 @@ import com.godaily.driver.core.api.StartShiftRequest
 import com.godaily.driver.core.cash.CloseoutCheck
 import com.godaily.driver.core.cash.CloseoutDraft
 import com.godaily.driver.core.cash.checkCloseout
+import com.godaily.driver.core.sync.EntryState
 import com.godaily.driver.core.sync.PendingShiftEnd
+import com.godaily.driver.core.sync.QueuedEntry
 import com.godaily.driver.core.text.DecimalInput
 import com.godaily.driver.core.text.OdometerInput
 import com.godaily.driver.core.text.normalizeDigits
@@ -34,7 +36,6 @@ import com.godaily.driver.tracking.TrackingMonitor
 import java.io.IOException
 import java.time.Instant
 import java.util.UUID
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -74,8 +75,8 @@ data class UiState(
     val closeoutShift: Shift? = null,
     val closeoutDraft: CloseoutDraft = CloseoutDraft(),
     val closeoutErrors: Map<String, String> = emptyMap(),
-    /** The last close-out attempt failed for lack of internet: offer ending the shift only. */
-    val closeoutOffline: Boolean = false,
+    /** Fuel entries and close-outs kept on the phone (U45), newest first. */
+    val entries: List<QueuedEntry> = emptyList(),
     val busy: Boolean = false,
     val refreshing: Boolean = false,
     /** Last refresh failed for lack of connectivity: data may be outdated. */
@@ -83,11 +84,7 @@ data class UiState(
     val message: String? = null,
     val dialogError: String? = null,
     val loginError: String? = null,
-    /** Fuel entry saved but its receipt photo did not upload: offer a retry. */
-    val receiptRetry: ReceiptRetry? = null,
 )
-
-data class ReceiptRetry(val entryId: String, val photo: Uri)
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val c = app.container
@@ -123,6 +120,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             c.syncer.lastReport.collect { report ->
                 if (report == null) return@collect
                 _state.update { it.copy(pendingEnd = hasPendingEnd()) }
+                loadEntries()
+                if (report.entriesSent > 0 || report.entriesFailed > 0) refresh()
                 when {
                     report.endedShift != null -> {
                         _state.update { it.copy(message = "تم إنهاء الوردية وإرسال بياناتها") }
@@ -138,6 +137,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun hasPendingEnd() = c.shiftState.pendingEndShiftId != null
+
+    private suspend fun loadEntries() {
+        val entries = c.entryQueue.all()
+        _state.update { it.copy(entries = entries) }
+    }
+
+    /** Hides an entry the server refused (the driver has seen the reason). */
+    fun dismissEntry(clientId: String) {
+        viewModelScope.launch {
+            val entry = c.entryQueue.all().firstOrNull { it.clientId == clientId }
+            if (entry?.state == EntryState.FAILED) c.entryQueue.remove(clientId)
+            loadEntries()
+        }
+    }
 
     /** Re-evaluates tracking health while the app is visible. */
     fun checkTracking() {
@@ -208,6 +221,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } finally {
                 _state.update { it.copy(refreshing = false, pendingEnd = hasPendingEnd()) }
+                loadEntries()
             }
         }
     }
@@ -257,7 +271,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 closeoutShift = shift,
                 closeoutErrors = emptyMap(),
-                closeoutOffline = false,
             )
         }
     }
@@ -292,11 +305,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * The close-out is saved on the phone first (U45) and sent under one id
+     * until the server accepts it, so a lost response, a closed app or days
+     * offline never record it twice. Offline, the shift ends on the phone now
+     * (tracking stops) and both are sent when the internet is back.
+     */
     fun submitCloseout(receipt: Uri?) {
         val st = _state.value
         val shift = st.closeoutShift ?: return
         val fixedEnd = if (shift.isActive) null else shift.endOdometerKm
-        val request = when (val check = checkCloseout(st.closeoutDraft, shift.startOdometerKm, fixedEnd)) {
+        val checked = when (val check = checkCloseout(st.closeoutDraft, shift.startOdometerKm, fixedEnd)) {
             is CloseoutCheck.Invalid -> {
                 _state.update { it.copy(closeoutErrors = check.errors) }
                 return
@@ -304,66 +323,72 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             is CloseoutCheck.Valid -> check.request
         }
         val key = closeoutKey ?: UUID.randomUUID().toString().also { closeoutKey = it }
+        val request = checked.copy(clientEntryId = key, recordedAt = Instant.now().toString())
         val app = getApplication<Application>()
         busy {
-            try {
-                // Send the shift's queued points first so the path is complete when it ends.
-                if (shift.isActive) c.syncer.syncNow()
-                val closeout = c.api.submitCloseout(shift.id, request, key)
-                closeoutKey = null
-                if (shift.isActive) {
-                    c.shiftState.clearActive()
-                    TrackingController.stop(app)
-                }
-                var message = "تم إرسال تقفيل اليوم — التتبع متوقف"
-                if (receipt != null) {
-                    try {
-                        c.api.uploadCloseoutReceipt(closeout.id, ReceiptPhotos.prepare(app, receipt))
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        message = "تم إرسال التقفيل، لكن تعذر رفع صورة الإيصال — سلّم الإيصال للمكتب"
-                    } finally {
-                        ReceiptPhotos.clearCache(app)
-                    }
-                }
-                _state.update {
-                    it.copy(
-                        closeoutShift = null,
-                        closeoutDraft = CloseoutDraft(),
-                        closeoutErrors = emptyMap(),
-                        closeoutOffline = false,
-                        active = if (shift.isActive) null else it.active,
-                        message = message,
-                    )
-                }
-                refresh()
-            } catch (e: ApiError.Network) {
-                _state.update {
-                    it.copy(
-                        closeoutOffline = true,
-                        closeoutErrors = mapOf("form" to "لا يوجد اتصال بالإنترنت — لم يُرسل التقفيل"),
-                    )
-                }
-            } catch (e: ApiError.Rejected) {
-                _state.update {
-                    it.copy(closeoutErrors = e.fieldErrors.ifEmpty { mapOf("form" to (e.message ?: "")) })
-                }
-            } catch (e: ApiError) {
-                _state.update { it.copy(closeoutErrors = mapOf("form" to (e.message ?: "تعذر الإرسال"))) }
+            val receiptPath = try {
+                receipt?.let { ReceiptPhotos.keep(app, it, key) }
+            } catch (e: IOException) {
+                _state.update { it.copy(closeoutErrors = mapOf("form" to (e.message ?: "تعذر قراءة صورة الإيصال"))) }
+                return@busy
             }
+            c.entryQueue.add(
+                QueuedEntry.closeout(
+                    shift.id,
+                    request,
+                    "تقفيل الوردية — ${shift.vehicle.plateNumber}",
+                    receiptPath,
+                    Instant.now(),
+                ),
+            )
+            // Also sends the shift's queued points first, so the path is complete.
+            c.syncer.syncNow()
+            val saved = c.entryQueue.all().firstOrNull { it.clientId == key }
+            when (saved?.state) {
+                EntryState.FAILED -> {
+                    // Refused as sent: nothing was recorded; the form stays open to correct it.
+                    c.entryQueue.remove(key)
+                    _state.update { it.copy(closeoutErrors = mapOf("form" to (saved?.lastError ?: "تعذر الإرسال"))) }
+                }
+                EntryState.SYNCED -> {
+                    closeoutKey = null
+                    if (shift.isActive) {
+                        c.shiftState.clearActive()
+                        TrackingController.stop(app)
+                    }
+                    ReceiptPhotos.clearCache(app)
+                    finishCloseout(
+                        shift,
+                        when {
+                            saved?.receiptPath != null && !saved.receiptDone ->
+                                "تم إرسال تقفيل اليوم — ستُرفع صورة الإيصال تلقائيًا"
+                            saved?.receiptPath != null && saved.lastError != null ->
+                                "تم إرسال التقفيل، لكن تعذر رفع صورة الإيصال — سلّم الإيصال للمكتب"
+                            else -> "تم إرسال تقفيل اليوم — التتبع متوقف"
+                        },
+                    )
+                    refresh()
+                }
+                else -> {
+                    closeoutKey = null
+                    if (shift.isActive) endLocally(shift, request.endOdometerKm, null)
+                    ReceiptPhotos.clearCache(app)
+                    SyncScheduler.syncSoon(app)
+                    finishCloseout(shift, "لا يوجد اتصال — حُفظ التقفيل على الهاتف وتوقف التتبع، وسيُرسل تلقائيًا عند عودة الإنترنت")
+                }
+            }
+            loadEntries()
         }
     }
 
-    /**
-     * Offline: stop tracking and queue the shift end now; the close-out is sent
-     * later from the home screen for that ended shift (the draft is kept).
-     */
-    fun endShiftWithoutCloseout() {
-        val st = _state.value
-        val shift = st.closeoutShift ?: return
-        _state.update { it.copy(closeoutShift = null, closeoutOffline = false, closeoutErrors = emptyMap()) }
-        if (shift.isActive) endShift(st.closeoutDraft.endOdometer, "")
+    private fun finishCloseout(shift: Shift, message: String) = _state.update {
+        it.copy(
+            closeoutShift = null,
+            closeoutDraft = CloseoutDraft(),
+            closeoutErrors = emptyMap(),
+            active = if (shift.isActive) null else it.active,
+            message = message,
+        )
     }
 
     fun openChangeOperation() {
@@ -378,11 +403,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun closeDialog() {
         if (_state.value.dialog == Dialog.RecordFuel) ReceiptPhotos.clearCache(getApplication<Application>())
-        _state.update { it.copy(dialog = null, dialogError = null, receiptRetry = null) }
+        _state.update { it.copy(dialog = null, dialogError = null) }
     }
 
     fun showDialogError(message: String) = _state.update { it.copy(dialogError = message) }
 
+    /**
+     * Saved on the phone first (U45) with its own id and the shift it belongs
+     * to, then sent; offline it is sent automatically later, even after the
+     * shift ended. A refusal leaves the form open with the server's reason.
+     */
     fun recordFuel(
         fuelTypeId: String?,
         quantity: String,
@@ -391,6 +421,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         paidByDriver: Boolean,
         receipt: Uri?,
     ) {
+        val shift = _state.value.active
+        if (shift == null) {
+            _state.update { it.copy(dialogError = "سجّل الوقود أثناء وردية نشطة") }
+            return
+        }
         if (fuelTypeId == null) {
             _state.update { it.copy(dialogError = "اختر نوع الوقود أو الزيت") }
             return
@@ -408,60 +443,59 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // Only a fix the tracking service recorded in the last two minutes:
         // where the phone is now (the station), never an older or guessed one.
         val position = TrackingMonitor.position.value?.freshAt(System.currentTimeMillis())
+        val request = FuelEntryRequest(
+            fuelTypeId = fuelTypeId,
+            quantity = (qty as DecimalInput.Valid).value,
+            totalAmount = (amount as DecimalInput.Valid).value,
+            odometerKm = (odometerKm as? OdometerInput.Valid)?.km,
+            paidBy = if (paidByDriver) "DRIVER" else "COMPANY",
+            latitude = position?.latitude,
+            longitude = position?.longitude,
+            locationAccuracyM = position?.accuracyM,
+            clientEntryId = key,
+            shiftId = shift.id,
+            recordedAt = Instant.now().toString(),
+        )
+        val name = _state.value.catalog?.fuelTypes?.firstOrNull { it.id == fuelTypeId }?.nameAr ?: "وقود"
+        val app = getApplication<Application>()
         busy {
-            val entry = try {
-                c.api.recordFuel(
-                    FuelEntryRequest(
-                        fuelTypeId = fuelTypeId,
-                        quantity = (qty as DecimalInput.Valid).value,
-                        totalAmount = (amount as DecimalInput.Valid).value,
-                        odometerKm = (odometerKm as? OdometerInput.Valid)?.km,
-                        paidBy = if (paidByDriver) "DRIVER" else "COMPANY",
-                        latitude = position?.latitude,
-                        longitude = position?.longitude,
-                        locationAccuracyM = position?.accuracyM,
-                    ),
-                    key,
-                )
-            } catch (e: ApiError) {
-                _state.update { it.copy(dialogError = e.message) }
+            val receiptPath = try {
+                receipt?.let { ReceiptPhotos.keep(app, it, key) }
+            } catch (e: IOException) {
+                _state.update { it.copy(dialogError = e.message ?: "تعذر قراءة صورة الإيصال") }
                 return@busy
             }
+            c.entryQueue.add(
+                QueuedEntry.fuel(request, "$name ${request.quantity} — ${request.totalAmount} ج.م", receiptPath, Instant.now()),
+            )
+            c.syncer.syncNow()
+            val saved = c.entryQueue.all().firstOrNull { it.clientId == key }
             fuelKey = null
-            if (receipt == null) {
-                closeDialog()
-                _state.update { it.copy(message = "تم تسجيل الوقود — بانتظار مراجعة الإدارة") }
-            } else {
-                uploadReceipt(entry.id, receipt)
+            when (saved?.state) {
+                EntryState.FAILED -> {
+                    c.entryQueue.remove(key)
+                    _state.update { it.copy(dialogError = saved?.lastError ?: "تعذر الإرسال") }
+                }
+                EntryState.SYNCED -> {
+                    closeDialog()
+                    val message = when {
+                        saved?.receiptPath != null && !saved.receiptDone ->
+                            "تم تسجيل الوقود — ستُرفع صورة الإيصال تلقائيًا"
+                        saved?.receiptPath != null && saved.lastError != null ->
+                            "تم تسجيل الوقود، لكن لم تُرفع صورة الإيصال: ${saved.lastError}"
+                        else -> "تم تسجيل الوقود — بانتظار مراجعة الإدارة"
+                    }
+                    _state.update { it.copy(message = message) }
+                }
+                else -> {
+                    closeDialog()
+                    SyncScheduler.syncSoon(app)
+                    _state.update {
+                        it.copy(message = "لا يوجد اتصال — حُفظ الوقود على الهاتف وسيُرسل تلقائيًا عند عودة الإنترنت")
+                    }
+                }
             }
-        }
-    }
-
-    /** The entry is saved; try its receipt photo again. */
-    fun retryReceipt() {
-        val retry = _state.value.receiptRetry ?: return
-        busy { uploadReceipt(retry.entryId, retry.photo) }
-    }
-
-    private suspend fun uploadReceipt(entryId: String, photo: Uri) {
-        try {
-            val result = c.api.uploadFuelReceipt(entryId, ReceiptPhotos.prepare(getApplication<Application>(), photo))
-            closeDialog()
-            val note = if (result.possibleDuplicate) " (الصورة مطابقة لإيصال سابق وستراجعها الإدارة)" else ""
-            _state.update { it.copy(message = "تم تسجيل الوقود وإرفاق الإيصال — بانتظار مراجعة الإدارة$note") }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            val reason = when (e) {
-                is ApiError -> e.message
-                is IOException -> e.message
-                else -> null
-            } ?: "تعذر رفع الصورة"
-            _state.update {
-                it.copy(
-                    receiptRetry = ReceiptRetry(entryId, photo),
-                    dialogError = "تم حفظ سجل الوقود، لكن لم تُرفع صورة الإيصال: $reason",
-                )
-            }
+            loadEntries()
         }
     }
 
@@ -522,13 +556,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         val km = (reading as OdometerInput.Valid).km
         val app = getApplication<Application>()
-        // Durable first, then the work context ends: tracking stops now even
-        // if the server cannot be reached yet. Queued points still upload.
-        c.shiftState.savePendingEnd(
-            PendingShiftEnd(shift.id, km, notes.trim().ifEmpty { null }, UUID.randomUUID().toString(), Instant.now()),
-        )
-        c.shiftState.clearActive()
-        TrackingController.stop(app)
+        endLocally(shift, km, notes.trim().ifEmpty { null })
         _state.update { it.copy(dialog = null, pendingEnd = true, message = "جارٍ إنهاء الوردية…") }
         viewModelScope.launch {
             val report = c.syncer.syncNow()
@@ -539,6 +567,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+    }
+
+    /**
+     * Durable first, then the work context ends: tracking stops now even if
+     * the server cannot be reached yet. Queued points still upload.
+     */
+    private fun endLocally(shift: Shift, km: Int, notes: String?) {
+        c.shiftState.savePendingEnd(PendingShiftEnd(shift.id, km, notes, UUID.randomUUID().toString(), Instant.now()))
+        c.shiftState.clearActive()
+        TrackingController.stop(getApplication())
+        _state.update { it.copy(pendingEnd = true) }
     }
 
     fun retrySync() {

@@ -554,7 +554,12 @@ def submit(
     shift = shifts_service.get_shift(db, shift_id, for_update=True)
     if driver_id is not None and shift.driver_id != driver_id:
         raise NotFoundError("الوردية غير موجودة")
-    if live_closeout(db, shift.id) is not None:
+    live = live_closeout(db, shift.id)
+    if live is not None:
+        # The phone resending a close-out it queued (lost response, long
+        # offline): the same entry, recognised by its client id (U45).
+        if data.client_entry_id and live.client_entry_id == data.client_entry_id:
+            return live
         raise ConflictError("تم إرسال تقفيل هذه الوردية بالفعل", code="already_closed_out")
     _validate(data)
     refs = _refs(db, data)
@@ -580,6 +585,8 @@ def submit(
         maintenance_amount=data.maintenance_amount,
         maintenance_note=(data.maintenance_note or "").strip() or None,
         notes=(data.notes or "").strip() or None,
+        client_entry_id=data.client_entry_id,
+        device_recorded_at=data.recorded_at,
         created_by_id=actor.id,
     )
     entry = _book_collection(

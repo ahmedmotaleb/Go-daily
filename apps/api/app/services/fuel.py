@@ -14,6 +14,7 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import Select, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import ConflictError, NotFoundError, field_error
@@ -29,6 +30,7 @@ from app.models.finance import (
     RecordSource,
     RecordStatus,
 )
+from app.models.shift import Shift, ShiftStatus
 from app.models.user import User
 from app.schemas.common import PageParams
 from app.schemas.finance import (
@@ -39,7 +41,7 @@ from app.schemas.finance import (
     FuelTypeUpdate,
     FuelUpdate,
 )
-from app.services import audit, driver_ledger
+from app.services import audit, clock, driver_ledger
 from app.services import finance_common as fc
 from app.services import shifts as shifts_service
 from app.services.common import apply_changes, paginate
@@ -225,36 +227,88 @@ def create(
     return tx
 
 
+def _driver_shift(db: Session, driver: Driver, shift_id: uuid.UUID | None) -> Shift:
+    """The shift a driver-app entry belongs to.
+
+    Queued entries name the shift they were recorded in, which may have ended
+    by the time the phone is back online; live entries use the active shift.
+    """
+    if shift_id is None:
+        shift = shifts_service.active_shift_for_driver(db, driver.id)
+        if shift is None:
+            raise ConflictError("سجّل الوقود أثناء وردية نشطة", code="no_active_shift")
+        return shift
+    shift = db.get(Shift, shift_id)
+    if shift is None or shift.driver_id != driver.id:
+        raise NotFoundError("الوردية غير موجودة")
+    if shift.status not in (ShiftStatus.ACTIVE, ShiftStatus.COMPLETED):
+        raise ConflictError(
+            "لا يمكن تسجيل وقود لوردية لم تبدأ أو ملغاة", code="invalid_shift_state"
+        )
+    return shift
+
+
+def _by_client_id(db: Session, driver: Driver, client_entry_id: str) -> FuelTransaction | None:
+    return db.scalar(
+        select(FuelTransaction).where(
+            FuelTransaction.driver_id == driver.id,
+            FuelTransaction.client_entry_id == client_entry_id,
+        )
+    )
+
+
 def create_from_driver(
     db: Session, *, actor: User, driver: Driver, data: DriverFuelCreate
 ) -> FuelTransaction:
-    """Driver-app entry: always for the driver's active shift, always SUBMITTED."""
-    shift = shifts_service.active_shift_for_driver(db, driver.id)
-    if shift is None:
-        raise ConflictError("سجّل الوقود أثناء وردية نشطة", code="no_active_shift")
-    tx = _new(
-        db,
-        actor=actor,
-        data=FuelCreate(
-            vehicle_id=shift.vehicle_id,
-            driver_id=driver.id,
-            shift_id=shift.id,
-            fuel_type_id=data.fuel_type_id,
-            quantity=data.quantity,
-            unit_price=data.unit_price,
-            total_amount=data.total_amount,
-            occurred_at=utcnow(),
-            odometer_km=data.odometer_km,
-            vendor=data.vendor,
-            payment_method=data.payment_method,
-            paid_by=data.paid_by,
-            notes=data.notes,
-        ),
-        source=RecordSource.DRIVER_APP,
+    """Driver-app entry for the driver's shift, always SUBMITTED.
+
+    An entry the phone already sent (same client entry id) is returned as is,
+    so a queued entry resent after a lost response never becomes two records.
+    """
+    if data.client_entry_id:
+        existing = _by_client_id(db, driver, data.client_entry_id)
+        if existing is not None:
+            return existing
+    shift = _driver_shift(db, driver, data.shift_id)
+    received = utcnow()
+    when = clock.entry_time(
+        data.recorded_at,
+        received_at=received,
+        window_start=shift.started_at,
+        window_end=shift.ended_at,
     )
-    tx.latitude = data.latitude
-    tx.longitude = data.longitude
-    tx.location_accuracy_m = data.location_accuracy_m
+    payload = FuelCreate(
+        vehicle_id=shift.vehicle_id,
+        driver_id=driver.id,
+        shift_id=shift.id,
+        fuel_type_id=data.fuel_type_id,
+        quantity=data.quantity,
+        unit_price=data.unit_price,
+        total_amount=data.total_amount,
+        occurred_at=when.at,
+        odometer_km=data.odometer_km,
+        vendor=data.vendor,
+        payment_method=data.payment_method,
+        paid_by=data.paid_by,
+        notes=data.notes,
+    )
+    try:
+        # One savepoint for the record and everything booked with it, so a
+        # concurrent duplicate leaves nothing behind.
+        with db.begin_nested():
+            tx = _new(db, actor=actor, data=payload, source=RecordSource.DRIVER_APP)
+            tx.latitude = data.latitude
+            tx.longitude = data.longitude
+            tx.location_accuracy_m = data.location_accuracy_m
+            tx.client_entry_id = data.client_entry_id
+            tx.device_recorded_at = data.recorded_at
+            db.flush()
+    except IntegrityError:
+        # The same entry arrived twice at once; the other request recorded it.
+        assert data.client_entry_id is not None  # noqa: S101
+        existing = _by_client_id(db, driver, data.client_entry_id)
+        assert existing is not None  # noqa: S101
+        return existing
     audit.record(
         db,
         action=f"{ENTITY}.created",
@@ -262,7 +316,11 @@ def create_from_driver(
         entity_type=ENTITY,
         entity_id=tx.id,
         changes=audit.diff({}, audit.snapshot(tx, AUDITED)),
-        details={"source": "DRIVER_APP"},
+        details={
+            "source": "DRIVER_APP",
+            "device_recorded_at": data.recorded_at,
+            "device_time_used": when.device_time_used,
+        },
     )
     db.commit()
     return tx

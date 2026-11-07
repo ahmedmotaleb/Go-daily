@@ -390,6 +390,33 @@ ExceptionRun (window, per-rule counts, per-rule errors)
 - **Failure isolation.** Each rule runs in a savepoint; a failing rule is logged and recorded on the run, and the others still run.
 - **Audit.** Every review step is an audit entry with the status change, the note and the resolution.
 
+### Offline financial entries (U45)
+
+- **Saved on the phone first.** The driver app saves each fuel entry and close-out in SQLite (`entries` table, queue database v2) before sending anything, with a client id generated once per entry. The same id is sent as the `client_entry_id` and as the `Idempotency-Key`.
+- **Never recorded twice on the server.**
+  - `fuel_transactions` and `shift_closeouts` store `client_entry_id`, unique per driver (migration 0018).
+  - A resend returns the record already stored, even after the 7-day idempotency-key retention.
+  - Concurrent duplicates hit the unique index and also return the stored record.
+- **Late arrivals.**
+  - Queued fuel names its shift (`shift_id`), so it is accepted after the shift ended. Live entries without a shift still need a running shift.
+  - The phone's time is stored as `device_recorded_at` (see U46).
+- **States on the phone:**
+  - بانتظار الإرسال (pending);
+  - sent (kept for a week, with a receipt still waiting to upload if any);
+  - لم يُقبل (failed): refused by the server, with its Arabic reason, never resent, and the driver can hide it.
+- **Sync order.**
+  - The core `FinancialSync` runs after points and a pending shift end, so an offline close-out finds its shift ended.
+  - A network or server error stops the run; a refusal fails only that entry.
+  - A receipt photo, kept in app-private storage, is uploaded only after its entry was accepted, then deleted.
+- **In the app.**
+  - Online, a refusal keeps the form open with the reason and nothing stays queued.
+  - Offline, a close-out also ends the shift on the phone (tracking stops) and both are sent later.
+  - The home card «محفوظ على الهاتف» lists what is waiting.
+- **Tests:**
+  - API: `test_offline_entries.py`;
+  - core JVM: `FinancialSyncTest`;
+  - device scenarios P25–P27.
+
 ### Investigation workspace (U28)
 
 - **Where:** the case page (`/exceptions/[id]`) is the workspace. Nothing new is stored.

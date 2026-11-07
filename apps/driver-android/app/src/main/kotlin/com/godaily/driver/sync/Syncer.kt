@@ -4,6 +4,7 @@ import com.godaily.driver.core.sync.SyncEngine
 import com.godaily.driver.core.sync.SyncOutcome
 import com.godaily.driver.core.sync.SyncReport
 import com.godaily.driver.data.ShiftStateStore
+import com.godaily.driver.data.SqliteFinancialQueue
 import com.godaily.driver.data.SqlitePointQueue
 import com.godaily.driver.security.KeystoreTokenStore
 import java.time.Duration
@@ -22,6 +23,7 @@ class Syncer(
     private val tokens: KeystoreTokenStore,
     private val shiftState: ShiftStateStore,
     private val points: SqlitePointQueue,
+    private val entries: SqliteFinancialQueue,
 ) {
     private val mutex = Mutex()
     private val _lastReport = MutableStateFlow<SyncReport?>(null)
@@ -39,6 +41,8 @@ class Syncer(
         report.shiftEndError?.let { shiftState.lastShiftEndError = it }
         if (report.error == null) shiftState.lastSyncAtMillis = System.currentTimeMillis()
         points.pruneFailed(Instant.now().minus(FAILED_RETENTION))
+        // Accepted entries are the server's from now on; keep them a week for the driver's list.
+        entries.pruneSynced(Instant.now().minus(FAILED_RETENTION))
         _lastReport.value = report
         return report
     }

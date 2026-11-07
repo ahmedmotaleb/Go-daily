@@ -37,6 +37,8 @@ UnitPrice = Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=3)]
 Odometer = Annotated[int, Field(ge=0, le=5_000_000)]
 Notes = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]
 ShortText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)]
+# Id the phone gives an entry it queued (a UUID in practice).
+ClientEntryId = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9-]{8,64}$")]
 Reference = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 Reason = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)]
 Code = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[A-Z][A-Z0-9_]{1,39}$")]
@@ -208,6 +210,11 @@ class DriverFuelCreate(BaseModel):
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     location_accuracy_m: float | None = Field(default=None, ge=0, le=100_000)
+    # Entries queued on the phone (U45): a stable id per entry so a resend is
+    # recognised, the shift it was recorded in, and the phone's clock then.
+    client_entry_id: ClientEntryId | None = None
+    shift_id: uuid.UUID | None = None
+    recorded_at: AwareDatetime | None = None
 
 
 # --- Expenses -------------------------------------------------------------------------

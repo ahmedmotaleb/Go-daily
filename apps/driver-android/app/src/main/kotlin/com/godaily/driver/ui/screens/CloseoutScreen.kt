@@ -209,21 +209,6 @@ fun CloseoutScreen(state: UiState, vm: MainViewModel) {
             Summary(totals.collection.toPlainString(), totals.expenses.toPlainString(), totals.net.toPlainString())
 
             FormError(errors["form"])
-            if (state.closeoutOffline && !ended) {
-                GdCard {
-                    Text(
-                        "يمكنك إنهاء الوردية الآن (يتوقف التتبع وتُحفظ البيانات على الهاتف) وإرسال التقفيل من الشاشة الرئيسية عند عودة الإنترنت.",
-                        fontSize = 13.sp,
-                        color = Brand.InkSoft,
-                    )
-                    SecondaryButton(
-                        "إنهاء الوردية فقط",
-                        vm::endShiftWithoutCloseout,
-                        modifier = Modifier.fillMaxWidth(),
-                        critical = true,
-                    )
-                }
-            }
         }
 
         Column(

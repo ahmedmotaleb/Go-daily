@@ -54,6 +54,9 @@ import com.godaily.driver.R
 import com.godaily.driver.core.api.Shift
 import com.godaily.driver.core.cash.collectionStatusLabel
 import com.godaily.driver.core.cash.egp
+import com.godaily.driver.core.sync.EntryKind
+import com.godaily.driver.core.sync.EntryState
+import com.godaily.driver.core.sync.QueuedEntry
 import com.godaily.driver.core.text.ArabicText
 import com.godaily.driver.ui.Dialog
 import com.godaily.driver.ui.MainViewModel
@@ -115,6 +118,8 @@ fun HomeScreen(state: UiState, vm: MainViewModel) {
                     Notice("لا يوجد اتصال — البيانات المعروضة قد لا تكون محدثة", Brand.WarningSoft, Brand.Warning)
                 }
                 if (state.pendingEnd) PendingEndCard(onRetry = vm::retrySync)
+                val kept = state.entries.filter { it.state != EntryState.SYNCED || !it.receiptDone }
+                if (kept.isNotEmpty()) SavedEntriesCard(kept, state.busy, vm)
                 if (active != null) {
                     ActiveShift(active, state, vm, now)
                 } else {
@@ -252,6 +257,56 @@ private fun VehicleCard(state: UiState, active: Shift?) {
                 },
                 Modifier.weight(1f),
             )
+        }
+    }
+}
+
+/**
+ * «محفوظ على الهاتف» (U45): fuel entries and close-outs saved on the phone
+ * and their state. Waiting ones are sent automatically; a refused one shows
+ * the office's reason and can be hidden.
+ */
+@Composable
+private fun SavedEntriesCard(entries: List<QueuedEntry>, busy: Boolean, vm: MainViewModel) {
+    GdCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            IconTile(R.drawable.ic_upload, Brand.WarningSoft, Brand.Warning, size = 44.dp, shape = RoundedCornerShape(14.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("محفوظ على الهاتف", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "يُرسل تلقائيًا عند عودة الإنترنت، مرة واحدة فقط.",
+                    fontSize = 13.sp,
+                    color = Brand.InkSoft,
+                )
+            }
+        }
+        entries.forEach { entry ->
+            val (label, tone) = when {
+                entry.state == EntryState.FAILED -> "لم يُقبل" to Brand.Danger
+                entry.state == EntryState.SYNCED -> "أُرسل — صورة الإيصال بانتظار الرفع" to Brand.Success
+                else -> "بانتظار الإرسال" to Brand.Warning
+            }
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Brand.Page)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(entry.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Text(formatTime(entry.createdAt), fontSize = 12.sp, color = Brand.InkMuted)
+                }
+                Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = tone)
+                if (entry.state == EntryState.FAILED) {
+                    entry.lastError?.let { Text(it, fontSize = 13.sp, color = Brand.InkSoft) }
+                    SecondaryButton("إخفاء", { vm.dismissEntry(entry.clientId) }, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        }
+        if (entries.any { it.state != EntryState.FAILED }) {
+            SecondaryButton("إعادة المحاولة الآن", vm::retrySync, modifier = Modifier.fillMaxWidth(), enabled = !busy)
         }
     }
 }
@@ -530,7 +585,9 @@ private fun TodayCloseouts(state: UiState, vm: MainViewModel) {
             }
         }
     }
-    val closed = account.days.mapNotNull { it.closeout?.shiftId }.toSet()
+    // Sent, or saved on the phone and waiting for the internet (shown in «محفوظ على الهاتف»).
+    val closed = account.days.mapNotNull { it.closeout?.shiftId }.toSet() +
+        state.entries.filter { it.kind == EntryKind.CLOSEOUT && it.state != EntryState.FAILED }.map { it.shiftId }
     state.today
         .filter { it.status == "COMPLETED" && it.id !in closed }
         .forEach { shift ->

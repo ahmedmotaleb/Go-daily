@@ -5,11 +5,15 @@ import android.os.Build
 import com.godaily.driver.core.api.DeviceInfo
 import com.godaily.driver.core.api.DriverApi
 import com.godaily.driver.core.api.OkHttpDriverApi
+import com.godaily.driver.core.sync.ApiFinancialSender
+import com.godaily.driver.core.sync.FinancialSync
 import com.godaily.driver.core.sync.SyncEngine
 import com.godaily.driver.data.QueueDatabase
 import com.godaily.driver.data.ShiftStateStore
 import com.godaily.driver.data.SqliteEventQueue
+import com.godaily.driver.data.SqliteFinancialQueue
 import com.godaily.driver.data.SqlitePointQueue
+import com.godaily.driver.receipt.ReceiptPhotos
 import com.godaily.driver.security.KeystoreTokenStore
 import com.godaily.driver.sync.Syncer
 import com.godaily.driver.tracking.DeviceState
@@ -32,6 +36,7 @@ class AppContainer(context: Context) {
     private val database = QueueDatabase(app)
     val pointQueue = SqlitePointQueue(database)
     val eventQueue = SqliteEventQueue(database)
+    val entryQueue = SqliteFinancialQueue(database)
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -53,8 +58,9 @@ class AppContainer(context: Context) {
         events = eventQueue,
         pendingEnd = shiftState,
         device = { DeviceInfo(appVersion = BuildConfig.VERSION_NAME, batteryLevel = device.power().batteryPercent) },
+        financial = FinancialSync(ApiFinancialSender(api), entryQueue) { path -> ReceiptPhotos.read(path) },
     )
 
-    val syncer = Syncer(engine, tokenStore, shiftState, pointQueue)
+    val syncer = Syncer(engine, tokenStore, shiftState, pointQueue, entryQueue)
     val health = TrackingHealth(this)
 }
