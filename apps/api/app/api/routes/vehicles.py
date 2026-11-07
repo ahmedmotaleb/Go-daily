@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel
 
 from app.api.deps import DbSession, require_permissions
 from app.api.presenters import assignment_out, vehicle_out
-from app.core.permissions import Permission
+from app.core.permissions import Permission, has_permission
+from app.core.time import local_today
 from app.models.fleet import OwnershipStatus, VehicleType
 from app.models.user import User
 from app.schemas.assignment import AssignmentOut
@@ -24,6 +28,7 @@ from app.schemas.fleet import (
     VehicleUpdate,
 )
 from app.services import assignments as assignments_service
+from app.services import vehicle_timeline
 from app.services import vehicles as vehicles_service
 
 router = APIRouter(tags=["fleet"])
@@ -143,3 +148,38 @@ def vehicle_assignments(
         page=params.page,
         page_size=params.page_size,
     )
+
+
+class TimelineItemOut(BaseModel):
+    at: datetime | None
+    kind: str
+    title: str
+    detail: str | None
+    amount: Decimal | None
+    status: str | None
+    until: datetime | None
+    link: str | None
+
+
+SECTION_PERMISSIONS = {
+    vehicle_timeline.Section.ASSIGNMENTS: Permission.ASSIGNMENTS_READ,
+    vehicle_timeline.Section.SHIFTS: Permission.SHIFTS_READ,
+    vehicle_timeline.Section.TRACKING: Permission.TRACKING_READ,
+    vehicle_timeline.Section.FUEL: Permission.FUEL_READ,
+    vehicle_timeline.Section.EXPENSES: Permission.EXPENSES_READ,
+    vehicle_timeline.Section.REVENUE: Permission.REVENUE_READ,
+    vehicle_timeline.Section.CASH: Permission.CASH_READ,
+    vehicle_timeline.Section.MAINTENANCE: Permission.MAINTENANCE_READ,
+    vehicle_timeline.Section.REVIEW: Permission.EXCEPTIONS_READ,
+}
+
+
+@router.get("/vehicles/{vehicle_id}/timeline", response_model=list[TimelineItemOut])
+def vehicle_day_timeline(
+    vehicle_id: uuid.UUID, user: Reader, db: DbSession, day: date | None = None
+) -> list[TimelineItemOut]:
+    """Vehicle daily timeline (U24); each kind only with its own read permission."""
+    vehicles_service.get_vehicle(db, vehicle_id)
+    sections = {s for s, p in SECTION_PERMISSIONS.items() if has_permission(user.role, p)}
+    items = vehicle_timeline.timeline(db, vehicle_id, day or local_today(), sections)
+    return [TimelineItemOut(**i.__dict__) for i in items]

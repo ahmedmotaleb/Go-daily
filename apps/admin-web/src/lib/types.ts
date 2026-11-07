@@ -505,3 +505,15 @@ export type ControlRow = {
 };
 
 export type ControlCenter = { generated_at: string; rows: ControlRow[] };
+
+/** Vehicle daily timeline item (U24). `at` is null for day-level records. */
+export type TimelineItem = {
+  at: string | null;
+  kind: string;
+  title: string;
+  detail: string | null;
+  amount: string | null;
+  status: string | null;
+  until: string | null;
+  link: string | null;
+};

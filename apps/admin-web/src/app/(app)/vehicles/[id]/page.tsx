@@ -12,11 +12,13 @@ import { TextField } from "@/components/forms/fields";
 import { VehicleSchedulesPanel } from "@/components/maintenance/schedules-panel";
 import { Alert } from "@/components/ui/alert";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { DayTimeline } from "@/components/vehicles/day-timeline";
 import { PageHeader } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
 import { can, requirePermission } from "@/lib/auth";
 import { formatNumber } from "@/lib/format";
-import type { Assignment, Driver, Page, Vehicle, VehicleType } from "@/lib/types";
+import { cairoToday, spDate } from "@/lib/search";
+import type { Assignment, Driver, Page, TimelineItem, Vehicle, VehicleType } from "@/lib/types";
 import { setVehicleActiveAction, updateVehicleAction } from "../actions";
 import { VehicleForm } from "../vehicle-form";
 
@@ -34,7 +36,8 @@ export default async function VehicleDetailPage({
 
   const canEdit = can(me, "vehicles:write");
   const canAssign = can(me, "assignments:write");
-  const [types, history, drivers] = await Promise.all([
+  const day = spDate(sp, "day") ?? cairoToday();
+  const [types, history, drivers, timeline] = await Promise.all([
     canEdit ? api.get<VehicleType[]>("/vehicle-types") : Promise.resolve([] as VehicleType[]),
     can(me, "assignments:read")
       ? api.get<Page<Assignment>>(`/vehicles/${id}/assignments`, { page_size: 50 })
@@ -42,6 +45,7 @@ export default async function VehicleDetailPage({
     canAssign && can(me, "drivers:read")
       ? api.get<Page<Driver>>("/drivers", { employment_status: "ACTIVE", page_size: 100 })
       : Promise.resolve(null),
+    api.get<TimelineItem[]>(`/vehicles/${id}/timeline`, { day }),
   ]);
 
   const driverChoices = (drivers?.items ?? []).map((d) => ({
@@ -105,6 +109,7 @@ export default async function VehicleDetailPage({
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          <DayTimeline vehicleId={vehicle.id} day={day} items={timeline} />
           <Card>
             <CardHeader title="بيانات المركبة" />
             <CardBody>

@@ -309,6 +309,18 @@ Tests: `test_expected_revenue.py`.
 
 Fields the user may not see are null. Rows with open cases or tracking problems come first. Tests: `test_control_center.py`.
 
+### Vehicle daily timeline (U24)
+
+`GET /vehicles/{id}/timeline?day=` (`app/services/vehicle_timeline.py`) and the «يوم السيارة» card on the vehicle page (day picker). It lists, in time order:
+
+- assignment changes, shift start and end, operation changes;
+- GPS gaps from the shift track;
+- loops and legs, and school runs;
+- fuel, expenses, revenue, close-outs and cash collected;
+- maintenance and review cases.
+
+Records dated only by day (revenue, maintenance without downtime) come first. Each kind appears only with its own read permission (`fuel:read`, `revenue:read`, `cash:read`, `tracking:read` for gaps…); hidden kinds are left out, not blanked. Tests: `test_vehicle_timeline.py`.
+
 ### Revenue reconciliation (U18)
 
 `app/services/revenue_reconciliation.py`, report «مطابقة الإيرادات» (`revenue_reconciliation`). For a range, per vehicle:
