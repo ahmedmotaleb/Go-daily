@@ -296,6 +296,23 @@ Tests: `test_fuel_plausibility.py`.
 
 Tests: `test_expected_revenue.py`.
 
+### Revenue reconciliation (U18)
+
+`app/services/revenue_reconciliation.py`, report «مطابقة الإيرادات» (`revenue_reconciliation`). For a range, per vehicle:
+
+- **Fixed route:** expected from detected loops (U10) vs recorded collection; pending collection is shown but not recognized.
+- **Ride-hailing:** only approved platform statements (income, commission, cash paid by riders, electronic payout), spread over the range by days. The revenue entry a statement generates is not counted again. Cash drivers declared on ride-hailing close-outs is compared with statement cash (difference above the larger of 50 EGP and 10 % → warning).
+- **Private trips, contracts and other entries:** contracts are spread over their service period by days. Approved corrections are listed as a count and a net change.
+- **Recognized revenue:** approved, net of platform commission.
+- **Completeness warnings** (reasons to review, not verdicts):
+  - fixed-route shortfall, loops without collection, no rate, and collection without loops;
+  - ride-hailing work days without a statement;
+  - approved statements without revenue, and ride-hailing revenue not backed by an approved statement;
+  - identical entries on the same day (possible duplicate);
+  - records waiting for review.
+
+Tests: `test_revenue_reconciliation.py`.
+
 ### Driver daily workflow: day-off, start photo, close-out, cash collection
 
 From the design «تطبيق السائق» and «تحصيل نقدية السائقين». Code: `app/services/day_offs.py`, `app/services/cash.py` (writes), `app/services/cash_views.py` (board and account), routes `driver_cash.py` and `cash.py`, migration 0017.

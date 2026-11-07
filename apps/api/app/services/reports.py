@@ -47,6 +47,7 @@ from app.services import (
     fuel_baselines,
     fuel_efficiency,
     profitability,
+    revenue_reconciliation,
     ride_hailing,
     route_events,
     tracking,
@@ -550,6 +551,73 @@ def expected_collection(db: Session, f: Filters) -> ReportResult:
             f"الحد المسموح = الأكبر بين {settings.collection_tolerance_amount} ج.م و"
             f"{settings.collection_tolerance_pct}% من المتوقع.",
             "«فرق تحصيل — مراجعة مطلوبة» سبب للمراجعة وليس حكمًا؛ قد يكون التحصيل لم يُسجل بعد.",
+        ],
+    )
+
+
+def revenue_reconciliation_report(db: Session, f: Filters) -> ReportResult:
+    """Every revenue source per vehicle, with completeness warnings (U18)."""
+    result = revenue_reconciliation.reconcile(db, f.date_from, f.date_to, vehicle_id=f.vehicle_id)
+    rows = [
+        {
+            "vehicle": v.vehicle_code,
+            "fixed_expected": v.fixed_expected,
+            "fixed_recorded": v.fixed_recorded,
+            "ride_income": v.ride_income,
+            "ride_commission": v.ride_commission,
+            "ride_cash": v.ride_cash,
+            "ride_electronic": v.ride_electronic,
+            "private_trips": v.private_trips,
+            "contracts": v.contracts,
+            "other": v.other,
+            "adjustments": v.adjustments_change if v.adjustments else None,
+            "recognized": v.recognized,
+            "pending": fc.money(v.pending_review + v.fixed_pending),
+            "warnings": "، ".join(f"{w.message} ({w.count})" for w in v.warnings) or "—",
+        }
+        for v in _limit(result.vehicles)
+    ]
+    counts = result.warnings
+    return ReportResult(
+        Table(
+            [
+                Column("vehicle", "المركبة"),
+                Column("fixed_expected", "خط ثابت: المتوقع", "money", total=True),
+                Column("fixed_recorded", "خط ثابت: المسجل", "money", total=True),
+                Column("ride_income", "نقل ذكي: الإجمالي", "money", total=True),
+                Column("ride_commission", "نقل ذكي: العمولة", "money", total=True),
+                Column("ride_cash", "نقل ذكي: نقدي", "money", total=True),
+                Column("ride_electronic", "نقل ذكي: إلكتروني", "money", total=True),
+                Column("private_trips", "رحلات خاصة", "money", total=True),
+                Column("contracts", "عقود مدارس/موظفين", "money", total=True),
+                Column("other", "أخرى", "money", total=True),
+                Column("adjustments", "صافي التصحيحات", "money", total=True),
+                Column("recognized", "الإيراد المعتمد (بعد العمولة)", "money", total=True),
+                Column("pending", "بانتظار المراجعة", "money", total=True),
+                Column("warnings", "تنبيهات الاكتمال"),
+            ],
+            rows,
+        ),
+        summaries=[
+            (
+                "تنبيهات الاكتمال",
+                Table(
+                    [
+                        Column("warning", "التنبيه"),
+                        Column("count", "العدد", "number", total=True),
+                    ],
+                    [
+                        {"warning": revenue_reconciliation.WARNING_AR[k], "count": n}
+                        for k, n in sorted(counts.items())
+                    ],
+                ),
+            )
+        ],
+        notes=[
+            "النقل الذكي يُحسب من كشوف المنصات المعتمدة فقط (كشف واحد = إيراد واحد) لمنع التكرار.",
+            "العقود والكشوف تُوزع على أيام فترة الخدمة؛ يظهر هنا نصيب الفترة المختارة فقط.",
+            "تحصيل الخط الثابت المسجل يشمل السجلات بانتظار المراجعة؛ الإيراد المعتمد لا يشملها.",
+            "التنبيهات أسباب للمراجعة وليست أحكامًا؛ قد تكون البيانات لم تُسجل بعد.",
         ],
     )
 
@@ -1255,6 +1323,15 @@ REPORTS: list[ReportDef] = [
         (P.REVENUE_READ,),
         ("vehicle", "route"),
         expected_collection,
+    ),
+    ReportDef(
+        "revenue_reconciliation",
+        "مطابقة الإيرادات",
+        "كل مصادر الإيراد لكل مركبة: الخط الثابت (متوقع/مسجل)، النقل الذكي "
+        "(إجمالي/عمولة/نقدي/إلكتروني)، الرحلات الخاصة والعقود والتصحيحات مع تنبيهات الاكتمال.",
+        (P.REVENUE_READ,),
+        ("vehicle",),
+        revenue_reconciliation_report,
     ),
     ReportDef(
         "fuel_efficiency",
