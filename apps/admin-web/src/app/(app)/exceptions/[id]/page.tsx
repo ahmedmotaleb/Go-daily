@@ -72,14 +72,32 @@ export default async function ExceptionPage({
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card>
-            <CardHeader
-              title="الأدلة"
-              description="الحقائق والحدود التي استخدمتها القاعدة، كما سُجلت"
-            />
-            <CardBody>
-              <Evidence evidence={e.evidence} />
+            <CardHeader title="لماذا ظهرت هذه الحالة" />
+            <CardBody className="space-y-4">
+              <div>
+                <h3 className="mb-1 text-xs font-semibold text-ink-muted">سبب القاعدة</h3>
+                <p className="text-sm">{e.reason}</p>
+              </div>
+              <div className="rounded-[var(--radius-control)] bg-[#eef4f0] px-3.5 py-3">
+                <h3 className="mb-1 text-xs font-semibold text-primary">ما المطلوب مراجعته</h3>
+                <p className="text-sm text-ink">{e.review_action}</p>
+              </div>
             </CardBody>
           </Card>
+          <Card>
+            <CardHeader title="القيم المرصودة" description="الحقائق كما سُجلت وقت الفحص" />
+            <CardBody>
+              <Evidence evidence={e.observed} />
+            </CardBody>
+          </Card>
+          {Object.keys(e.thresholds).length ? (
+            <Card>
+              <CardHeader title="الحدود المستخدمة" description="الإعدادات التي قورنت بها القيم" />
+              <CardBody>
+                <Evidence evidence={e.thresholds} />
+              </CardBody>
+            </Card>
+          ) : null}
           {canReview ? (
             <Card>
               <CardHeader

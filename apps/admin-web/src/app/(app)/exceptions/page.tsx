@@ -130,6 +130,9 @@ export default async function ExceptionsPage({ searchParams }: PageProps<"/excep
                   <span className="font-semibold">{r.title_ar}</span>
                   {r.enabled ? "" : " (معطلة)"} —{" "}
                   <span className="text-ink-muted">{r.description_ar}</span>
+                  {r.review_action ? (
+                    <span className="block text-xs text-primary">المراجعة: {r.review_action}</span>
+                  ) : null}
                 </li>
               ))}
             </ul>

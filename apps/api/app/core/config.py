@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     driver_start_photo_required: bool = True
     # The photo must have been uploaded at most this long before the start.
     driver_start_photo_max_age_minutes: int = 120
+    # Exception engine V2 (U26).
+    cash_handover_days: int = 2
+    exception_incomplete_legs: int = 2
     # School run verification (U12).
     school_late_grace_minutes: int = 10
     school_min_gps_coverage_pct: float = 60.0

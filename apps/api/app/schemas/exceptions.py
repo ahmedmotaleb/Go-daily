@@ -37,6 +37,11 @@ class ExceptionOut(BaseModel):
     resolution: str | None
     allowed_transitions: list[ExceptionStatus]
     updated_at: datetime
+    # U26: why the rule exists, what was observed vs its thresholds, and what to check.
+    reason: str
+    observed: dict[str, Any]
+    thresholds: dict[str, Any]
+    review_action: str
 
 
 class ReviewIn(BaseModel):
@@ -66,6 +71,7 @@ class RuleOut(BaseModel):
     description_ar: str
     label: ExceptionLabel
     enabled: bool
+    review_action: str
 
 
 class RulesOut(BaseModel):

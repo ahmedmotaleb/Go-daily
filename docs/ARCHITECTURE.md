@@ -390,6 +390,28 @@ ExceptionRun (window, per-rule counts, per-rule errors)
 - **Failure isolation.** Each rule runs in a savepoint; a failing rule is logged and recorded on the run, and the others still run.
 - **Audit.** Every review step is an audit entry with the status change, the note and the resolution.
 
+### Exception engine V2 (U26)
+
+- **27 rules:**
+  - GPS: disabled or permission withdrawn, gaps, mock locations, tracking interrupted, impossible jumps, late uploads, out-of-shift points, timestamp anomalies;
+  - operation: long stops, route deviation, outside area, movement between shifts;
+  - odometer: implausible reading, GPS vs odometer;
+  - fuel: consumption, far from the vehicle, outside the shift, plausibility;
+  - records: duplicate files and transactions, collection gap, inconsistent revenue.
+- **Five rules added in U26:**
+  - `ASSIGNMENT_OVERRIDE`: an office-started shift without a current assignment (assignment overlaps themselves are impossible by database constraint);
+  - `RIDE_HAILING_MISMATCH`: a statement period with no ride-hailing shifts, or trips without operating time;
+  - `CASH_NOT_HANDED_OVER`: close-out cash still owed after `CASH_HANDOVER_DAYS` (2), counted from the oldest unpaid close-out (first in, first out);
+  - `SCHOOL_RUN`: a run that was missed, incomplete or could not be verified;
+  - `INCOMPLETE_LEGS`: `EXCEPTION_INCOMPLETE_LEGS` (2) or more incomplete legs in one route session.
+- **Every case shows four things:**
+  - the rule's reason;
+  - the observed values;
+  - the thresholds they were compared with (evidence keys naming a threshold, tolerance, allowance or limit);
+  - a written review action per rule (`REVIEW_ACTIONS`, also listed with the rules).
+- **Review workflow:** unchanged (تحت المراجعة / تم التوضيح / تم التصحيح / مرفوض كإنذار / تم التصعيد, with notes required for closing).
+- **Tests:** `test_exception_engine_v2.py`.
+
 ### Notifications (Task 22)
 
 - One `Notification` row per recipient, generated from the current state by `python -m app.cli generate-notifications` (hourly) or the admin "refresh now" button: vehicle licence/insurance and driver licence expiry, maintenance overdue or due soon, tracking interrupted during an active shift (after a grace period), open exception cases of medium or high importance, and a daily summary of financial records waiting for review.

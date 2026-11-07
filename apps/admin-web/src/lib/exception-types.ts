@@ -30,6 +30,11 @@ export type OperationalException = {
   resolution: string | null;
   allowed_transitions: ExceptionStatus[];
   updated_at: string;
+  // U26: rule reason, values observed vs thresholds, and what the reviewer should check.
+  reason: string;
+  observed: Record<string, unknown>;
+  thresholds: Record<string, unknown>;
+  review_action: string;
 };
 
 export type ExceptionRun = {
@@ -50,6 +55,7 @@ export type ExceptionRules = {
     description_ar: string;
     label: ExceptionLabel;
     enabled: boolean;
+    review_action: string;
   }[];
   thresholds: Record<string, unknown>;
   last_run: ExceptionRun | null;

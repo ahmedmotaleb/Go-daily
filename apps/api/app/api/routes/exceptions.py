@@ -41,6 +41,7 @@ Reviewer = Annotated[User, Depends(require_permissions(Permission.EXCEPTIONS_REV
 
 def _out(e: OperationalException) -> ExceptionOut:
     info = exception_rules.RULE_INFO.get(e.rule_code)
+    why = exception_rules.explain(e.rule_code, e.evidence)
     return ExceptionOut(
         id=e.id,
         rule_code=e.rule_code,
@@ -66,6 +67,10 @@ def _out(e: OperationalException) -> ExceptionOut:
         resolution=e.resolution,
         allowed_transitions=sorted(exception_service.TRANSITIONS[e.status]),
         updated_at=e.updated_at,
+        reason=why.reason,
+        observed=why.observed,
+        thresholds=why.thresholds,
+        review_action=why.action,
     )
 
 
@@ -134,6 +139,7 @@ def rules(_: Reader, db: DbSession) -> RulesOut:
                 description_ar=info.description_ar,
                 label=info.label,
                 enabled=exception_rules.is_enabled(info.code, settings),
+                review_action=exception_rules.REVIEW_ACTIONS.get(info.code, ""),
             )
             for info, _ in exception_rules.RULES
         ],

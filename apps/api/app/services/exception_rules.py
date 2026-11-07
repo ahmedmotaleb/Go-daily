@@ -28,6 +28,7 @@ from app.core.config import Settings
 from app.core.geo import haversine_m, point_to_polyline_m
 from app.core.time import local_day_bounds_utc, local_today, to_local_date, utcnow, week_start
 from app.models.attachment import Attachment
+from app.models.cash import ShiftCloseout
 from app.models.exceptions import (
     ExceptionLabel,
     ExceptionSeverity,
@@ -41,6 +42,7 @@ from app.models.finance import (
     RecordStatus,
 )
 from app.models.operations import RouteDefinition
+from app.models.route_events import SchoolRun, SchoolRunStatus
 from app.models.shift import SessionStatus, Shift, ShiftStatus
 from app.models.tracking import (
     GpsPoint,
@@ -49,7 +51,7 @@ from app.models.tracking import (
     TrackingEvent,
     TrackingEventType,
 )
-from app.services import expected_revenue, fuel_baselines, ride_hailing
+from app.services import cash, expected_revenue, fuel_baselines, ride_hailing, route_events
 from app.services import finance_common as fc
 from app.services import fuel_plausibility as fuel_checks
 from app.services.odometer_reconciliation import ReconciliationStatus, reconcile
@@ -1678,6 +1680,239 @@ def collection_gap(ctx: Context) -> RuleResult:
     return result
 
 
+def assignment_override(ctx: Context) -> RuleResult:
+    """Shifts the office started on a vehicle the driver was not assigned to."""
+    result = RuleResult()
+    for shift in ctx.shifts():
+        key = f"ASSIGNMENT_OVERRIDE:{shift.id}"
+        result.scopes.add(key)
+        if not shift.assignment_override_reason or shift.started_at is None:
+            continue
+        result.candidates.append(
+            Candidate(
+                rule_code="ASSIGNMENT_OVERRIDE",
+                severity=LOW,
+                summary=(
+                    "بدء وردية على سيارة بدون تكليف ساري للسائق — السبب المسجل: "
+                    f"{shift.assignment_override_reason}"
+                ),
+                evidence={
+                    "reason": shift.assignment_override_reason,
+                    "started_at": _iso(shift.started_at),
+                    "source": shift.source.value,
+                },
+                occurred_at=shift.started_at,
+                dedupe_key=key,
+                vehicle_id=shift.vehicle_id,
+                driver_id=shift.driver_id,
+                shift_id=shift.id,
+                subject_type="shift",
+                subject_id=shift.id,
+            )
+        )
+    return result
+
+
+_RH_FLAGS = {"NO_SHIFTS", "TRIPS_WITHOUT_TIME"}
+
+
+def ride_hailing_mismatch(ctx: Context) -> RuleResult:
+    """Platform statements that the recorded ride-hailing activity does not support."""
+    result = RuleResult()
+    result.scopes |= ctx.active_keys("RIDE_HAILING_MISMATCH")
+    rows, _ = ride_hailing.reconciliation(
+        ctx.db, date_from=to_local_date(ctx.start), date_to=to_local_date(ctx.end)
+    )
+    for row in rows:
+        s = row.statement
+        if s is None:
+            continue
+        key = f"RIDE_HAILING_MISMATCH:{s.id}"
+        result.scopes.add(key)
+        flags = [(code, text) for code, text in row.flags if code in _RH_FLAGS]
+        if not flags:
+            continue
+        start = local_day_bounds_utc(s.period_start)[0]
+        result.candidates.append(
+            Candidate(
+                rule_code="RIDE_HAILING_MISMATCH",
+                severity=MEDIUM,
+                summary="كشف نقل ذكي لا يدعمه التشغيل المسجل: " + "، ".join(t for _, t in flags),
+                evidence={
+                    "period_start": s.period_start,
+                    "period_end": s.period_end,
+                    "trips_count": s.trips_count,
+                    "shifts_count": row.shifts_count,
+                    "ride_hailing_minutes": row.ride_hailing_minutes,
+                    "flags": [code for code, _ in flags],
+                },
+                occurred_at=start,
+                occurred_until=local_day_bounds_utc(s.period_end)[1],
+                dedupe_key=key,
+                vehicle_id=s.vehicle_id,
+                driver_id=s.driver_id,
+                subject_type="ride_hailing_statement",
+                subject_id=s.id,
+            )
+        )
+    return result
+
+
+def cash_not_handed_over(ctx: Context) -> RuleResult:
+    """Close-out cash still owed by a driver longer than allowed (oldest unpaid first)."""
+    days_allowed = ctx.settings.cash_handover_days
+    result = RuleResult()
+    result.scopes |= ctx.active_keys("CASH_NOT_HANDED_OVER")
+    drivers = set(
+        ctx.db.scalars(
+            select(ShiftCloseout.driver_id).where(ShiftCloseout.voided_at.is_(None)).distinct()
+        ).all()
+    )
+    views = cash.driver_views(ctx.db, drivers)
+    closeouts = {
+        c.id: c
+        for c in ctx.db.scalars(
+            select(ShiftCloseout).where(
+                ShiftCloseout.driver_id.in_(drivers), ShiftCloseout.voided_at.is_(None)
+            )
+        ).all()
+    }
+    today = local_today()
+    for driver_id, view in views.items():
+        key = f"CASH_NOT_HANDED_OVER:{driver_id}"
+        result.scopes.add(key)
+        if view.outstanding <= 0:
+            continue
+        # Oldest close-out not covered by everything collected so far (first in, first out).
+        paid = sum((x.amount for xs in view.collections.values() for x in xs), Decimal("0"))
+        mine = sorted(
+            (closeouts[cid] for cid in view.figures if cid in closeouts),
+            key=lambda c: (c.service_date, c.submitted_at),
+        )
+        running = Decimal("0")
+        oldest = None
+        for c in mine:
+            running += view.figures[c.id].net
+            if running > paid:
+                oldest = c
+                break
+        if oldest is None:
+            continue
+        waiting = (today - oldest.service_date).days
+        if waiting < days_allowed:
+            continue
+        result.candidates.append(
+            Candidate(
+                rule_code="CASH_NOT_HANDED_OVER",
+                severity=HIGH if waiting >= 7 else MEDIUM,
+                summary=(
+                    f"نقدية لم تُسلَّم: {view.outstanding:,.2f} ج.م على السائق منذ "
+                    f"{waiting} يوم — مراجعة مطلوبة"
+                ),
+                evidence={
+                    "outstanding": view.outstanding,
+                    "oldest_unpaid_day": oldest.service_date,
+                    "days_waiting": waiting,
+                    "threshold_days": days_allowed,
+                    "closeouts": len(mine),
+                },
+                occurred_at=local_day_bounds_utc(oldest.service_date)[0],
+                dedupe_key=key,
+                vehicle_id=oldest.vehicle_id,
+                driver_id=driver_id,
+                subject_type="driver",
+                subject_id=driver_id,
+            )
+        )
+    return result
+
+
+_SCHOOL_ATTENTION = {
+    SchoolRunStatus.INCOMPLETE: (MEDIUM, "دورة مدرسة غير مكتملة"),
+    SchoolRunStatus.MISSED: (HIGH, "دورة مدرسة فائتة"),
+    SchoolRunStatus.COMPLETED_UNVERIFIED: (LOW, "دورة مدرسة لا يكفي GPS للتحقق منها"),
+}
+
+
+def school_run_attention(ctx: Context) -> RuleResult:
+    """School runs that missed stops, were not run, or could not be verified (U12)."""
+    result = RuleResult()
+    runs = ctx.db.scalars(
+        select(SchoolRun).where(
+            SchoolRun.service_date >= to_local_date(ctx.start),
+            SchoolRun.service_date <= to_local_date(ctx.end),
+        )
+    ).all()
+    for run in runs:
+        key = f"SCHOOL_RUN:{run.id}"
+        result.scopes.add(key)
+        if run.status not in _SCHOOL_ATTENTION:
+            continue
+        severity, title = _SCHOOL_ATTENTION[run.status]
+        verification = run.verification or {}
+        result.candidates.append(
+            Candidate(
+                rule_code="SCHOOL_RUN",
+                severity=severity,
+                summary=f"{title}{f' — {run.label}' if run.label else ''} — مراجعة مطلوبة",
+                evidence={
+                    "status": run.status.value,
+                    "scheduled_start_at": _iso(run.scheduled_start_at),
+                    "actual_start_at": _iso(run.actual_start_at),
+                    **{k: v for k, v in verification.items() if not isinstance(v, (list, dict))},
+                },
+                occurred_at=run.scheduled_start_at,
+                occurred_until=run.scheduled_end_at,
+                dedupe_key=key,
+                vehicle_id=run.vehicle_id,
+                driver_id=run.driver_id,
+                subject_type="school_run",
+                subject_id=run.id,
+            )
+        )
+    return result
+
+
+def incomplete_legs(ctx: Context) -> RuleResult:
+    """Fixed-route sessions with repeated legs that left a terminal and came back (U09)."""
+    threshold = ctx.settings.exception_incomplete_legs
+    result = RuleResult()
+    sessions = [x for s in ctx.shifts() for x in s.sessions if x.route_id]
+    if not sessions:
+        return result
+    counts = route_events.counts(ctx.db, [x.id for x in sessions])
+    for x in sessions:
+        key = f"INCOMPLETE_LEGS:{x.id}"
+        result.scopes.add(key)
+        c = counts.get(x.id, {})
+        n = c.get("incomplete_legs", 0)
+        if n < threshold:
+            continue
+        result.candidates.append(
+            Candidate(
+                rule_code="INCOMPLETE_LEGS",
+                severity=MEDIUM if n >= threshold * 2 else LOW,
+                summary=f"{n} اتجاهات غير مكتملة على المسار — حالة غير معتادة",
+                evidence={
+                    "incomplete_legs": n,
+                    "completed_legs": c.get("legs", 0),
+                    "loops": c.get("loops", 0),
+                    "threshold": threshold,
+                    "route": x.route.name if x.route else None,
+                },
+                occurred_at=x.started_at,
+                occurred_until=x.ended_at,
+                dedupe_key=key,
+                vehicle_id=x.shift.vehicle_id,
+                driver_id=x.shift.driver_id,
+                shift_id=x.shift_id,
+                subject_type="operation_session",
+                subject_id=x.id,
+            )
+        )
+    return result
+
+
 Rule = Callable[[Context], RuleResult]
 
 RULES: list[tuple[RuleInfo, Rule]] = [
@@ -1881,6 +2116,51 @@ RULES: list[tuple[RuleInfo, Rule]] = [
         ),
         revenue_inconsistent,
     ),
+    (
+        RuleInfo(
+            "ASSIGNMENT_OVERRIDE",
+            "وردية بدون تكليف ساري",
+            "وردية بدأها المكتب على سيارة لم يكن السائق مكلفًا بها، مع السبب المسجل.",
+            U,
+        ),
+        assignment_override,
+    ),
+    (
+        RuleInfo(
+            "RIDE_HAILING_MISMATCH",
+            "كشف نقل ذكي لا يطابق التشغيل",
+            "كشف منصة بلا ورديات نقل ذكي مسجلة في فترته، أو برحلات بدون وقت تشغيل.",
+            R,
+        ),
+        ride_hailing_mismatch,
+    ),
+    (
+        RuleInfo(
+            "CASH_NOT_HANDED_OVER",
+            "نقدية لم تُسلَّم",
+            "مبلغ مستحق على السائق من تقفيل الورديات لم يُحصَّل بعد أكثر من الأيام المسموحة.",
+            R,
+        ),
+        cash_not_handed_over,
+    ),
+    (
+        RuleInfo(
+            "SCHOOL_RUN",
+            "دورة مدرسة تحتاج مراجعة",
+            "دورة مدرسة غير مكتملة أو فائتة، أو لا يكفي GPS للتحقق منها.",
+            R,
+        ),
+        school_run_attention,
+    ),
+    (
+        RuleInfo(
+            "INCOMPLETE_LEGS",
+            "اتجاهات غير مكتملة متكررة",
+            "تشغيل على خط ثابت تكررت فيه العودة إلى نفس المحطة دون إكمال الاتجاه.",
+            U,
+        ),
+        incomplete_legs,
+    ),
 ]
 
 RULE_INFO: dict[str, RuleInfo] = {info.code: info for info, _ in RULES}
@@ -1906,3 +2186,61 @@ __all__ = [
     "is_enabled",
     "parse_areas",
 ]
+
+
+# --- Explanation (U26) ---------------------------------------------------------------
+
+# What the reviewer should check for each rule. Neutral wording: a case is a
+# reason to look, never a finding.
+REVIEW_ACTIONS: dict[str, str] = {
+    "GPS_DISABLED": "راجع مع السائق سبب إيقاف الموقع أو سحب الإذن، وتأكد من إعدادات الهاتف.",
+    "GPS_GAP": "قارن الانقطاع بالمسافة والعداد والخط الزمني للوردية قبل أي استنتاج.",
+    "MOCK_LOCATION": "تحقق من تطبيقات الموقع على هاتف السائق ومن مصدر النقاط المعلّمة.",
+    "TRACKING_INTERRUPTED": "تحقق من إعادة تشغيل الهاتف أو توقف التطبيق، وراجع إعدادات البطارية.",
+    "IMPOSSIBLE_JUMP": "راجع النقاط حول القفزة على الخريطة؛ قد تكون إشارة ضعيفة أو خطأ في الجهاز.",
+    "LATE_GPS_UPLOAD": "تأكد من فترات انقطاع الإنترنت لدى السائق ومن سلامة طابور الرفع.",
+    "OUT_OF_SHIFT_GPS": "راجع أوقات بدء وإنهاء الوردية وتوقيت الهاتف.",
+    "TIMESTAMP_ANOMALY": "قارن وقت الهاتف بوقت الخادم وتحقق من إعدادات الوقت على الجهاز.",
+    "LONG_STOP": "راجع سبب التوقف مع السائق أو جدول التشغيل.",
+    "ROUTE_DEVIATION": "راجع المسار على الخريطة وسبب الابتعاد (تحويلة، ازدحام، طلب).",
+    "OUTSIDE_AREA": "تأكد من وجود تكليف أو رحلة خاصة خارج نطاق العمل.",
+    "MOVED_BETWEEN_SHIFTS": "راجع من استخدم السيارة بين الورديتين وقراءات العداد.",
+    "IMPLAUSIBLE_ODOMETER": "تحقق من صورة العداد والقراءة المسجلة وصححها إن لزم.",
+    "GPS_ODOMETER_MISMATCH": "قارن صورة العداد بالمسار وتغطية GPS، وصحح القراءة إن كانت خطأ.",
+    "FUEL_CONSUMPTION": "راجع سجلات الوقود والمسافة للأسبوع وحالة السيارة.",
+    "FUEL_FAR": "تحقق من مكان محطة الوقود وصورة الإيصال.",
+    "FUEL_OUTSIDE_SHIFT": "تأكد من توقيت التعبئة والإيصال وارتباطها بوردية.",
+    "FUEL_PLAUSIBILITY": "راجع الفحوصات التي لم تنجح وصورة الإيصال مع السائق.",
+    "DUPLICATE_FILE": "قارن السجلين المرتبطين بنفس الملف وتأكد أنهما ليسا نفس العملية.",
+    "DUPLICATE_TRANSACTION": "قارن السجلين وألغِ المكرر إن ثبت التكرار.",
+    "COLLECTION_GAP": "تأكد من تسجيل كل التحصيل لليوم ومن سعر المسار والدورات المكتشفة.",
+    "REVENUE_INCONSISTENT": "قارن الإيراد بساعات ومسافة التشغيل وكشف المنصة.",
+    "ASSIGNMENT_OVERRIDE": "تأكد من سبب التشغيل بدون تكليف وسجّل التكليف إن كان دائمًا.",
+    "RIDE_HAILING_MISMATCH": "قارن فترة الكشف بالورديات المسجلة وتأكد من بيانات الكشف.",
+    "CASH_NOT_HANDED_OVER": "تابع تسليم النقدية مع السائق وسجّل التحصيل عند الاستلام.",
+    "SCHOOL_RUN": "راجع المحطات والتوقيت مع السائق والمدرسة، وصحح نتيجة الدورة إن لزم.",
+    "INCOMPLETE_LEGS": "راجع المسار على الخريطة وتأكد من حدود المحطات (النطاق الجغرافي).",
+}
+
+_THRESHOLD_MARKERS = ("threshold", "tolerance", "allowed", "max_", "min_", "limit", "grace")
+
+
+@dataclass(frozen=True)
+class Explanation:
+    reason: str
+    observed: dict[str, Any]
+    thresholds: dict[str, Any]
+    action: str
+
+
+def explain(rule_code: str, evidence: dict[str, Any]) -> Explanation:
+    """Reason, observed values, thresholds and review action for one case."""
+    info = RULE_INFO.get(rule_code)
+    thresholds = {k: v for k, v in evidence.items() if any(m in k for m in _THRESHOLD_MARKERS)}
+    observed = {k: v for k, v in evidence.items() if k not in thresholds}
+    return Explanation(
+        reason=info.description_ar if info else rule_code,
+        observed=observed,
+        thresholds=thresholds,
+        action=REVIEW_ACTIONS.get(rule_code, "راجع الأدلة وسجّل نتيجة المراجعة."),
+    )
