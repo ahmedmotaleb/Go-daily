@@ -95,3 +95,35 @@ class TodayOverviewOut(BaseModel):
     other_expenses: MoneySplit | None
     week: list[DayFiguresOut]
     operations: list[OperationTodayOut]
+
+
+class ControlRowOut(BaseModel):
+    """One vehicle in a shift now (U23). Money and cases are null when not permitted."""
+
+    vehicle_id: uuid.UUID
+    vehicle_code: str
+    plate_number: str
+    driver_id: uuid.UUID
+    driver_name: str
+    shift_id: uuid.UUID
+    shift_started_at: datetime | None
+    operation: str | None
+    tracking_state: str
+    latitude: float | None
+    longitude: float | None
+    last_received_at: datetime | None
+    speed_kmh: float | None
+    loops: int
+    legs: int
+    school_done: int
+    school_planned: int
+    school_attention: int
+    collection_today: Decimal | None
+    fuel_today: Decimal | None
+    open_cases: int | None
+    case_titles: list[str]
+
+
+class ControlCenterOut(BaseModel):
+    generated_at: datetime
+    rows: list[ControlRowOut]

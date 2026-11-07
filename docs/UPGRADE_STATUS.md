@@ -32,7 +32,7 @@ Tracks [`GO_DAILY_UPGRADES_MASTER.md`](GO_DAILY_UPGRADES_MASTER.md). Work happen
 | U20 — Driver Settlement Automation | NOT STARTED | — | — | Phase C. |
 | U21 — Cash Accountability | CODE COMPLETE | f429d36 | API `test_driver_cash.py` (9) | Phase C, delivered early with the design's driver workflows: per close-out the expected cash (collection less non-rejected expenses), what the manager actually received (time, receiver, note), the remainder carried over, and the status لم يُسجَّل / جزئي / تم التحصيل; voids need a reason. Evidence: start photo and fuel receipts. Needs real-world use in the pilot. |
 | U22 — Vehicle Profitability V2 | NOT STARTED | — | — | Phase C. |
-| U23 — Operations Control Center | NOT STARTED | — | — | Phase A. |
+| U23 — Operations Control Center | CODE COMPLETE | (this commit) | API `test_control_center.py` (1); web build | Phase A. `/control` page and `GET /dashboard/control`: per vehicle in a shift — driver, operation, tracking state and last received position, shift start, loops/legs, school runs today, collection and fuel today, open review cases (first titles). Never shows a position that did not arrive; money and cases only with their permissions. Checked in the browser with a real shift at 1440 and 390 px. |
 | U24 — Vehicle Daily Timeline | NOT STARTED | — | — | Phase A. |
 | U25 — Driver Daily Timeline | NOT STARTED | — | — | Phase C. |
 | U26 — Exception Engine V2 | NOT STARTED | — | — | Phase A. |

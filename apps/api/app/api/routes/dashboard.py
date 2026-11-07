@@ -11,14 +11,16 @@ from app.core.permissions import Permission, has_permission
 from app.core.time import utcnow
 from app.models.user import User
 from app.schemas.dashboard import (
+    ControlCenterOut,
+    ControlRowOut,
     DashboardSummary,
     DayFiguresOut,
     MoneySplit,
     OperationTodayOut,
     TodayOverviewOut,
 )
+from app.services import control_center, dashboard_today
 from app.services import dashboard as dashboard_service
-from app.services import dashboard_today
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -68,5 +70,30 @@ def dashboard_today_overview(
                 collection=op.collection,
             )
             for op in o.operations
+        ],
+    )
+
+
+@router.get("/control", response_model=ControlCenterOut)
+def control_center_rows(
+    user: Annotated[User, Depends(require_permissions(Permission.TRACKING_READ))],
+    db: DbSession,
+) -> ControlCenterOut:
+    """Operations control center (U23): every vehicle in a shift, from recorded data only."""
+    can_cases = has_permission(user.role, Permission.EXCEPTIONS_READ)
+    rows = control_center.rows(
+        db,
+        with_money=has_permission(user.role, Permission.REVENUE_READ),
+        with_fuel=has_permission(user.role, Permission.FUEL_READ),
+        with_cases=can_cases,
+    )
+    return ControlCenterOut(
+        generated_at=utcnow(),
+        rows=[
+            ControlRowOut(
+                **{k: v for k, v in r.__dict__.items() if k != "open_cases"},
+                open_cases=r.open_cases if can_cases else None,
+            )
+            for r in rows
         ],
     )

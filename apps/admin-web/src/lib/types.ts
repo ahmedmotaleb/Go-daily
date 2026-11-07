@@ -477,3 +477,31 @@ export type TodayOverview = {
     collection: string | null;
   }[];
 };
+
+/** Operations control center row (U23). Money and cases are null without permission. */
+export type ControlRow = {
+  vehicle_id: string;
+  vehicle_code: string;
+  plate_number: string;
+  driver_id: string;
+  driver_name: string;
+  shift_id: string;
+  shift_started_at: string | null;
+  operation: string | null;
+  tracking_state: TrackingState;
+  latitude: number | null;
+  longitude: number | null;
+  last_received_at: string | null;
+  speed_kmh: number | null;
+  loops: number;
+  legs: number;
+  school_done: number;
+  school_planned: number;
+  school_attention: number;
+  collection_today: string | null;
+  fuel_today: string | null;
+  open_cases: number | null;
+  case_titles: string[];
+};
+
+export type ControlCenter = { generated_at: string; rows: ControlRow[] };

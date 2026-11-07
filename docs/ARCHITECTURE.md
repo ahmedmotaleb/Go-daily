@@ -296,6 +296,19 @@ Tests: `test_fuel_plausibility.py`.
 
 Tests: `test_expected_revenue.py`.
 
+### Operations control center (U23)
+
+`GET /dashboard/control` (`tracking:read`; `app/services/control_center.py`) and the admin page `/control` (auto-refresh every 30 s). Each vehicle in a shift has one row showing:
+
+- driver and current operation;
+- tracking state and last received position (none shown if nothing arrived);
+- shift start;
+- loops and legs, and today's school runs (done / planned / needing review);
+- today's collection (`revenue:read`) and fuel (`fuel:read`), including pending records;
+- open review cases (`exceptions:read`).
+
+Fields the user may not see are null. Rows with open cases or tracking problems come first. Tests: `test_control_center.py`.
+
 ### Revenue reconciliation (U18)
 
 `app/services/revenue_reconciliation.py`, report «مطابقة الإيرادات» (`revenue_reconciliation`). For a range, per vehicle:
