@@ -1713,6 +1713,55 @@ def assignment_override(ctx: Context) -> RuleResult:
     return result
 
 
+def entry_device_time(ctx: Context) -> RuleResult:
+    """Driver-app fuel entries whose phone time could not be used (U46).
+
+    A queued entry keeps the phone's time as sent; it becomes the entry's
+    time only when plausible (inside its shift, not in the future). When it
+    was not, the server's receive time was used and this asks for a look:
+    the phone's clock may be wrong, or the entry belongs elsewhere.
+    """
+    result = RuleResult()
+    rows = ctx.db.scalars(
+        select(FuelTransaction).where(
+            FuelTransaction.device_recorded_at.is_not(None),
+            FuelTransaction.created_at >= ctx.start,
+            FuelTransaction.created_at < ctx.end,
+        )
+    ).all()
+    for tx in rows:
+        key = f"ENTRY_DEVICE_TIME:{tx.id}"
+        result.scopes.add(key)
+        assert tx.device_recorded_at is not None  # noqa: S101
+        offset = (tx.device_recorded_at - tx.occurred_at).total_seconds()
+        if abs(offset) < 60:
+            continue
+        result.candidates.append(
+            Candidate(
+                rule_code="ENTRY_DEVICE_TIME",
+                severity=LOW,
+                summary=(
+                    "وقت الهاتف لقيد الوقود غير معقول (خارج الوردية أو في المستقبل) — "
+                    "استُخدم وقت استلام الخادم"
+                ),
+                evidence={
+                    "device_time": _iso(tx.device_recorded_at),
+                    "time_used": _iso(tx.occurred_at),
+                    "difference_minutes": round(offset / 60, 1),
+                    "amount": tx.total_amount,
+                },
+                occurred_at=tx.occurred_at,
+                dedupe_key=key,
+                vehicle_id=tx.vehicle_id,
+                driver_id=tx.driver_id,
+                shift_id=tx.shift_id,
+                subject_type="fuel_transaction",
+                subject_id=tx.id,
+            )
+        )
+    return result
+
+
 _RH_FLAGS = {"NO_SHIFTS", "TRIPS_WITHOUT_TIME"}
 
 
@@ -2161,6 +2210,15 @@ RULES: list[tuple[RuleInfo, Rule]] = [
         ),
         incomplete_legs,
     ),
+    (
+        RuleInfo(
+            "ENTRY_DEVICE_TIME",
+            "وقت هاتف غير معقول لقيد",
+            "قيد وقود من التطبيق بوقت هاتف خارج ورديته أو في المستقبل؛ استُخدم وقت الاستلام.",
+            U,
+        ),
+        entry_device_time,
+    ),
 ]
 
 RULE_INFO: dict[str, RuleInfo] = {info.code: info for info, _ in RULES}
@@ -2219,6 +2277,7 @@ REVIEW_ACTIONS: dict[str, str] = {
     "RIDE_HAILING_MISMATCH": "قارن فترة الكشف بالورديات المسجلة وتأكد من بيانات الكشف.",
     "CASH_NOT_HANDED_OVER": "تابع تسليم النقدية مع السائق وسجّل التحصيل عند الاستلام.",
     "SCHOOL_RUN": "راجع المحطات والتوقيت مع السائق والمدرسة، وصحح نتيجة الدورة إن لزم.",
+    "ENTRY_DEVICE_TIME": "قارن وقت الهاتف بوقت الاستلام والإيصال، وصحح وقت القيد إن لزم.",
     "INCOMPLETE_LEGS": "راجع المسار على الخريطة وتأكد من حدود المحطات (النطاق الجغرافي).",
 }
 

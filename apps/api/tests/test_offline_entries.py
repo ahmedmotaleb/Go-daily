@@ -142,3 +142,25 @@ def test_entry_time_rules() -> None:
     assert at(start - timedelta(hours=1)).device_time_used is False  # before the shift
     assert at(end + timedelta(minutes=30)).device_time_used is False  # after the shift
     assert at(end + timedelta(minutes=5)).device_time_used is True  # within tolerance
+
+
+def test_unused_phone_times_are_flagged_for_review(client: TestClient, db: Session) -> None:
+    from app.services import exception_rules as rules
+    from tests.test_exceptions import codes, ctx_around
+
+    _, _, h, vehicle = make_driver_account(client, db)
+    shift = _start(client, h, vehicle)
+    good, bad = str(uuid.uuid4()), str(uuid.uuid4())
+    for cid, at in ((good, utcnow()), (bad, utcnow() + timedelta(hours=3))):
+        res = client.post(
+            f"{DA}/fuel",
+            headers=h,
+            json=_fuel(db, client_entry_id=cid, shift_id=shift["id"], recorded_at=at.isoformat()),
+        )
+        assert res.status_code == 201, res.text
+    found = rules.entry_device_time(ctx_around(db))
+    assert codes(found) == ["ENTRY_DEVICE_TIME"]
+    case = found.candidates[0]
+    assert case.evidence["difference_minutes"] > 170
+    bad_tx = db.scalar(select(FuelTransaction).where(FuelTransaction.client_entry_id == bad))
+    assert bad_tx is not None and case.subject_id == bad_tx.id

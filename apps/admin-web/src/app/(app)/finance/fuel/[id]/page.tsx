@@ -94,6 +94,31 @@ export default async function FuelDetailPage({
                 {tx.odometer_km === null ? "—" : `${formatNumber(tx.odometer_km)} كم`}
               </DetailRow>
               <DetailRow label="المحطة / المورد">{tx.vendor ?? "—"}</DetailRow>
+              {tx.device_recorded_at ? (
+                <DetailRow label="الوقت">
+                  <div className="space-y-1 text-sm">
+                    <div>
+                      وقت الهاتف عند التسجيل:{" "}
+                      <span className="ltr-nums">{formatDateTime(tx.device_recorded_at)}</span>
+                    </div>
+                    {tx.created_at ? (
+                      <div>
+                        وصل للخادم:{" "}
+                        <span className="ltr-nums">{formatDateTime(tx.created_at)}</span>
+                      </div>
+                    ) : null}
+                    {Math.abs(
+                      new Date(tx.device_recorded_at).getTime() -
+                        new Date(tx.occurred_at).getTime(),
+                    ) >= 60_000 ? (
+                      <div className="text-warning">
+                        وقت الهاتف خارج الوردية أو في المستقبل، فاستُخدم وقت الاستلام — مراجعة
+                        مطلوبة
+                      </div>
+                    ) : null}
+                  </div>
+                </DetailRow>
+              ) : null}
               <DetailRow label="الدفع">
                 {PAYMENT_METHOD_LABELS[tx.payment_method]} · {PAID_BY_LABELS[tx.paid_by]}
               </DetailRow>

@@ -179,6 +179,9 @@ class FuelOut(ReviewOut):
     latitude: float | None
     longitude: float | None
     location_accuracy_m: float | None
+    # The phone's clock when the driver saved the entry (U46); occurred_at
+    # is it when plausible, otherwise the server's receive time.
+    device_recorded_at: datetime | None = None
 
 
 class FuelTypeTotal(BaseModel):

@@ -390,6 +390,21 @@ ExceptionRun (window, per-rule counts, per-rule errors)
 - **Failure isolation.** Each rule runs in a savepoint; a failing rule is logged and recorded on the run, and the others still run.
 - **Audit.** Every review step is an audit entry with the status change, the note and the resolution.
 
+### Clock integrity (U46)
+
+- **Server time decides the workflow.** Shift start and end, operation changes, close-out submission, collections and reviews all use the server's clock; the app cannot send these times.
+- **Both times are kept where the phone's time matters:**
+  - GPS points: `recorded_at` (phone) and `received_at` (server);
+  - device events: `occurred_at` (phone) and `received_at`;
+  - upload batches: `device_time`, the phone's clock at each attempt;
+  - fuel entries and close-outs: `device_recorded_at` (phone, kept exactly as sent) beside `created_at` / `submitted_at`.
+- **Fuel entry time.** The phone's time becomes the entry's time only when plausible: not more than 5 minutes in the future and within its shift (±10 minutes). Otherwise the server's receive time is used. Nothing is adjusted silently.
+- **Detection:**
+  - `TIMESTAMP_ANOMALY`: a phone clock off by `EXCEPTION_CLOCK_SKEW_MINUTES` (5), future points, or batches going back in time;
+  - new `ENTRY_DEVICE_TIME` (حالة غير معتادة): a fuel entry whose phone time could not be used. The fuel record shows the phone time, the server receive time and a review note.
+- **Display:** times are shown in Africa/Cairo.
+- **Tests:** `test_offline_entries.py` (time rules and the new rule); the existing timestamp tests.
+
 ### Offline financial entries (U45)
 
 - **Saved on the phone first.** The driver app saves each fuel entry and close-out in SQLite (`entries` table, queue database v2) before sending anything, with a client id generated once per entry. The same id is sent as the `client_entry_id` and as the `Idempotency-Key`.

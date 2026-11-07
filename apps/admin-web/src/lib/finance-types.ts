@@ -72,6 +72,8 @@ export type FuelTx = Reviewable & {
   latitude: number | null;
   longitude: number | null;
   location_accuracy_m: number | null;
+  /** Phone clock when the driver saved it (driver-app entries). */
+  device_recorded_at?: string | null;
 };
 
 export type FuelSummary = {

@@ -102,6 +102,7 @@ def fuel_outs(db: Session, records: Sequence[FuelTransaction]) -> list[FuelOut]:
             vendor=r.vendor,
             payment_method=r.payment_method,
             paid_by=r.paid_by,
+            device_recorded_at=r.device_recorded_at,
             latitude=r.latitude,
             longitude=r.longitude,
             location_accuracy_m=r.location_accuracy_m,
