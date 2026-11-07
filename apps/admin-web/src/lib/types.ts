@@ -517,3 +517,44 @@ export type TimelineItem = {
   until: string | null;
   link: string | null;
 };
+
+/** Pilot command center and daily close (U50/U51). */
+export type PilotCheckState = "OK" | "MISSING" | "REVIEW" | "NOT_APPLICABLE";
+export type PilotVerdict = "COMPLETE" | "INCOMPLETE" | "NEEDS_REVIEW";
+
+export type PilotShift = {
+  shift_id: string;
+  driver_name: string;
+  status: string;
+  started_at: string | null;
+  ended_at: string | null;
+  operations: string[];
+  gps_km: number;
+  odometer_km: number | null;
+  gps_grade: string;
+  odometer_status: string;
+  loops: number;
+  legs: number;
+};
+
+export type PilotDay = {
+  vehicle_id: string;
+  vehicle_code: string;
+  plate_number: string;
+  day: string;
+  drivers: string[];
+  day_off: boolean;
+  shifts: PilotShift[];
+  tracking_state: string | null;
+  last_received_at: string | null;
+  fuel: string;
+  expenses: string;
+  revenue: string;
+  closeout_net: string;
+  collected: string;
+  remaining: string;
+  open_cases: { id: string; summary: string }[];
+  checks: { code: string; label: string; state: PilotCheckState; detail: string }[];
+  verdict: PilotVerdict;
+  verdict_ar: string;
+};

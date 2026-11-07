@@ -20,6 +20,7 @@ from app.api.routes import (
     maintenance,
     notifications,
     operations,
+    pilot,
     profitability,
     reports,
     revenue,
@@ -58,3 +59,4 @@ api_router.include_router(maintenance.router)
 api_router.include_router(exceptions.router)
 api_router.include_router(notifications.router)
 api_router.include_router(reports.router)
+api_router.include_router(pilot.router)

@@ -39,6 +39,7 @@ VEHICLE_AUDITED = (
     "license_expiry",
     "insurance_expiry",
     "notes",
+    "pilot",
 )
 
 ExpiryFilter = Literal["expired", "expiring", "attention"]
@@ -216,7 +217,7 @@ def update_vehicle(
     reason = fields.pop("odometer_correction_reason", None)
 
     # Required columns cannot be cleared; optional ones may be set to null.
-    for key in ("internal_code", "plate_number", "vehicle_type_id", "ownership_status"):
+    for key in ("internal_code", "plate_number", "vehicle_type_id", "ownership_status", "pilot"):
         if key in fields and fields[key] is None:
             fields.pop(key)
 

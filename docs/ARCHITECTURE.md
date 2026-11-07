@@ -390,6 +390,24 @@ ExceptionRun (window, per-rule counts, per-rule errors)
 - **Failure isolation.** Each rule runs in a savepoint; a failing rule is logged and recorded on the run, and the others still run.
 - **Audit.** Every review step is an audit entry with the status change, the note and the resolution.
 
+### Pilot command center and daily close (U50/U51)
+
+- **Pilot vehicles.** A vehicle joins the pilot through `vehicles.pilot` (migration 0019). It is set from the page or by `PATCH /vehicles/{id}`, and the change is audited.
+- **Page.** **التجربة الميدانية** (`/pilot`, `GET /pilot?day=`) shows one card per pilot vehicle for a Cairo day:
+  - drivers and shifts, operations, loops and legs;
+  - tracking state (today only);
+  - GPS and odometer distance and GPS quality;
+  - fuel, expenses and revenue (submitted and approved);
+  - close-out net, cash collected and what is still with the driver;
+  - open review cases.
+- **Daily close** (`app/services/pilot.py`) checks shift ended (or day-off), GPS synced and quality, end odometer vs GPS, operations recorded (and loops on a fixed route), fuel, expenses, revenue and close-out, cash handed over, and open cases.
+  - Each check is OK, MISSING, REVIEW or not applicable.
+  - Verdict: any MISSING gives «بيانات ناقصة»; otherwise any REVIEW gives «يحتاج مراجعة»; otherwise «اليوم مكتمل».
+  - Collections recorded without naming a close-out still count, up to what the driver owes.
+- **Access:** needs tracking, revenue and cash read. Adding or removing vehicles needs `vehicles:write`.
+- **Pilot acceptance (U52):** `docs/PILOT_ACCEPTANCE_REPORT.md` holds the criteria and the evidence each needs. It is filled during the real pilot.
+- **Tests:** `test_pilot.py`.
+
 ### Clock integrity (U46)
 
 - **Server time decides the workflow.** Shift start and end, operation changes, close-out submission, collections and reviews all use the server's clock; the app cannot send these times.

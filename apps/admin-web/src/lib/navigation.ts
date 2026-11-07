@@ -10,6 +10,7 @@ export type NavIcon =
   | "shifts"
   | "map"
   | "control"
+  | "pilot"
   | "collections"
   | "handover"
   | "rides"
@@ -36,6 +37,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "لوحة التشغيل", icon: "dashboard" },
   { href: "/tracking", label: "التتبع المباشر", icon: "map", permission: "tracking:read" },
   { href: "/control", label: "مركز التحكم", icon: "control", permission: "tracking:read" },
+  { href: "/pilot", label: "التجربة الميدانية", icon: "pilot", permission: "cash:read" },
   { href: "/vehicles", label: "السيارات", icon: "fleet", permission: "vehicles:read" },
   { href: "/drivers", label: "السائقون", icon: "drivers", permission: "drivers:read" },
   { href: "/shifts", label: "الورديات", icon: "shifts", permission: "shifts:read" },

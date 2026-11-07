@@ -67,6 +67,7 @@ def vehicle_out(v: Vehicle, current: list[DriverVehicleAssignment] | None = None
         color=v.color,
         ownership_status=v.ownership_status,
         is_active=v.is_active,
+        pilot=v.pilot,
         current_odometer_km=v.current_odometer_km,
         license_expiry=v.license_expiry,
         insurance_expiry=v.insurance_expiry,

@@ -54,6 +54,8 @@ class Vehicle(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=OwnershipStatus.OWNED,
     )
     is_active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    # Part of the pilot (U50/U51): shown in the pilot command center and daily close.
+    pilot: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     current_odometer_km: Mapped[int | None] = mapped_column(Integer)
     license_expiry: Mapped[date | None]
     insurance_expiry: Mapped[date | None]

@@ -59,9 +59,9 @@ Tracks [`GO_DAILY_UPGRADES_MASTER.md`](GO_DAILY_UPGRADES_MASTER.md). Work happen
 | U47 — Versioned Company Policies | NOT STARTED | — | — | Phase B. |
 | U48 — Master Data Management | NOT STARTED | — | — | Phase C. |
 | U49 — Data Quality Dashboard | NOT STARTED | — | — | Phase B. |
-| U50 — Pilot Command Center | NOT STARTED | — | — | Phase A. |
-| U51 — Pilot Daily Close | NOT STARTED | — | — | Phase A. |
-| U52 — Pilot Acceptance | NOT STARTED | — | — | Phase A. |
+| U50 — Pilot Command Center | CODE COMPLETE | (this commit) | API `test_pilot.py` (3); full API suite; web lint/typecheck/test/build; page checked in the browser with seeded data (desktop and phone width, no console errors) | Phase A. Pilot vehicles flagged by admins (audited, migration 0019). «التجربة الميدانية» shows each pilot vehicle's day: drivers, shifts, live tracking (today), GPS quality and GPS/odometer distance, loops and operations, fuel, revenue, expenses, close-out and cash settlement, open review cases. |
+| U51 — Pilot Daily Close | CODE COMPLETE | (this commit) | API `test_pilot.py` (verdict follows the day: running shift, close-out, pending approvals, cash, missing GPS) | Phase A. Nine checks per vehicle and day (shift, GPS, odometer, operations, fuel, expenses, revenue/close-out, cash, review cases) with the verdict اليوم مكتمل / بيانات ناقصة / يحتاج مراجعة. Verdicts on real pilot days are part of U52. |
+| U52 — Pilot Acceptance | REQUIRES REAL-WORLD TEST | (this commit) | — (no real pilot shift run yet) | Phase A. `docs/PILOT_ACCEPTANCE_REPORT.md` lists 16 criteria with the evidence each needs (background GPS, battery, offline recovery, replay, loops, GPS vs odometer, fuel, fixed-route revenue, school route, ride-hailing reconciliation, cash, review cases, usability, clock, data loss, security), all NOT RUN. Needs real phones, real shifts and a sign-off. |
 | U53 — Production Release Gate V2 | NOT STARTED | — | — | Phase B. |
 | U54 — Post-Deployment Validation | NOT STARTED | — | — | Phase C. |
 | U55 — Future Backlog (do not implement without approval) | NOT STARTED | — | — | Phase C. Backlog only: not implemented without approval. |

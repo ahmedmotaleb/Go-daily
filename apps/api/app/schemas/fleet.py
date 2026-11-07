@@ -113,6 +113,7 @@ class VehicleUpdate(_VehicleFields):
     license_expiry: date | None = None
     insurance_expiry: date | None = None
     notes: Notes | None = None
+    pilot: bool | None = None
     # Required when lowering the odometer (a correction, not normal use).
     odometer_correction_reason: (
         Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)]
@@ -146,6 +147,7 @@ class VehicleOut(ORMModel):
     color: str | None
     ownership_status: OwnershipStatus
     is_active: bool
+    pilot: bool = False
     current_odometer_km: int | None
     license_expiry: date | None
     insurance_expiry: date | None
