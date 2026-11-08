@@ -385,10 +385,13 @@ def _deliver(db: Session, ids: list[uuid.UUID], channel_names: str, min_severity
         for channel in channels:
             try:
                 channel.deliver(notification, user)
-            except Exception:
+            except Exception as exc:
                 logger.exception(
                     "notification_delivery_failed",
                     extra={"channel": channel.name, "notification_id": str(notification.id)},
+                )
+                monitoring.capture_exception(
+                    exc, component="notification_delivery", name=channel.name
                 )
 
 

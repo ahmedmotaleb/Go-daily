@@ -1,0 +1,112 @@
+# Prometheus alert rules for Go Daily (U37). Each alert has a runbook entry
+# in docs/OPERATIONS.md ("Alerts"). Durations ("for") keep them low-noise:
+# a brief blip does not page anyone. Metrics come from GET /metrics
+# (scraped with METRICS_TOKEN); job="godaily-api" is the scrape job name.
+# Validate on the monitoring server: promtool check rules alerts.yml
+groups:
+  - name: godaily-availability
+    rules:
+      - alert: GoDailyApiDown
+        expr: up{job="godaily-api"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "API not reachable by the monitoring server"
+          runbook: "docs/OPERATIONS.md#api-down"
+
+      - alert: GoDailyHighErrorRate
+        expr: |
+          sum(rate(godaily_http_requests_total{status="5xx"}[10m]))
+            / clamp_min(sum(rate(godaily_http_requests_total[10m])), 0.001) > 0.01
+          and sum(rate(godaily_http_requests_total[10m])) > 0.05
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "More than 1% of API requests fail with 5xx"
+          runbook: "docs/OPERATIONS.md#high-error-rate"
+
+      - alert: GoDailySlowApi
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(godaily_http_request_duration_seconds_bucket[10m]))) > 2
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "95th percentile API latency above 2 s"
+          runbook: "docs/OPERATIONS.md#slow-api"
+
+      - alert: GoDailyMigrationMismatch
+        expr: godaily_migrations_current == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Database schema does not match the deployed build"
+          runbook: "docs/OPERATIONS.md#migration-mismatch"
+
+  - name: godaily-gps
+    rules:
+      - alert: GoDailyGpsIngestionStopped
+        expr: godaily_gps_points_received_5m == 0 and godaily_active_shifts > 0
+        for: 15m
+        labels: {severity: critical}
+        annotations:
+          summary: "Shifts are running but no GPS points arrive"
+          runbook: "docs/OPERATIONS.md#gps-ingestion-stopped"
+
+      - alert: GoDailyGpsBacklog
+        expr: godaily_device_pending_points > 5000
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "Phones hold a large backlog of unsent points"
+          runbook: "docs/OPERATIONS.md#gps-backlog"
+
+      - alert: GoDailyGpsSyncLag
+        expr: godaily_gps_sync_lag_seconds{stat="avg"} > 600 and on() godaily_active_shifts > 0
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "Points arrive more than 10 minutes after they were recorded, on average"
+          runbook: "docs/OPERATIONS.md#gps-backlog"
+
+  - name: godaily-jobs-and-dependencies
+    rules:
+      - alert: GoDailyExceptionRunStale
+        expr: godaily_exception_run_age_seconds > 7200
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Exception detection has not finished a run for over 2 hours"
+          runbook: "docs/OPERATIONS.md#background-jobs"
+
+      - alert: GoDailyExceptionRulesFailing
+        expr: godaily_exception_run_failed_rules > 0
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "Some exception rules failed in the last detection run"
+          runbook: "docs/OPERATIONS.md#background-jobs"
+
+      - alert: GoDailyStorageErrors
+        expr: sum(increase(godaily_errors_total{component="storage"}[15m])) > 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Attachment storage reads or writes are failing"
+          runbook: "docs/OPERATIONS.md#storage-errors"
+
+      - alert: GoDailyNotificationDeliveryFailing
+        expr: sum(increase(godaily_errors_total{component="notification_delivery"}[1h])) > 3
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Notification channel deliveries are failing"
+          runbook: "docs/OPERATIONS.md#notification-failures"
+
+      - alert: GoDailyRateLimitStoreDown
+        expr: sum(increase(godaily_ratelimit_backend_errors_total[10m])) > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Redis for rate limits unreachable; limits fall back to per worker"
+          runbook: "docs/OPERATIONS.md#rate-limit-store"

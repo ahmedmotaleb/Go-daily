@@ -52,14 +52,100 @@ The admin web's own server errors appear in its stdout (`docker compose logs adm
 | `godaily_exception_run_failed_rules` | gauge | Alert if above 0 |
 | `godaily_pending_financial_reviews` | gauge | |
 
-HTTP counters are kept per worker process. Fleet gauges are read from the database at scrape time.
+| `godaily_migrations_current` | gauge | 1 when the schema matches this build (U37) |
+| `godaily_errors_total{component}` | counter | Captured errors: `api`, `exception_rule`, `notification_generator`, `notification_delivery`, `storage` (U37) |
+| `godaily_ratelimit_backend_errors_total` | counter | Redis for rate limits unreachable (U32) |
+| `godaily_gps_points_per_minute` | gauge | GPS points per minute over the last 5 minutes (U38) |
+| `godaily_gps_points_rejected_5m` | gauge | Points refused: outside the shift, future time or invalid (U38) |
+| `godaily_gps_sync_lag_seconds{stat}` | gauge | `avg` and `max` delay from phone time to arrival, last 5 minutes (U38) |
+| `godaily_device_pending_points` | gauge | Points still queued on phones in running shifts, as last reported (U38) |
+| `godaily_loop_detections_1h` | gauge | Fixed-route loops detected in the last hour (U38) |
+| `godaily_submissions_today{kind}` | gauge | `fuel`, `expense` and `revenue` records created today, Cairo day (U38) |
 
-Suggested alerts:
-- `/ready` not 200 for 2 minutes;
-- 5xx rate above 1% for 10 minutes;
-- `godaily_gps_points_received_5m == 0` while `godaily_active_shifts > 0` for 15 minutes;
-- exception runs stale or failing;
-- backup job failing (see below).
+HTTP and error counters are kept per worker process (sum them across workers). Fleet gauges are read from the database at scrape time. Label values are only fixed words or route templates; never IDs, names, phone numbers or coordinates.
+
+## Alerts
+
+Rules: [`ops/monitoring/alerts.yml`](../ops/monitoring/alerts.yml). Load them into Prometheus (scrape job `godaily-api`) and route them with Alertmanager or the provider's equivalent: `critical` pages someone on call, and `warning` goes to the operations channel. Each alert waits a few minutes (`for`) before firing, so a single failed request or short network blip does not page anyone.
+
+- **Validation:** `promtool check rules ops/monitoring/alerts.yml` validates the file. The test `test_alert_rules.py` checks that every alert has a severity, summary and runbook section, and uses metrics the API exposes.
+- **Alert drill:** before production (U53), stop the API on staging and confirm `GoDailyApiDown` reaches the on-call person.
+
+### API down
+
+`GoDailyApiDown`: Prometheus cannot scrape `/metrics`.
+
+1. Check `/health` and `/ready` from the server.
+2. Read the API's logs and the platform status: container restarts, out of memory.
+3. If `/ready` says the database is down, see the database host. Drivers' phones keep queueing points and entries in the meantime.
+
+### High error rate
+
+`GoDailyHighErrorRate`: more than 1% of requests fail with 5xx for 10 minutes (only when there is traffic).
+
+1. Find the routes in `godaily_http_requests_total{status="5xx"}`.
+2. Search the logs for `request_failed` and the request IDs.
+3. Errors with a traceback are also in `godaily_errors_total{component="api"}` and the error reporter.
+4. Roll back if the errors started with a deployment.
+
+### Slow API
+
+`GoDailySlowApi`: p95 latency above 2 s for 15 minutes.
+
+1. Check database load and slow queries.
+2. Check the largest routes in the latency histogram. Reports over long periods are the usual cause.
+
+### Migration mismatch
+
+`GoDailyMigrationMismatch`: the deployed build expects a different schema. `/ready` also fails.
+
+1. Run the `migrate` step (`alembic upgrade head`).
+2. If the database is ahead of the build (a rollback), redeploy the matching build. Never downgrade a production database without a backup.
+
+### GPS ingestion stopped
+
+`GoDailyGpsIngestionStopped`: shifts are running but no point arrived for 15 minutes.
+
+1. Check the API is reachable from the internet, then the TLS certificate and the proxy.
+2. Check recent 4xx/5xx on `/api/v1/driver/tracking/points` and the tracking states on the live map.
+3. If only some vehicles are affected, see the device state in the tracking center (location off, battery saver). That is not a server fault.
+
+### GPS backlog
+
+`GoDailyGpsBacklog` / `GoDailyGpsSyncLag`: phones hold many unsent points, or points arrive late.
+
+1. Usually mobile data coverage or a phone's battery saver. Check which shifts in the tracking center show STALE or OFFLINE.
+2. If all phones lag, check API latency and errors for the points route.
+3. Points are kept on the phones and arrive later; nothing is lost while the backlog drains.
+
+### Background jobs
+
+`GoDailyExceptionRunStale` / `GoDailyExceptionRulesFailing`.
+
+1. Check the scheduler ran `detect-exceptions` and its exit code.
+2. Failed rules are logged as `exception_rule_failed` with the rule code.
+3. Other rules keep working. Fix or disable the failing rule, then run it again (`POST /exceptions/run` or the CLI).
+
+### Storage errors
+
+`GoDailyStorageErrors`: receipts, statements or photos cannot be saved or read.
+
+1. Check the bucket or volume: credentials, endpoint, disk space.
+2. Uploads fail with a clear message to the user. The phone keeps a queued receipt photo and uploads it again later (U45).
+
+### Notification failures
+
+`GoDailyNotificationDeliveryFailing`: an external channel (`NOTIFICATION_CHANNELS`) keeps failing.
+
+1. Logs show `notification_delivery_failed` with the channel name.
+2. In-app notifications are not affected. Fix the channel's configuration or turn it off.
+
+### Rate limit store
+
+`GoDailyRateLimitStoreDown`: Redis for rate limits is unreachable (U32).
+
+1. Limits keep working per API worker, and the account lockout still applies.
+2. Restore Redis (`docker compose ps redis`, or the managed service).
 
 ## Scheduled jobs
 

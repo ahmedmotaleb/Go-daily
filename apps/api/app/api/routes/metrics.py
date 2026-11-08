@@ -10,7 +10,8 @@ from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy import func, select
 
 from app.api.deps import DbSession
-from app.core import ratelimit
+from app.api.routes import health
+from app.core import monitoring, ratelimit
 from app.core.config import get_settings
 from app.core.metrics import http_metrics
 from app.core.time import utcnow
@@ -19,7 +20,7 @@ from app.models.finance import Expense, FuelTransaction, RecordStatus, RideHaili
 from app.models.maintenance import MaintenanceRecord
 from app.models.shift import Shift, ShiftStatus
 from app.models.tracking import GpsPoint
-from app.services import tracking
+from app.services import ops_metrics, tracking
 from app.services.exceptions import ACTIVE as ACTIVE_EXCEPTIONS
 from app.services.exceptions import last_run
 
@@ -50,7 +51,12 @@ def metrics(request: Request, db: DbSession) -> Response:
         # Indistinguishable from a missing route when disabled or unauthorised.
         return PlainTextResponse("Not Found", status_code=404)
     now = utcnow()
-    lines = http_metrics.render() + ratelimit.backend_errors.render()
+    lines = http_metrics.render() + ratelimit.backend_errors.render() + monitoring.render()
+    lines += _gauge(
+        "godaily_migrations_current",
+        "1 when the database schema matches this build's migrations, else 0.",
+        1 if health.migrations_current(db) else 0,
+    )
 
     active = db.scalar(
         select(func.count()).select_from(Shift).where(Shift.status == ShiftStatus.ACTIVE)
@@ -73,6 +79,41 @@ def metrics(request: Request, db: DbSession) -> Response:
     )
     lines += _gauge(
         "godaily_gps_points_received_5m", "GPS points received in the last 5 minutes.", recent or 0
+    )
+
+    flow = ops_metrics.gps(db, now)
+    lines += _gauge(
+        "godaily_gps_points_per_minute",
+        "GPS points received per minute (last 5 minutes).",
+        round((recent or 0) / 5, 2),
+    )
+    lines += _gauge(
+        "godaily_gps_points_rejected_5m",
+        "GPS points refused in the last 5 minutes (outside the shift, future time, invalid).",
+        flow["rejected_5m"],
+    )
+    lines += _gauge(
+        "godaily_gps_sync_lag_seconds",
+        "Delay between a point's phone time and its arrival, last 5 minutes.",
+        {
+            'stat="avg"': round(flow["sync_lag_avg"], 1),
+            'stat="max"': round(flow["sync_lag_max"], 1),
+        },
+    )
+    lines += _gauge(
+        "godaily_device_pending_points",
+        "Points still queued on phones in running shifts (as last reported).",
+        flow["device_pending"],
+    )
+    lines += _gauge(
+        "godaily_loop_detections_1h",
+        "Fixed-route loops detected in the last hour.",
+        ops_metrics.loops_last_hour(db, now),
+    )
+    lines += _gauge(
+        "godaily_submissions_today",
+        "Fuel, expense and revenue records created today (Cairo day).",
+        {f'kind="{k}"': v for k, v in ops_metrics.submissions_today(db).items()},
     )
 
     by_severity = {s.value: 0 for s in ExceptionSeverity}

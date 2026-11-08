@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import monitoring
 from app.core.config import get_settings
 from app.core.errors import ConflictError, NotFoundError, ValidationFailed, field_error
 from app.core.permissions import Permission
@@ -164,6 +165,7 @@ def upload(
     try:
         store.put(key, data, content_type)
     except StorageError as exc:
+        monitoring.capture_exception(exc, component="storage", operation="put")
         raise ValidationFailed("تعذر حفظ الملف", code="storage_error") from exc
 
     duplicates = list(
@@ -227,6 +229,7 @@ def read_content(attachment: Attachment, storage: Storage | None = None) -> byte
     try:
         return (storage or get_storage()).get(attachment.storage_key)
     except StorageError as exc:
+        monitoring.capture_exception(exc, component="storage", operation="get")
         raise NotFoundError("ملف المرفق غير متاح") from exc
 
 
