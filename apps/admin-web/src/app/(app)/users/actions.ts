@@ -82,3 +82,20 @@ export async function resetPasswordAction(
   }
   return { ok: true, message: "تم تعيين كلمة المرور الجديدة وإنهاء جلسات المستخدم" };
 }
+
+/** For a user who lost their phone and recovery codes (U31). */
+export async function resetTwoFactorAction(
+  userId: string,
+  _: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 3) return { ok: false, fieldErrors: { reason: "اكتب سبب إعادة الضبط" } };
+  try {
+    await api.post(`/users/${userId}/2fa/reset`, { reason });
+  } catch (error) {
+    return errorToFormState(error);
+  }
+  revalidatePath(`/users/${userId}`);
+  return { ok: true, message: "تمت إعادة ضبط التحقق بخطوتين وإنهاء جلسات المستخدم" };
+}

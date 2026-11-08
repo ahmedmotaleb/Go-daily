@@ -59,6 +59,8 @@ Defaults live in `apps/api/app/core/config.py` and `.env.example`. **Empty value
 | `ATTACHMENT_MAX_BYTES` | `10485760` | Keep the proxy body limit slightly above it |
 | `SESSION_TTL_HOURS_ADMIN` / `_DRIVER`, `SESSION_IDLE_TIMEOUT_HOURS` | 12 / 720 / 72 | |
 | `LOGIN_MAX_FAILED_ATTEMPTS`, `LOGIN_LOCKOUT_MINUTES`, `LOGIN_RATE_LIMIT`, `LOGIN_RATE_WINDOW_SECONDS` | 5, 15, 60, 300 | The per-IP limit covers the whole office (admin logins come from the web server) |
+| `TWOFA_ENFORCE` | `false` | **Set to `true` in production.** Users of `TWOFA_REQUIRED_ROLES` (default `SUPER_ADMIN,ADMIN`) must turn on two-factor login before using anything except their account page. Turn it on after each of them has enrolled, or they are sent to the account page at their next request. |
+| `TWOFA_REQUIRED_ROLES`, `TWOFA_CHALLENGE_MINUTES` | `SUPER_ADMIN,ADMIN`, 5 | Roles that must use two-factor login; minutes allowed between the password and the code |
 | `GPS_RETENTION_DAYS` | 180 | Raw points of finished shifts older than this are pruned. Match your privacy notice |
 | `EXCEPTION_*` | Defaults | Review thresholds. Set `EXCEPTION_OPERATING_AREAS` (`lat,lng,radius_km;...`) to enable the out-of-area rule |
 | `NOTIFICATION_CHANNELS`, `NOTIFICATION_CHANNEL_MIN_SEVERITY` | Empty, `CRITICAL` | In-app notifications always work; extra channels need code (see `notification_channels.py`) |

@@ -16,6 +16,7 @@ from datetime import timedelta
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session, joinedload
 
+from app.core import crypto
 from app.core.config import get_settings
 from app.core.errors import (
     AuthenticationError,
@@ -36,7 +37,7 @@ from app.core.security import (
 )
 from app.core.time import utcnow
 from app.models.user import AuthSession, ClientType, User
-from app.services import audit
+from app.services import audit, two_factor
 
 INVALID_CREDENTIALS = "رقم الهاتف أو كلمة المرور غير صحيحة"
 SESSION_TOUCH_INTERVAL = timedelta(minutes=5)
@@ -44,9 +45,16 @@ SESSION_TOUCH_INTERVAL = timedelta(minutes=5)
 
 @dataclass(frozen=True)
 class LoginResult:
-    token: str
-    session: AuthSession
     user: User
+    token: str | None = None
+    session: AuthSession | None = None
+    # Set instead of a session when the user has two-factor login (U31):
+    # the code step (login_with_code) finishes the login.
+    challenge: str | None = None
+
+
+CHALLENGE_PURPOSE = "login-2fa"
+INVALID_CODE = "رمز التحقق غير صحيح"
 
 
 def _client_allowed(role: UserRole, client: ClientType) -> bool:
@@ -147,12 +155,87 @@ def login(
         )
         raise PermissionDenied(message, code="client_not_allowed")
 
-    user.failed_login_count = 0
-    user.locked_until = None
-    user.last_login_at = now
     if password_needs_rehash(user.password_hash):
         user.password_hash = hash_password(password)
 
+    if two_factor.enabled(user):
+        # Password is right; a code from the authenticator app finishes the
+        # login. Failed counts are kept until then, so codes cannot be guessed.
+        audit.record(
+            db,
+            action="auth.login.password_ok_2fa_pending",
+            actor=None,
+            entity_type="user",
+            entity_id=user.id,
+        )
+        db.commit()
+        challenge = crypto.seal(
+            f"{user.id}|{client.value}|{device_name or ''}", purpose=CHALLENGE_PURPOSE
+        )
+        return LoginResult(user=user, challenge=challenge)
+    return _open_session(db, user=user, client=client, device_name=device_name, method="password")
+
+
+def login_with_code(db: Session, *, challenge: str, code: str) -> LoginResult:
+    """Second login step for users with two-factor login (U31)."""
+    settings = get_settings()
+    now = utcnow()
+    raw = crypto.unseal(
+        challenge, purpose=CHALLENGE_PURPOSE, max_age_seconds=settings.twofa_challenge_minutes * 60
+    )
+    if raw is None:
+        raise AuthenticationError(
+            "انتهت مهلة إدخال الرمز، سجّل الدخول من جديد", code="twofa_challenge_expired"
+        )
+    user_id, client_value, device_name = raw.split("|", 2)
+    user = db.scalar(
+        select(User)
+        .where(User.id == uuid.UUID(user_id))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if user is None or not user.is_active or not two_factor.enabled(user):
+        raise AuthenticationError(INVALID_CREDENTIALS, code="invalid_credentials")
+    if user.locked_until is not None and user.locked_until > now:
+        raise TooManyRequests(
+            "تم إيقاف تسجيل الدخول مؤقتًا بسبب محاولات خاطئة متكررة",
+            code="account_locked",
+            details={"retry_after_seconds": int((user.locked_until - now).total_seconds()) + 1},
+        )
+    method = two_factor.check_code(db, user, code)
+    if method is None:
+        user.failed_login_count += 1
+        locked = user.failed_login_count >= settings.login_max_failed_attempts
+        if locked:
+            user.locked_until = now + timedelta(minutes=settings.login_lockout_minutes)
+            user.failed_login_count = 0
+        audit.record(
+            db,
+            action="auth.login.2fa_failed",
+            actor=None,
+            entity_type="user",
+            entity_id=user.id,
+            details={"locked": locked},
+        )
+        db.commit()
+        raise AuthenticationError(INVALID_CODE, code="invalid_2fa_code")
+    return _open_session(
+        db,
+        user=user,
+        client=ClientType(client_value),
+        device_name=device_name or None,
+        method=method,
+    )
+
+
+def _open_session(
+    db: Session, *, user: User, client: ClientType, device_name: str | None, method: str
+) -> LoginResult:
+    settings = get_settings()
+    now = utcnow()
+    user.failed_login_count = 0
+    user.locked_until = None
+    user.last_login_at = now
     ttl_hours = (
         settings.session_ttl_hours_admin
         if client is ClientType.WEB
@@ -179,10 +262,10 @@ def login(
         actor=user,
         entity_type="auth_session",
         entity_id=session.id,
-        details={"client": client.value},
+        details={"client": client.value, "method": method},
     )
     db.commit()
-    return LoginResult(token=token, session=session, user=user)
+    return LoginResult(user=user, token=token, session=session)
 
 
 def authenticate(db: Session, token: str) -> AuthSession:

@@ -15,17 +15,26 @@ export type User = {
   role: Role;
   is_active: boolean;
   last_login_at: string | null;
+  twofa_enabled?: boolean;
   created_at: string;
   updated_at: string;
 };
 
-export type CurrentUser = User & { permissions: string[] };
+export type CurrentUser = User & {
+  permissions: string[];
+  /** Two-factor login (U31): required for this role / must be turned on first. */
+  twofa_required?: boolean;
+  twofa_setup_required?: boolean;
+};
 
+/** A session, or (two-factor login) a challenge for the code step. */
 export type LoginResponse = {
-  access_token: string;
+  access_token: string | null;
   token_type: "bearer";
-  expires_at: string;
-  user: CurrentUser;
+  expires_at: string | null;
+  user: CurrentUser | null;
+  twofa_required: boolean;
+  challenge: string | null;
 };
 
 export type ExpiryStatus = "OK" | "EXPIRING_SOON" | "EXPIRED" | "UNKNOWN";

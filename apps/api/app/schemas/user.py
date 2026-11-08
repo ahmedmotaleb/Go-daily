@@ -26,12 +26,17 @@ class UserOut(ORMModel):
     role: UserRole
     is_active: bool
     last_login_at: datetime | None
+    twofa_enabled: bool = False
     created_at: datetime
     updated_at: datetime
 
 
 class CurrentUserOut(UserOut):
     permissions: list[str]
+    # Two-factor login (U31): required for this role, and whether it still
+    # has to be turned on before anything else can be used.
+    twofa_required: bool = False
+    twofa_setup_required: bool = False
 
 
 class UserCreate(PhoneMixin):

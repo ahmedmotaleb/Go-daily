@@ -10,7 +10,14 @@ Reviewed 2026-10-30 against the Task 25 checklist. Each area lists what is in pl
 - Staff accounts cannot use the mobile client and driver accounts cannot use staff endpoints.
 - Deactivating a user or resetting a password revokes all of that user's sessions.
 - No default accounts. The first `SUPER_ADMIN` comes from one-time environment variables.
-- Tests: `test_auth.py`, `test_users_rbac.py`, `test_security.py::test_login_is_throttled_per_client`.
+- **Two-factor login (U31).** Staff can protect their account with TOTP (RFC 6238, any authenticator app); `TWOFA_ENFORCE` makes it mandatory for `TWOFA_REQUIRED_ROLES`.
+  - **Login:** the password step returns only an encrypted, 5-minute challenge (no session and no user details). The code step opens the session.
+  - **Codes:** a code is accepted once (the last used time step is stored), with one step of clock drift either way. Wrong codes count towards the account lockout.
+  - **Storage:** secrets are stored Fernet-encrypted with `DATA_ENCRYPTION_KEY`. The 10 recovery codes are shown once and stored as SHA-256.
+  - **Turning it off and new recovery codes** need the password and a current code. Required roles cannot turn it off.
+  - **Admin reset:** an administrator can reset two-factor login for a user who lost their phone. It needs a reason, follows the same role rules as password resets, and ends that user's sessions.
+  - **Audit:** setup, enable, disable, renewal, reset, failed codes and the login method (password, TOTP or recovery code) are audited. Secrets and codes are never logged or audited.
+- Tests: `test_auth.py`, `test_users_rbac.py`, `test_security.py::test_login_is_throttled_per_client`, `test_two_factor.py`, `test_totp.py`.
 
 ## Authorization and least privilege
 

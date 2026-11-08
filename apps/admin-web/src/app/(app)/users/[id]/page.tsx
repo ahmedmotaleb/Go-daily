@@ -11,7 +11,14 @@ import { api } from "@/lib/api";
 import { can, requirePermission } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import type { User } from "@/lib/types";
-import { resetPasswordAction, setUserActiveAction, updateUserAction } from "../actions";
+import { ActionForm } from "@/components/forms/action-form";
+import { TextField } from "@/components/forms/fields";
+import {
+  resetPasswordAction,
+  resetTwoFactorAction,
+  setUserActiveAction,
+  updateUserAction,
+} from "../actions";
 import { UserForm } from "../user-form";
 import { ActiveToggleForm, ResetPasswordForm } from "./user-admin-forms";
 
@@ -74,6 +81,24 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
               />
               <CardBody>
                 <ResetPasswordForm action={resetPasswordAction.bind(null, user.id)} />
+              </CardBody>
+            </Card>
+          ) : null}
+          {canManage && !isSelf && user.twofa_enabled ? (
+            <Card>
+              <CardHeader
+                title="التحقق بخطوتين"
+                description="مفعل. أعد ضبطه فقط إذا فقد المستخدم هاتفه ورموز الاسترداد؛ تنتهي جلساته ويُعد التحقق من جديد."
+              />
+              <CardBody>
+                <ActionForm
+                  action={resetTwoFactorAction.bind(null, user.id)}
+                  submitLabel="إعادة ضبط التحقق بخطوتين"
+                  variant="danger"
+                  confirm="إعادة ضبط التحقق بخطوتين لهذا المستخدم؟"
+                >
+                  <TextField name="reason" label="السبب" required />
+                </ActionForm>
               </CardBody>
             </Card>
           ) : null}

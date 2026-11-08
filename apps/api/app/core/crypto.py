@@ -55,6 +55,21 @@ def decrypt(token: str) -> str:
         raise EncryptionNotConfigured("Unable to decrypt value with the configured key") from exc
 
 
+def seal(value: str, *, purpose: str) -> str:
+    """Encrypt a short-lived value bound to a purpose (e.g. a login challenge)."""
+    return encrypt(f"{purpose}|{value}")
+
+
+def unseal(token: str, *, purpose: str, max_age_seconds: int) -> str | None:
+    """The sealed value, or None when expired, tampered or for another purpose."""
+    try:
+        raw = Fernet(_key()).decrypt(token.encode(), ttl=max_age_seconds).decode()
+    except (InvalidToken, ValueError):
+        return None
+    prefix, _, value = raw.partition("|")
+    return value if prefix == purpose else None
+
+
 def blind_index(value: str, *, purpose: str) -> str:
     """Deterministic keyed hash for lookups/uniqueness (purpose-separated)."""
     return hmac.new(_key(), f"{purpose}:{value}".encode(), hashlib.sha256).hexdigest()

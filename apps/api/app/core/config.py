@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     session_idle_timeout_hours: int = 72
     login_max_failed_attempts: int = 5
     login_lockout_minutes: int = 15
+    # Two-factor login (U31). When enforced, users of the roles below must
+    # turn it on before they can use anything beyond their own account.
+    twofa_enforce: bool = False
+    twofa_required_roles: str = "SUPER_ADMIN,ADMIN"
+    # Minutes allowed between the password step and the code step.
+    twofa_challenge_minutes: int = 5
     # Login attempts per client IP per window (all accounts). The admin web
     # logs users in from its server, so this must cover the whole office.
     login_rate_limit: int = 60

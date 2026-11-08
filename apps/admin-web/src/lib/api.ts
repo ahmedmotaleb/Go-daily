@@ -94,6 +94,13 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     if (res.ok)
       throw new ApiError(502, { code: "bad_response", message: "رد غير متوقع من الخادم" });
   }
+  if (
+    res.status === 403 &&
+    (data as { error?: ApiErrorBody } | null)?.error?.code === "twofa_setup_required"
+  ) {
+    // U31: two-factor login must be turned on first (account page stays available).
+    redirect("/account");
+  }
   if (!res.ok) {
     const body = (data as { error?: ApiErrorBody } | null)?.error ?? {
       code: "http_error",

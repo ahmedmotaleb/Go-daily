@@ -16,6 +16,7 @@ from app.core.permissions import STAFF_ROLES, Permission, UserRole, has_permissi
 from app.models.driver import Driver, EmploymentStatus
 from app.models.user import AuthSession, User
 from app.services import auth as auth_service
+from app.services import two_factor
 
 DbSession = Annotated[Session, Depends(get_db)]
 
@@ -47,6 +48,12 @@ def require_permissions(*permissions: Permission) -> Callable[[User], User]:
     def _dependency(user: CurrentUser) -> User:
         if user.role not in STAFF_ROLES:
             raise PermissionDenied()
+        if two_factor.setup_needed(user):
+            # U31: privileged users must turn on two-factor login first;
+            # their own account pages (/auth/...) stay available.
+            raise PermissionDenied(
+                "فعّل التحقق بخطوتين من صفحة حسابك قبل المتابعة", code="twofa_setup_required"
+            )
         missing = [p for p in permissions if not has_permission(user.role, p)]
         if missing:
             raise PermissionDenied(details={"missing": [p.value for p in missing]})

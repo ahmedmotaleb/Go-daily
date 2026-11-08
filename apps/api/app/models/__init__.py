@@ -68,7 +68,7 @@ from app.models.tracking import (
     TrackingEventType,
     VehicleLatestPosition,
 )
-from app.models.user import AuthSession, ClientType, User
+from app.models.user import AuthSession, ClientType, RecoveryCode, User
 
 __all__ = [
     "AssignmentRole",
@@ -125,6 +125,7 @@ __all__ = [
     "ReceivedBy",
     "RecordSource",
     "RecordStatus",
+    "RecoveryCode",
     "RevenueEntry",
     "RevenueKind",
     "RevenueReceipt",

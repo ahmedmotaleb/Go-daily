@@ -10,9 +10,12 @@ from fastapi import APIRouter, Depends, Query, status
 from app.api.deps import DbSession, require_permissions
 from app.core.permissions import Permission, UserRole
 from app.models.user import User
+from app.schemas.auth import TwoFactorResetIn
 from app.schemas.common import Message, Page, PageParams, page_params
 from app.schemas.user import PasswordReset, UserCreate, UserOut, UserUpdate
+from app.services import two_factor
 from app.services import users as users_service
+from app.services.auth import revoke_user_sessions
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -59,3 +62,16 @@ def reset_password(
 ) -> Message:
     users_service.reset_password(db, actor=actor, user_id=user_id, new_password=body.new_password)
     return Message(message="تم تعيين كلمة مرور جديدة وإنهاء جلسات المستخدم")
+
+
+@router.post("/{user_id}/2fa/reset", response_model=Message)
+def reset_two_factor(
+    user_id: uuid.UUID, body: TwoFactorResetIn, actor: Manager, db: DbSession
+) -> Message:
+    """For a user who lost their phone and recovery codes (U31); ends their sessions."""
+    user = users_service.get_user(db, user_id)
+    users_service.ensure_can_manage(actor, user.role)
+    two_factor.admin_reset(db, actor=actor, user=user, reason=body.reason)
+    revoke_user_sessions(db, user.id, reason="twofa_reset")
+    db.commit()
+    return Message(message="تمت إعادة ضبط التحقق بخطوتين وإنهاء جلسات المستخدم")

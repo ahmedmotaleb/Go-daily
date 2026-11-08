@@ -199,6 +199,11 @@ def update_user(db: Session, *, actor: User, user_id: uuid.UUID, data: UserUpdat
     return user
 
 
+def ensure_can_manage(actor: User, role: UserRole) -> None:
+    """Same rule as for passwords: who may act on accounts of this role."""
+    _ensure_can_manage(actor, role)
+
+
 def reset_password(db: Session, *, actor: User, user_id: uuid.UUID, new_password: str) -> User:
     user = get_user(db, user_id)
     _ensure_can_manage(actor, user.role)
