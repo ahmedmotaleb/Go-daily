@@ -101,7 +101,8 @@ def test_repeated_failures_lock_the_account(client: TestClient, db: Session) -> 
             AuditLog.action == "auth.login.locked", AuditLog.entity_id == str(user.id)
         )
     )
-    assert locked is not None and locked.details["retry_after_seconds"] > 0
+    assert locked is not None and locked.details is not None
+    assert locked.details["retry_after_seconds"] > 0
 
     # After the lockout window, the correct password works again.
     db.execute(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import fakeredis
 import pytest
 from fastapi.testclient import TestClient
@@ -28,7 +30,8 @@ def test_workers_share_one_count() -> None:
     assert worker_a.hit("10.0.0.2", now=1003) is None
     assert worker_a.hit("10.0.0.1", now=1080) is None
     # Keys are hashed: the IP itself is never stored.
-    keys = [k.decode() for k in fakeredis.FakeRedis(server=server).keys("*")]
+    stored = cast(list[bytes], fakeredis.FakeRedis(server=server).keys("*"))
+    keys = [k.decode() for k in stored]
     assert keys and all("10.0.0" not in k for k in keys)
 
 
