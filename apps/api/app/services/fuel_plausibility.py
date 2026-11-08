@@ -21,13 +21,14 @@ from typing import Any
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings, get_settings
+from app.core.config import Settings
 from app.core.geo import haversine_m
 from app.models.assignment import DriverVehicleAssignment
 from app.models.finance import FuelTransaction, PaidBy, QuantityUnit, RecordStatus
 from app.models.shift import Shift, ShiftStatus
 from app.models.tracking import GpsPoint, PointQuality
 from app.services import fuel as fuel_service
+from app.services import policies
 
 LIVE = (RecordStatus.SUBMITTED, RecordStatus.APPROVED)
 
@@ -298,7 +299,7 @@ def _duplicate(db: Session, tx: FuelTransaction, s: Settings) -> Check:
 
 
 def check(db: Session, tx: FuelTransaction) -> list[Check]:
-    s = get_settings()
+    s = policies.effective_settings(db)
     grace = timedelta(minutes=s.exception_fuel_outside_shift_minutes)
     shift = _covering_shift(db, tx, grace)
     repeat, duplicate = _rapid_repeat(db, tx, s), _duplicate(db, tx, s)

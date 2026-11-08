@@ -390,6 +390,20 @@ ExceptionRun (window, per-rule counts, per-rule errors)
 - **Failure isolation.** Each rule runs in a savepoint; a failing rule is logged and recorded on the run, and the others still run.
 - **Audit.** Every review step is an audit entry with the status change, the note and the resolution.
 
+### Versioned company policies (U47)
+
+- **What it covers:** 22 review thresholds (`app/services/policies.py` → `CATALOG`), each with a label, unit and allowed range. Staff with `settings:manage` change them on «سياسات المراجعة» (`/policies`); readers with `exceptions:read` can view them.
+  - **GPS:** gap, disabled, tracking interrupted, late upload, clock skew, long stop, outside area, movement between shifts.
+  - **Routes:** corridor, deviation minutes, incomplete legs.
+  - **Odometer:** tolerance %/km, maximum average speed.
+  - **Fuel:** consumption and quantity ratios, repeat window, distance from vehicle, outside-shift grace, duplicate window.
+  - **Revenue and cash:** revenue ratio, cash handover days.
+- **Versions:** each change creates an immutable `policy_versions` row (migration 0021) with the full set of overrides, the reason and who made it, and an audit entry (`policy.updated`) with old → new values. Emptying a value returns it to the environment default. The newest version applies.
+- **Where it applies:** `policies.effective_settings(db)` overlays the current version on the environment settings. Exception detection runs, refuelling plausibility checks, fuel baselines, the shift's odometer comparison and the report notes use it.
+- **Older cases:** each review case stores the thresholds it was judged with (U26), so older cases stay explainable after a change.
+- **Not yet configurable:** receipt rules and settlement approval thresholds. They do not exist as rules yet; adding them is a business decision.
+- **Tests:** `test_policies.py`, including that lowering cash handover days makes the review rule flag a one-day-old close-out.
+
 ### Pilot command center and daily close (U50/U51)
 
 - **Pilot vehicles.** A vehicle joins the pilot through `vehicles.pilot` (migration 0019). It is set from the page or by `PATCH /vehicles/{id}`, and the change is audited.

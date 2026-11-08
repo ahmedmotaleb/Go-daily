@@ -423,7 +423,10 @@ def valid_track(points: list[GpsPoint]) -> list[TrackPoint]:
 
 
 def shift_track(db: Session, shift_id: uuid.UUID) -> ShiftTrackOut:
-    settings = get_settings()
+    # U47: the odometer comparison follows the current company policy.
+    from app.services import policies  # noqa: PLC0415 - avoids an import cycle
+
+    settings = policies.effective_settings(db)
     shift = db.get(Shift, shift_id)
     if shift is None:
         raise NotFoundError("الوردية غير موجودة")

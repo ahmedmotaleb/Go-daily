@@ -18,7 +18,6 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core import monitoring
-from app.core.config import get_settings
 from app.core.errors import ConflictError, NotFoundError, field_error
 from app.core.time import local_day_bounds_utc, utcnow
 from app.models.exceptions import (
@@ -30,7 +29,7 @@ from app.models.exceptions import (
 )
 from app.models.user import User
 from app.schemas.common import PageParams
-from app.services import audit
+from app.services import audit, policies
 from app.services.common import paginate
 from app.services.exception_rules import RULES, Context, RuleInfo, RuleResult, is_enabled
 
@@ -57,7 +56,8 @@ _RUN_LOCK = 2020_1030
 def run_detection(
     db: Session, *, actor: User | None, trigger: str, days: int | None = None
 ) -> ExceptionRun:
-    settings = get_settings()
+    # U47: the current company policy's thresholds apply to this run.
+    settings = policies.effective_settings(db)
     end = utcnow()
     start = end - timedelta(days=days or settings.exception_lookback_days)
     if not db.scalar(select(func.pg_try_advisory_xact_lock(_RUN_LOCK))):

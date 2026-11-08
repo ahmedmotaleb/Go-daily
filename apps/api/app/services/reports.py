@@ -46,6 +46,7 @@ from app.services import (
     expected_revenue,
     fuel_baselines,
     fuel_efficiency,
+    policies,
     profitability,
     revenue_reconciliation,
     ride_hailing,
@@ -424,7 +425,7 @@ RECONCILIATION_AR = {
 
 
 def gps_odometer(db: Session, f: Filters) -> ReportResult:
-    settings = get_settings()
+    settings = policies.effective_settings(db)
     shifts = [s for s in _shifts(db, f) if s.status is ShiftStatus.COMPLETED]
     tracks = tracking.valid_tracks(db, [s.id for s in shifts])
     rows: list[dict[str, Any]] = []
@@ -1015,7 +1016,7 @@ _BASELINE_REASON_AR = {
 
 def fuel_baselines_report(db: Session, f: Filters) -> ReportResult:
     """Each vehicle-week against its rolling fuel baselines (U14)."""
-    settings = get_settings()
+    settings = policies.effective_settings(db)
     found = fuel_baselines.assess(db, f.date_from, f.date_to, vehicle_id=f.vehicle_id)
 
     def base(b: fuel_baselines.Baseline) -> str | None:

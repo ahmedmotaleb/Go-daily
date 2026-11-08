@@ -31,11 +31,10 @@ from enum import StrEnum
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.core.time import local_day_bounds_utc, to_local_date, week_start
 from app.models.operations import OperationKind
 from app.models.shift import OperationSession, SessionStatus
-from app.services import fuel_efficiency
+from app.services import fuel_efficiency, policies
 from app.services.fuel_efficiency import EfficiencyRow
 
 UNUSUAL_LABEL = "استهلاك غير معتاد — مراجعة مطلوبة"
@@ -163,7 +162,7 @@ def assess(
     vehicle_id: uuid.UUID | None = None,
 ) -> list[WeekAssessment]:
     """Assess every vehicle-week from `first_week` to `last_week` (week starts)."""
-    s = get_settings()
+    s = policies.effective_settings(db)
     first_week, last_week = week_start(first_week), week_start(last_week)
     history_start = first_week - timedelta(days=7 * s.fuel_baseline_weeks)
     rows, _ = fuel_efficiency.compute(

@@ -49,6 +49,7 @@ from app.models.operations import (
     StopKind,
     TripPattern,
 )
+from app.models.policy import PolicyVersion
 from app.models.route_events import (
     EventSource,
     EventStatus,
@@ -121,6 +122,7 @@ __all__ = [
     "PaymentMethod",
     "PointQuality",
     "PointSource",
+    "PolicyVersion",
     "QuantityUnit",
     "ReceivedBy",
     "RecordSource",

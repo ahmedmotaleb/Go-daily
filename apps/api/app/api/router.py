@@ -22,6 +22,7 @@ from app.api.routes import (
     notifications,
     operations,
     pilot,
+    policies,
     profitability,
     reports,
     revenue,
@@ -62,3 +63,4 @@ api_router.include_router(notifications.router)
 api_router.include_router(reports.router)
 api_router.include_router(pilot.router)
 api_router.include_router(data_quality.router)
+api_router.include_router(policies.router)
