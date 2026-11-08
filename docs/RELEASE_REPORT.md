@@ -4,6 +4,8 @@
 
 ## Verdict
 
+> **Superseded for production by [`PRODUCTION_RELEASE_GATE.md`](PRODUCTION_RELEASE_GATE.md) (U53):** the production gate has 17 items and several are still open. This report remains the record for the Task 01–32 pilot candidate.
+
 **Not yet production-ready. Ready for a supervised pilot once the driver app has passed the device test plan on real phones.**
 
 The backend, admin web and the driver app's logic are complete for Tasks 01–32 and verified by automated tests, browser checks and CI. One gate is still open, and only real phones can close it: on-device behaviour of the Android app (background tracking, reboot, vendor battery killers, driver UX). GPS evidence is central to the product, so this gate matters. Everything else on the release checklist is verified (see below).
