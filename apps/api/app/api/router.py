@@ -9,6 +9,7 @@ from app.api.routes import (
     auth,
     cash,
     dashboard,
+    data_quality,
     driver_app,
     driver_cash,
     driver_finance,
@@ -60,3 +61,4 @@ api_router.include_router(exceptions.router)
 api_router.include_router(notifications.router)
 api_router.include_router(reports.router)
 api_router.include_router(pilot.router)
+api_router.include_router(data_quality.router)
