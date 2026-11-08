@@ -82,7 +82,15 @@ Reviewed 2026-10-30 against the Task 25 checklist. Each area lists what is in pl
   - `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`;
   - `Cache-Control: no-store`, because responses carry personal and financial data;
   - HSTS in production.
-- The admin web sends a CSP (same-origin scripts, styles and requests; images may come from HTTPS sources for map tiles; `frame-ancestors 'none'`), plus `nosniff`, frame denial, referrer and permissions policies.
+- **The admin web's CSP (U34)** is set per request in `src/proxy.ts` with a fresh nonce. Next.js puts the nonce on its own scripts, and every page is rendered per request so each one gets it.
+  - `script-src 'self' 'nonce-…' 'strict-dynamic'`: no `'unsafe-inline'` and, in production, no `'unsafe-eval'`. An injected inline script cannot run.
+  - `style-src 'self' 'nonce-…'` for style elements.
+  - **Remaining exception:** `style-src-attr 'unsafe-inline'`. React `style={…}` and the map library (Leaflet) position elements with style attributes. Style attributes cannot run script.
+  - **Images:** may come from HTTPS sources (map tiles) and `data:` (the 2FA QR code).
+  - **Requests:** same-origin requests and forms only; `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`.
+  - **Other headers:** `nosniff`, frame denial, referrer and permissions policies.
+  - **Development server:** keeps `'unsafe-eval'` and inline styles for hot reload.
+  - **Checked** on the production build in a browser: login, dashboard, live tracking map, shift map, account (2FA QR), pilot, review cases, cash and vehicles, with no CSP violations; all page scripts carry the nonce. Recheck after adding a third-party script or a new map provider.
 - In production, OpenAPI docs are disabled.
 
 ## Logging and error leakage

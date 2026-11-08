@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { connection } from "next/server";
 // Inter first (digits, Latin), IBM Plex Sans Arabic for Arabic: see theme.css.
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
@@ -25,7 +26,9 @@ export const viewport: Viewport = {
   themeColor: "#082b24",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // Every page is rendered per request, so each gets the CSP nonce (U34).
+  await connection();
   return (
     <html lang="ar" dir="rtl" className="h-full">
       <body className="min-h-full">{children}</body>
