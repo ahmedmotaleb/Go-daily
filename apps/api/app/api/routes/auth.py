@@ -7,10 +7,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, status
 
 from app.api.deps import CurrentSession, CurrentUser, DbSession
+from app.core import ratelimit
 from app.core.config import get_settings
 from app.core.errors import PermissionDenied, TooManyRequests
 from app.core.permissions import STAFF_ROLES, permissions_for
-from app.core.ratelimit import SlidingWindowLimiter
 from app.models.user import ClientType, User
 from app.schemas.auth import (
     ChangePasswordRequest,
@@ -61,8 +61,10 @@ def _login_out(result: auth_service.LoginResult) -> LoginResponse:
     )
 
 
-def _limit(request: Request) -> None:
-    retry_after = login_limiter.hit(request.client.host if request.client else "unknown")
+def _limit(request: Request, limiter: ratelimit.RateLimiter | None = None) -> None:
+    retry_after = (limiter or login_limiter).hit(
+        request.client.host if request.client else "unknown"
+    )
     if retry_after is not None:
         raise TooManyRequests(
             "محاولات دخول كثيرة من هذا الجهاز، حاول بعد قليل",
@@ -72,9 +74,27 @@ def _limit(request: Request) -> None:
 
 
 _settings = get_settings()
-login_limiter = SlidingWindowLimiter(
-    _settings.login_rate_limit, _settings.login_rate_window_seconds
+_redis = _settings.redis_url.get_secret_value() if _settings.redis_url else None
+# U32: shared through Redis when REDIS_URL is set (see app.core.ratelimit).
+login_limiter = ratelimit.build(
+    "login", _settings.login_rate_limit, _settings.login_rate_window_seconds, _redis
 )
+code_limiter = ratelimit.build(
+    "login_2fa", _settings.login_rate_limit, _settings.login_rate_window_seconds, _redis
+)
+sensitive_limiter = ratelimit.build(
+    "sensitive", _settings.sensitive_rate_limit, _settings.sensitive_rate_window_seconds, _redis
+)
+
+
+def _limit_user(user: User) -> None:
+    retry_after = sensitive_limiter.hit(f"user:{user.id}")
+    if retry_after is not None:
+        raise TooManyRequests(
+            "محاولات كثيرة، حاول بعد قليل",
+            code="rate_limited",
+            details={"retry_after_seconds": retry_after},
+        )
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -93,7 +113,7 @@ def login(body: LoginRequest, request: Request, db: DbSession) -> LoginResponse:
 @router.post("/login/2fa", response_model=LoginResponse)
 def login_code(body: LoginCodeRequest, request: Request, db: DbSession) -> LoginResponse:
     """Second step: the code from the authenticator app, or a recovery code."""
-    _limit(request)
+    _limit(request, code_limiter)
     return _login_out(auth_service.login_with_code(db, challenge=body.challenge, code=body.code))
 
 
@@ -114,11 +134,13 @@ def twofa_setup(user: StaffUser, db: DbSession) -> TwoFactorSetupOut:
 
 @router.post("/2fa/enable", response_model=RecoveryCodesOut)
 def twofa_enable(body: TwoFactorCodeIn, user: StaffUser, db: DbSession) -> RecoveryCodesOut:
+    _limit_user(user)
     return RecoveryCodesOut(recovery_codes=two_factor.enable(db, user=user, code=body.code))
 
 
 @router.post("/2fa/disable", response_model=Message)
 def twofa_disable(body: TwoFactorReauthIn, user: StaffUser, db: DbSession) -> Message:
+    _limit_user(user)
     two_factor.disable(db, user=user, password=body.password, code=body.code)
     return Message(message="تم إيقاف التحقق بخطوتين")
 
@@ -127,6 +149,7 @@ def twofa_disable(body: TwoFactorReauthIn, user: StaffUser, db: DbSession) -> Me
 def twofa_recovery_codes(
     body: TwoFactorReauthIn, user: StaffUser, db: DbSession
 ) -> RecoveryCodesOut:
+    _limit_user(user)
     codes = two_factor.regenerate_codes(db, user=user, password=body.password, code=body.code)
     return RecoveryCodesOut(recovery_codes=codes)
 
@@ -144,6 +167,7 @@ def me(user: CurrentUser) -> CurrentUserOut:
 
 @router.post("/change-password", response_model=Message, status_code=status.HTTP_200_OK)
 def change_password(body: ChangePasswordRequest, session: CurrentSession, db: DbSession) -> Message:
+    _limit_user(session.user)
     auth_service.change_password(
         db,
         session=session,

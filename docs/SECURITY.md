@@ -7,6 +7,12 @@ Reviewed 2026-10-30 against the Task 25 checklist. Each area lists what is in pl
 - Opaque random session tokens. Only their SHA-256 hash is stored, so a database leak does not expose usable tokens. Admin sessions last 12 h, driver sessions 30 days, and any session expires after 72 h idle.
 - Passwords are hashed with Argon2id. A wrong password and an unknown phone number get the same response and timing (a dummy hash is checked). The per-account lockout is 5 failures for 15 minutes and is audited.
 - Per-client-IP login throttle (60 attempts per 5 minutes, configurable). Because the admin web logs users in from its own server, the limit is generous and the edge proxy should add a stricter per-IP limit.
+- **Distributed rate limits (U32).**
+  - **Shared count:** with `REDIS_URL` set, the login, 2FA-code and sensitive-action limits are counted in a Redis-compatible store, so every API worker and server shares one count (fixed windows, atomic `INCR` + `EXPIRE`). Spreading attempts across workers does not get around them.
+  - **Sensitive actions** (password change, enabling or turning off 2FA, new recovery codes) are limited per user: 10 per 15 minutes.
+  - **Privacy:** keys (IPs, user ids) are hashed before they are stored, and counters expire with their window.
+  - **When the store fails:** each request falls back to the in-process limiter. Limits stay on (per worker) rather than being switched off, and the database-backed account lockout still applies. Each failure is logged (`ratelimit_backend_unavailable`) and counted (`godaily_ratelimit_backend_errors_total` on `/metrics`), and should alert if it keeps rising.
+  - **Without `REDIS_URL`** the limits are per process, which is fine for a single worker or development.
 - Staff accounts cannot use the mobile client and driver accounts cannot use staff endpoints.
 - Deactivating a user or resetting a password revokes all of that user's sessions.
 - No default accounts. The first `SUPER_ADMIN` comes from one-time environment variables.
@@ -17,7 +23,7 @@ Reviewed 2026-10-30 against the Task 25 checklist. Each area lists what is in pl
   - **Turning it off and new recovery codes** need the password and a current code. Required roles cannot turn it off.
   - **Admin reset:** an administrator can reset two-factor login for a user who lost their phone. It needs a reason, follows the same role rules as password resets, and ends that user's sessions.
   - **Audit:** setup, enable, disable, renewal, reset, failed codes and the login method (password, TOTP or recovery code) are audited. Secrets and codes are never logged or audited.
-- Tests: `test_auth.py`, `test_users_rbac.py`, `test_security.py::test_login_is_throttled_per_client`, `test_two_factor.py`, `test_totp.py`.
+- Tests: `test_auth.py`, `test_users_rbac.py`, `test_security.py::test_login_is_throttled_per_client`, `test_two_factor.py`, `test_totp.py`, `test_ratelimit_shared.py`.
 
 ## Authorization and least privilege
 

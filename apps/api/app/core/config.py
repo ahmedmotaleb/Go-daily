@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     # logs users in from its server, so this must cover the whole office.
     login_rate_limit: int = 60
     login_rate_window_seconds: int = 300
+    # Password change, 2FA enable/disable and new recovery codes, per user (U32).
+    sensitive_rate_limit: int = 10
+    sensitive_rate_window_seconds: int = 900
+    # Redis-compatible store shared by all API workers for rate limits (U32).
+    # Unset: limits are per process (fine for one worker / development).
+    redis_url: SecretStr | None = None
 
     # Fernet key (urlsafe base64, 32 bytes) for encrypting sensitive personal
     # data such as national IDs. Required in staging/production.

@@ -39,7 +39,7 @@ from sqlalchemy import text  # noqa: E402
 from sqlalchemy.engine import Connection  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
-from app.api.routes.auth import login_limiter  # noqa: E402
+from app.api.routes.auth import code_limiter, login_limiter, sensitive_limiter  # noqa: E402
 from app.core.db import engine, get_db  # noqa: E402
 from app.core.storage import LocalStorage  # noqa: E402
 from app.main import create_app  # noqa: E402
@@ -114,3 +114,5 @@ def _isolated_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LocalS
 def _fresh_login_limiter() -> None:
     """The per-IP login limiter is process-wide; each test starts with a clean slate."""
     login_limiter.reset()
+    code_limiter.reset()
+    sensitive_limiter.reset()

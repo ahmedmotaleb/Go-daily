@@ -1,4 +1,4 @@
-# Go Daily local stack: PostgreSQL + API + admin web.
+# Go Daily local stack: PostgreSQL + Redis (rate limits) + API + admin web.
 #
 #   cp .env.example .env      # then edit values
 #   docker compose up --build
@@ -32,6 +32,11 @@ x-api-env: &api-env
   STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-}
   STORAGE_S3_ACCESS_KEY_ID: ${STORAGE_S3_ACCESS_KEY_ID:-}
   STORAGE_S3_SECRET_ACCESS_KEY: ${STORAGE_S3_SECRET_ACCESS_KEY:-}
+  # Shared login / 2FA / sensitive-action rate limits across API workers (U32).
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  # Two-factor login for staff (U31); set TWOFA_ENFORCE=true in production.
+  TWOFA_ENFORCE: ${TWOFA_ENFORCE:-false}
+  TWOFA_REQUIRED_ROLES: ${TWOFA_REQUIRED_ROLES:-SUPER_ADMIN,ADMIN}
 
 services:
   postgres:
@@ -48,6 +53,19 @@ services:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    # Only holds short-lived rate-limit counters: no persistence, no ports
+    # published. A managed Redis-compatible store works too (REDIS_URL,
+    # rediss:// with a password outside a private network).
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "volatile-ttl"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -76,6 +94,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
 
   admin-web:
     build:

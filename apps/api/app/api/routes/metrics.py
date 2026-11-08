@@ -10,6 +10,7 @@ from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy import func, select
 
 from app.api.deps import DbSession
+from app.core import ratelimit
 from app.core.config import get_settings
 from app.core.metrics import http_metrics
 from app.core.time import utcnow
@@ -49,7 +50,7 @@ def metrics(request: Request, db: DbSession) -> Response:
         # Indistinguishable from a missing route when disabled or unauthorised.
         return PlainTextResponse("Not Found", status_code=404)
     now = utcnow()
-    lines = http_metrics.render()
+    lines = http_metrics.render() + ratelimit.backend_errors.render()
 
     active = db.scalar(
         select(func.count()).select_from(Shift).where(Shift.status == ShiftStatus.ACTIVE)
