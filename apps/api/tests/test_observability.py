@@ -160,3 +160,30 @@ def test_empty_environment_values_mean_unset(monkeypatch: pytest.MonkeyPatch) ->
     s = Settings()
     assert s.data_encryption_key is None
     assert s.metrics_token is None
+
+
+def test_staging_and_production_refuse_development_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core import crypto
+    from app.main import create_app
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "app_env", "staging")
+    monkeypatch.setattr(settings, "data_encryption_key", SecretStr(crypto.generate_key()))
+    crypto._key.cache_clear()
+    monkeypatch.setattr(
+        settings, "database_url", "postgresql+psycopg://godaily:godaily@db:5432/godaily"
+    )
+    monkeypatch.setattr(settings, "cors_origins", "http://admin.example.com")
+    problems = settings.environment_problems()
+    assert any("DATABASE_URL" in p for p in problems)
+    assert any("CORS_ORIGINS" in p for p in problems)
+    try:
+        with pytest.raises(RuntimeError, match="Unsafe configuration for staging"):
+            create_app()
+    finally:
+        crypto._key.cache_clear()
+    # Development is unaffected.
+    monkeypatch.setattr(settings, "app_env", "development")
+    assert settings.environment_problems() == []

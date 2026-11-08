@@ -16,6 +16,7 @@ from sqlalchemy import or_, select
 from app.api.deps import CurrentDriver, CurrentDriverUser, DbSession
 from app.api.presenters import session_out, shift_out
 from app.api.routes.attachments import read_limited
+from app.core.config import get_settings
 from app.core.errors import NotFoundError, PermissionDenied
 from app.core.time import local_today, utcnow
 from app.models.assignment import DriverVehicleAssignment
@@ -26,6 +27,7 @@ from app.models.shift import OperationSession, Shift, ShiftSource, ShiftStatus
 from app.schemas.attachment import AttachmentOut, DuplicateRef, UploadResult
 from app.schemas.common import PageParams
 from app.schemas.driver_app import (
+    AppUpdateOut,
     DriverCatalogOut,
     DriverFuelOut,
     DriverFuelTypeOut,
@@ -47,15 +49,16 @@ from app.schemas.shift import (
     ShiftOut,
     ShiftStart,
 )
+from app.services import app_versions, idempotency
 from app.services import attachments as attachments_service
 from app.services import fuel as fuel_service
-from app.services import idempotency
 from app.services import operations as ops_service
 from app.services import shifts as shifts_service
 from app.services.expiry import expiry_status
 
 router = APIRouter(prefix="/driver", tags=["driver-app"])
 
+AppVersion = Annotated[str | None, Header(alias="X-App-Version")]
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key")]
 
 
@@ -93,8 +96,10 @@ def _own_shift(db: DbSession, driver: Driver, shift_id: uuid.UUID) -> Shift:
 
 
 @router.get("/me", response_model=DriverMeOut)
-def me(driver: CurrentDriver, db: DbSession) -> DriverMeOut:
+def me(driver: CurrentDriver, db: DbSession, app_version: AppVersion = None) -> DriverMeOut:
     active = shifts_service.active_shift_for_driver(db, driver.id)
+    version = app_versions.parse(app_version)
+    settings = get_settings()
     return DriverMeOut(
         driver_id=driver.id,
         full_name=driver.full_name,
@@ -103,6 +108,12 @@ def me(driver: CurrentDriver, db: DbSession) -> DriverMeOut:
         license_status=expiry_status(driver.license_expiry),
         vehicles=_vehicles(db, driver),
         active_shift=shift_out(active) if active else None,
+        app_update=AppUpdateOut(
+            version=version,
+            minimum_version=settings.driver_app_min_version,
+            recommended_version=settings.driver_app_recommended_version,
+            status=app_versions.status_for(version).value,
+        ),
     )
 
 
@@ -147,7 +158,11 @@ def start_shift(
     user: CurrentDriverUser,
     db: DbSession,
     idempotency_key: IdempotencyKey = None,
+    app_version: AppVersion = None,
 ) -> Any:
+    # U44: an outdated app cannot start a new shift (running ones continue).
+    app_versions.require_for_new_shift(app_versions.parse(app_version))
+
     def action() -> ShiftOut:
         if body.planned_shift_id is not None:
             planned = _own_shift(db, driver, body.planned_shift_id)

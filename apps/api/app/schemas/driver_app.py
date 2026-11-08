@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -34,6 +34,16 @@ class DriverMeOut(BaseModel):
     license_status: ExpiryStatus
     vehicles: list[DriverVehicleOut]
     active_shift: ShiftOut | None
+    app_update: AppUpdateOut | None = None
+
+
+class AppUpdateOut(BaseModel):
+    """Version policy for this app build (U44)."""
+
+    version: int
+    minimum_version: int
+    recommended_version: int
+    status: Literal["OK", "UPDATE_RECOMMENDED", "UPDATE_REQUIRED"]
 
 
 class DriverShiftStart(BaseModel):

@@ -50,6 +50,7 @@ class AppContainer(context: Context) {
         tokens = tokenStore,
         client = httpClient,
         userAgent = "GoDailyDriver/${BuildConfig.VERSION_NAME} (Android ${Build.VERSION.SDK_INT})",
+        appVersionCode = BuildConfig.VERSION_CODE,
     )
 
     private val engine = SyncEngine(

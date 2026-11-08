@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     login_lockout_minutes: int = 15
     # Two-factor login (U31). When enforced, users of the roles below must
     # turn it on before they can use anything beyond their own account.
+    # Driver app versions (U44), as Android versionCode. Below the minimum a
+    # NEW shift cannot start (running shifts are never interrupted); below
+    # the recommended one the app shows an update notice. 0 = no policy.
+    driver_app_min_version: int = 0
+    driver_app_recommended_version: int = 0
     twofa_enforce: bool = False
     twofa_required_roles: str = "SUPER_ADMIN,ADMIN"
     # Minutes allowed between the password step and the code step.
@@ -204,6 +209,19 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    def environment_problems(self) -> list[str]:
+        """Development defaults that must never reach staging or production (U41)."""
+        if self.app_env not in ("staging", "production"):
+            return []
+        problems = []
+        if "godaily:godaily@" in self.database_url:
+            problems.append("DATABASE_URL uses the development password")
+        if self.data_encryption_key is None:
+            problems.append("DATA_ENCRYPTION_KEY is not set")
+        if any(o.startswith("http://") for o in self.cors_origin_list):
+            problems.append("CORS_ORIGINS contains a plain http origin")
+        return problems
 
 
 @lru_cache

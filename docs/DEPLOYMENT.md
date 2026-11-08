@@ -61,6 +61,7 @@ Defaults live in `apps/api/app/core/config.py` and `.env.example`. **Empty value
 | `LOGIN_MAX_FAILED_ATTEMPTS`, `LOGIN_LOCKOUT_MINUTES`, `LOGIN_RATE_LIMIT`, `LOGIN_RATE_WINDOW_SECONDS` | 5, 15, 60, 300 | The per-IP limit covers the whole office (admin logins come from the web server) |
 | `REDIS_URL` | unset (compose: bundled `redis`) | Redis-compatible store for rate limits shared by all API workers. Use `rediss://` with a password for a managed store outside a private network. If it is unreachable, limits fall back to per-process and `godaily_ratelimit_backend_errors_total` rises; alert on it |
 | `SENSITIVE_RATE_LIMIT`, `SENSITIVE_RATE_WINDOW_SECONDS` | 10, 900 | Per user: password change, 2FA enable/disable, new recovery codes |
+| `DRIVER_APP_MIN_VERSION`, `DRIVER_APP_RECOMMENDED_VERSION` | 0, 0 | Driver app versionCode policy (U44): below the recommended version the app shows an update notice; below the minimum it cannot start a new shift (running shifts continue). See DRIVER_APP_RELEASE.md |
 | `TWOFA_ENFORCE` | `false` | **Set to `true` in production.** Users of `TWOFA_REQUIRED_ROLES` (default `SUPER_ADMIN,ADMIN`) must turn on two-factor login before using anything except their account page. Turn it on after each of them has enrolled, or they are sent to the account page at their next request. |
 | `TWOFA_REQUIRED_ROLES`, `TWOFA_CHALLENGE_MINUTES` | `SUPER_ADMIN,ADMIN`, 5 | Roles that must use two-factor login; minutes allowed between the password and the code |
 | `GPS_RETENTION_DAYS` | 180 | Raw points of finished shifts older than this are pruned. Match your privacy notice |
@@ -194,7 +195,7 @@ All jobs are safe to repeat. They exit non-zero on failure, so alert on that.
 
 ## 11. Driver app
 
-1. `./gradlew :app:assembleRelease -PgoDailyApiBaseUrl=https://api.example.com/api/v1/` (or `bundleRelease` for the Play Store), signed with the keystore from section 3.
+1. `./gradlew :app:assembleRelease -PgoDailyVersionCode=<n> -PgoDailyVersionName=<x.y.z> -PgoDailyApiBaseUrl=https://api.example.com/api/v1/` (or `bundleRelease` for the Play Store), signed with the keystore from section 3. Versions, staging builds, signing, integrity checks, distribution and the version policy are in [`DRIVER_APP_RELEASE.md`](DRIVER_APP_RELEASE.md).
 2. Distribution:
    - **Company phones (recommended for the pilot):** install the signed APK directly or through MDM.
    - **Google Play:** background location needs Play's declaration (an in-app prominent disclosure exists; a demo video and a privacy policy are also required). Expect review time.

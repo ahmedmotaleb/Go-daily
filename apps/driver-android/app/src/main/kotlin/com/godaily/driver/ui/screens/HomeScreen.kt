@@ -50,6 +50,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.godaily.driver.BuildConfig
 import com.godaily.driver.R
 import com.godaily.driver.core.api.Shift
 import com.godaily.driver.core.cash.collectionStatusLabel
@@ -117,6 +118,17 @@ fun HomeScreen(state: UiState, vm: MainViewModel) {
                 if (state.stale) {
                     Notice("لا يوجد اتصال — البيانات المعروضة قد لا تكون محدثة", Brand.WarningSoft, Brand.Warning)
                 }
+                // U44: version policy from the server. A running shift is never interrupted.
+                val update = state.me?.appUpdate
+                if (update?.required == true) {
+                    Notice(
+                        "يجب تحديث التطبيق قبل بدء وردية جديدة. الوردية الجارية تستمر بشكل عادي.",
+                        Brand.DangerSoft,
+                        Brand.Danger,
+                    )
+                } else if (update?.recommended == true) {
+                    Notice("يتوفر إصدار أحدث من التطبيق؛ حدّثه في أقرب وقت.", Brand.WarningSoft, Brand.Warning)
+                }
                 if (state.pendingEnd) PendingEndCard(onRetry = vm::retrySync)
                 val kept = state.entries.filter { it.state != EntryState.SYNCED || !it.receiptDone }
                 if (kept.isNotEmpty()) SavedEntriesCard(kept, state.busy, vm)
@@ -127,6 +139,14 @@ fun HomeScreen(state: UiState, vm: MainViewModel) {
                     if (state.account?.todayDayOff == null) AccountCard(state, vm)
                 }
                 OtherVehicles(state)
+                Text(
+                    "إصدار التطبيق ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})" +
+                        if (BuildConfig.ENVIRONMENT != "production") " · نسخة تجريبية" else "",
+                    fontSize = 12.sp,
+                    color = Brand.InkMuted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }

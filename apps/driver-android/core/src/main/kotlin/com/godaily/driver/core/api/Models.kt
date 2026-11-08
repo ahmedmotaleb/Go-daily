@@ -52,7 +52,21 @@ data class DriverMe(
     @SerialName("license_status") val licenseStatus: String,
     val vehicles: List<DriverVehicle>,
     @SerialName("active_shift") val activeShift: Shift? = null,
+    /** Version policy for this build (U44); null from servers before it. */
+    @SerialName("app_update") val appUpdate: AppUpdate? = null,
 )
+
+@Serializable
+data class AppUpdate(
+    val version: Int,
+    @SerialName("minimum_version") val minimumVersion: Int,
+    @SerialName("recommended_version") val recommendedVersion: Int,
+    /** OK, UPDATE_RECOMMENDED or UPDATE_REQUIRED. */
+    val status: String,
+) {
+    val required: Boolean get() = status == "UPDATE_REQUIRED"
+    val recommended: Boolean get() = status == "UPDATE_RECOMMENDED"
+}
 
 @Serializable
 data class OperationType(

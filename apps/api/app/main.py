@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -18,6 +20,12 @@ def create_app() -> FastAPI:
     configure_logging(settings.log_level, settings.log_json)
     # Refuse to start (rather than fail on first use) without the encryption key.
     check_configured()
+    # U41: staging and production never run with development defaults.
+    problems = settings.environment_problems()
+    if problems:
+        raise RuntimeError(f"Unsafe configuration for {settings.app_env}: " + "; ".join(problems))
+    if settings.app_env in ("staging", "production") and settings.bootstrap_admin_password:
+        logging.getLogger(__name__).warning("bootstrap_admin_password_still_set")
 
     app = FastAPI(
         title=settings.app_name,

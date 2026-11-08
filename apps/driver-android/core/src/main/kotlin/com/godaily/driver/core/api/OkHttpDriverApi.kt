@@ -36,6 +36,8 @@ class OkHttpDriverApi(
     private val client: OkHttpClient,
     private val userAgent: String = "GoDailyDriver",
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Build number (versionCode) sent as X-App-Version for the server's version policy (U44). */
+    private val appVersionCode: Int? = null,
 ) : DriverApi {
     private val base: HttpUrl = baseUrl.trimEnd('/').plus("/").toHttpUrl()
 
@@ -207,6 +209,7 @@ class OkHttpDriverApi(
         val url = base.resolve(path) ?: throw IllegalArgumentException("bad path")
         val builder = Request.Builder().url(url).header("Accept", "application/json")
             .header("User-Agent", userAgent)
+        appVersionCode?.let { builder.header("X-App-Version", it.toString()) }
         if (auth) {
             tokens.token()?.let { builder.header("Authorization", "Bearer $it") }
         }

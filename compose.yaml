@@ -34,6 +34,9 @@ x-api-env: &api-env
   STORAGE_S3_SECRET_ACCESS_KEY: ${STORAGE_S3_SECRET_ACCESS_KEY:-}
   # Shared login / 2FA / sensitive-action rate limits across API workers (U32).
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  # Driver app version policy (U44); see docs/DRIVER_APP_RELEASE.md.
+  DRIVER_APP_MIN_VERSION: ${DRIVER_APP_MIN_VERSION:-0}
+  DRIVER_APP_RECOMMENDED_VERSION: ${DRIVER_APP_RECOMMENDED_VERSION:-0}
   # Two-factor login for staff (U31); set TWOFA_ENFORCE=true in production.
   TWOFA_ENFORCE: ${TWOFA_ENFORCE:-false}
   TWOFA_REQUIRED_ROLES: ${TWOFA_REQUIRED_ROLES:-SUPER_ADMIN,ADMIN}

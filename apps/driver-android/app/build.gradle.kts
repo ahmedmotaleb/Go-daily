@@ -9,6 +9,16 @@ plugins {
 
 val apiBaseUrl: String = providers.gradleProperty("goDailyApiBaseUrl").get()
 
+// Release identity (U42), set per build: -PgoDailyVersionCode=12 -PgoDailyVersionName=1.2.0
+// versionCode must grow with every release; the server's minimum/recommended
+// version policy (U44) compares against it.
+val appVersionCode: Int = providers.gradleProperty("goDailyVersionCode").orNull?.toInt() ?: 1
+val appVersionName: String = providers.gradleProperty("goDailyVersionName").orNull ?: "0.1.0"
+// "production" (default) or "staging": staging builds install side by side
+// (own application id) and show their environment on the home screen.
+val appEnvironment: String = providers.gradleProperty("goDailyEnvironment").orNull ?: "production"
+check(appEnvironment in setOf("production", "staging")) { "goDailyEnvironment must be production or staging" }
+
 // Release signing comes from an untracked keystore.properties (never committed).
 val signing = Properties().apply {
     val file = rootProject.file("keystore.properties")
@@ -23,9 +33,14 @@ android {
         applicationId = "com.godaily.driver"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+        buildConfigField("String", "ENVIRONMENT", "\"$appEnvironment\"")
+        if (appEnvironment == "staging") {
+            applicationIdSuffix = ".staging"
+            versionNameSuffix = "-staging"
+        }
     }
 
     signingConfigs {

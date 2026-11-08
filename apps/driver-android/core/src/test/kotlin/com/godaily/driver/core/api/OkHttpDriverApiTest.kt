@@ -101,6 +101,31 @@ class OkHttpDriverApiTest {
     }
 
     @Test
+    fun `the build number is sent and the update status parsed`() = runTest {
+        val versioned = OkHttpDriverApi(
+            server.url("/api/v1").toString(),
+            { token },
+            OkHttpClient.Builder().readTimeout(2, TimeUnit.SECONDS).build(),
+            io = Dispatchers.Unconfined,
+            appVersionCode = 7,
+        )
+        respond(
+            200,
+            """{"driver_id":"d1","full_name":"علي","phone":"01000000000","license_status":"OK",
+               "vehicles":[],"active_shift":null,
+               "app_update":{"version":7,"minimum_version":5,"recommended_version":8,
+               "status":"UPDATE_RECOMMENDED"}}""",
+        )
+        val me = versioned.me()
+        assertEquals("7", server.takeRequest().headers["X-App-Version"])
+        assertTrue(me.appUpdate!!.recommended)
+        // Older servers send no policy: parsed as null.
+        respond(200, """{"driver_id":"d1","full_name":"علي","phone":"0","license_status":"OK","vehicles":[]}""")
+        assertNull(api.me().appUpdate)
+        assertNull(server.takeRequest().headers["X-App-Version"])
+    }
+
+    @Test
     fun `no active shift is null`() = runTest {
         respond(200, "null")
         assertNull(api.activeShift())
