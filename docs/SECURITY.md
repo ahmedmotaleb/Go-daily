@@ -5,7 +5,12 @@ Reviewed 2026-10-30 against the Task 25 checklist. Each area lists what is in pl
 ## Authentication
 
 - Opaque random session tokens. Only their SHA-256 hash is stored, so a database leak does not expose usable tokens. Admin sessions last 12 h, driver sessions 30 days, and any session expires after 72 h idle.
-- Passwords are hashed with Argon2id. A wrong password and an unknown phone number get the same response and timing (a dummy hash is checked). The per-account lockout is 5 failures for 15 minutes and is audited.
+- Passwords are hashed with Argon2id. The per-account lockout is 5 failures for 15 minutes and is audited.
+- **No account-existence leaks (U33).**
+  - **One answer.** A wrong password, an unknown or malformed phone number, and a locked account get the same 401 `invalid_credentials` response and message. The password is checked against a dummy hash, or against the real one while locked, so the timing is the same too. The message says that repeated failures pause login for a while, so a real user knows to wait.
+  - **Audit evidence:** unknown numbers are recorded masked, and locks record the remaining time.
+  - **After a correct password:** only then does the response differ (account deactivated, wrong client type, the 2FA step, a lock at the code step). Whoever sees those already knows the password.
+  - **Password resets:** there is no self-service reset; resets are done by administrators.
 - Per-client-IP login throttle (60 attempts per 5 minutes, configurable). Because the admin web logs users in from its own server, the limit is generous and the edge proxy should add a stricter per-IP limit.
 - **Distributed rate limits (U32).**
   - **Shared count:** with `REDIS_URL` set, the login, 2FA-code and sensitive-action limits are counted in a Redis-compatible store, so every API worker and server shares one count (fixed windows, atomic `INCR` + `EXPIRE`). Spreading attempts across workers does not get around them.

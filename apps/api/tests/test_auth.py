@@ -90,9 +90,18 @@ def test_repeated_failures_lock_the_account(client: TestClient, db: Session) -> 
             == 401
         )
     res = client.post(LOGIN, json={"phone": user.phone, "password": DEFAULT_PASSWORD})
-    assert res.status_code == 429
-    assert res.json()["error"]["code"] == "account_locked"
-    assert res.json()["error"]["details"]["retry_after_seconds"] > 0
+    # Locked, but answered exactly like a wrong password (U33): the response
+    # does not reveal that the account exists.
+    assert res.status_code == 401
+    unknown = client.post(LOGIN, json={"phone": "01099999999", "password": "nope-nope"})
+    assert res.json()["error"] == unknown.json()["error"]
+    # The lock is kept for the office in the audit log.
+    locked = db.scalar(
+        select(AuditLog).where(
+            AuditLog.action == "auth.login.locked", AuditLog.entity_id == str(user.id)
+        )
+    )
+    assert locked is not None and locked.details["retry_after_seconds"] > 0
 
     # After the lockout window, the correct password works again.
     db.execute(

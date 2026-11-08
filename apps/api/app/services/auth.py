@@ -39,7 +39,13 @@ from app.core.time import utcnow
 from app.models.user import AuthSession, ClientType, User
 from app.services import audit, two_factor
 
-INVALID_CREDENTIALS = "رقم الهاتف أو كلمة المرور غير صحيحة"
+# One answer for a wrong password, an unknown number and a locked account
+# (U33): the response never tells whether an account exists. It mentions
+# the lockout so a real user understands why a correct password can fail.
+INVALID_CREDENTIALS = (
+    "رقم الهاتف أو كلمة المرور غير صحيحة. بعد عدة محاولات خاطئة يتوقف الدخول مؤقتًا، "
+    "فانتظر قليلًا ثم حاول مرة أخرى"
+)
 SESSION_TOUCH_INTERVAL = timedelta(minutes=5)
 
 
@@ -92,16 +98,19 @@ def login(
     )
 
     if user is not None and user.locked_until is not None and user.locked_until > now:
-        retry_after = int((user.locked_until - now).total_seconds()) + 1
+        # Same answer and the same password check (timing) as a wrong
+        # password; the lock is kept in the audit log for the office (U33).
+        verify_password(user.password_hash, password)
         audit.record(
-            db, action="auth.login.locked", actor=None, entity_type="user", entity_id=user.id
+            db,
+            action="auth.login.locked",
+            actor=None,
+            entity_type="user",
+            entity_id=user.id,
+            details={"retry_after_seconds": int((user.locked_until - now).total_seconds()) + 1},
         )
         db.commit()
-        raise TooManyRequests(
-            "تم إيقاف تسجيل الدخول مؤقتًا بسبب محاولات خاطئة متكررة",
-            code="account_locked",
-            details={"retry_after_seconds": retry_after},
-        )
+        raise AuthenticationError(INVALID_CREDENTIALS, code="invalid_credentials")
 
     if not verify_password(user.password_hash if user else None, password):
         if user is not None:
