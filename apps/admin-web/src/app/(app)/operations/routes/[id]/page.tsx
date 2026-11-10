@@ -11,7 +11,26 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
 import { can, requirePermission } from "@/lib/auth";
+import { formatDateTime, formatNumber } from "@/lib/format";
 import type { Route, RouteRevenueRate } from "@/lib/types";
+
+/** U08: one immutable snapshot of the route definition. */
+type RouteVersion = {
+  version: number;
+  effective_from: string;
+  created_by: string | null;
+  snapshot: {
+    name: string;
+    expected_distance_km: string | null;
+    stops: {
+      id: string;
+      name: string;
+      latitude: string | null;
+      longitude: string | null;
+      radius_m: number;
+    }[];
+  };
+};
 import { setRouteActiveAction, updateRouteAction } from "../../actions";
 import { RouteForm } from "../route-form";
 
@@ -27,9 +46,12 @@ export default async function RouteDetailPage({
   const route = await api.get<Route | null>(`/routes/${id}`, undefined, { allow404: true });
   if (!route) notFound();
   const canEdit = can(me, "operations:write");
-  const rates = can(me, "revenue:read")
-    ? await api.get<RouteRevenueRate[]>(`/routes/${id}/revenue-rates`)
-    : null;
+  const [rates, versions] = await Promise.all([
+    can(me, "revenue:read")
+      ? api.get<RouteRevenueRate[]>(`/routes/${id}/revenue-rates`)
+      : Promise.resolve(null),
+    api.get<RouteVersion[]>(`/routes/${id}/versions`),
+  ]);
   const days = route.operating_days?.length
     ? WEEKDAY_ORDER.filter((d) => route.operating_days?.includes(d))
         .map((d) => WEEKDAY_LABELS_AR[d])
@@ -99,6 +121,33 @@ export default async function RouteDetailPage({
               roundTrip={route.trip_pattern === "ROUND_TRIP"}
             />
           ) : null}
+          <Card>
+            <CardHeader
+              title="إصدارات المسار"
+              description="كل تعديل يحفظ إصدارًا جديدًا؛ الدورات والاتجاهات السابقة تبقى مقاسة على الإصدار الذي كان ساريًا وقتها."
+            />
+            <ul className="divide-y divide-line">
+              {versions.map((v) => (
+                <li key={v.version} className="space-y-1 px-5 py-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold">الإصدار {formatNumber(v.version)}</span>
+                    <span className="ltr-nums text-xs text-ink-soft">
+                      من {formatDateTime(v.effective_from)}
+                    </span>
+                    {v.created_by ? (
+                      <span className="text-xs text-ink-soft">· {v.created_by}</span>
+                    ) : null}
+                  </div>
+                  <div className="text-xs text-ink-soft">
+                    {v.snapshot.stops.map((s) => s.name).join(" ← ")}
+                    {v.snapshot.expected_distance_km
+                      ? ` · ${v.snapshot.expected_distance_km} كم`
+                      : ""}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
           {can(me, "audit:read") ? <AuditTrail entityType="route" entityId={route.id} /> : null}
         </div>
       </div>

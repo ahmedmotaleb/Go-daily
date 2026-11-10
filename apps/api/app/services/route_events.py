@@ -23,7 +23,7 @@ from app.models.route_events import (
 from app.models.shift import OperationSession, SessionStatus
 from app.models.tracking import GpsPoint, PointQuality
 from app.models.user import User
-from app.services import audit
+from app.services import audit, route_versions
 from app.services.geofence import DetectionParams, Geofence, detect_route_events
 from app.services.track_analysis import TrackPoint
 
@@ -75,6 +75,8 @@ def detect_for_session(db: Session, session: OperationSession) -> dict[str, int]
     )
     keys = []
     rows = []
+    # U08: each event records the route definition in force when it happened.
+    versions: dict[datetime, int | None] = {}
     for e in detected:
         key = _dedupe_key(session.id, e.event_type, e.stop_id, e.occurred_at)
         keys.append(key)
@@ -84,6 +86,9 @@ def detect_for_session(db: Session, session: OperationSession) -> dict[str, int]
                 "shift_id": session.shift_id,
                 "session_id": session.id,
                 "route_id": route.id,
+                "route_version": versions.setdefault(
+                    e.occurred_at, route_versions.version_at(db, route.id, e.occurred_at)
+                ),
                 "stop_id": e.stop_id,
                 "vehicle_id": session.shift.vehicle_id,
                 "event_type": e.event_type,
@@ -244,6 +249,7 @@ def add_manual_event(
         shift_id=session.shift_id,
         session_id=session.id,
         route_id=session.route_id,
+        route_version=route_versions.version_at(db, session.route_id, occurred_at),
         vehicle_id=session.shift.vehicle_id,
         event_type=event_type,
         direction=direction,

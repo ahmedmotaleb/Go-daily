@@ -25,6 +25,8 @@ class RouteEventOut(BaseModel):
     session_id: uuid.UUID
     stop_id: uuid.UUID | None
     stop_name: str | None
+    # Route definition version the event was measured against (U08).
+    route_version: int | None = None
     event_type: RouteEventType
     direction: LegDirection | None
     occurred_at: datetime

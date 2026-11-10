@@ -9,12 +9,23 @@ business logic never depends on a specific university, school or station.
 from __future__ import annotations
 
 import uuid
-from datetime import time
+from datetime import datetime, time
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, Numeric, String, Text, text
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, enum_column_type
@@ -118,3 +129,25 @@ class RouteStop(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("radius_m BETWEEN 20 AND 5000", name="radius_range"),
         Index("uq_route_stops_route_sequence", "route_id", "sequence", unique=True),
     )
+
+
+class RouteVersion(UUIDPrimaryKeyMixin, Base):
+    """Immutable snapshot of a route definition (U08).
+
+    Every create or edit of a route stores the whole definition as it was:
+    stops with their ids, order, coordinates and radius, expected distance
+    and duration, time window and days. Route events record the version in
+    force when they happened, so editing a route never changes what past
+    evidence meant.
+    """
+
+    __tablename__ = "route_versions"
+
+    route_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("route_definitions.id"))
+    version: Mapped[int] = mapped_column(Integer)
+    effective_from: Mapped[datetime]
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    __table_args__ = (Index("uq_route_versions_route_version", "route_id", "version", unique=True),)

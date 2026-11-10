@@ -46,6 +46,7 @@ from app.models.operations import (
     OperationType,
     RouteDefinition,
     RouteStop,
+    RouteVersion,
     StopKind,
     TripPattern,
 )
@@ -137,6 +138,7 @@ __all__ = [
     "RouteEvent",
     "RouteEventType",
     "RouteStop",
+    "RouteVersion",
     "SchoolRun",
     "SchoolRunStatus",
     "SessionStatus",

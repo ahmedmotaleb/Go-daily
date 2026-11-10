@@ -53,6 +53,8 @@ class RouteEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     shift_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("shifts.id"))
     session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("operation_sessions.id"))
     route_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("route_definitions.id"))
+    # Route definition version in force when the event happened (U08).
+    route_version: Mapped[int | None] = mapped_column(Integer)
     stop_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("route_stops.id"))
     vehicle_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("vehicles.id"))
     event_type: Mapped[RouteEventType] = mapped_column(

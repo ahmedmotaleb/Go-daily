@@ -24,7 +24,7 @@ from app.schemas.operations import (
     RouteUpdate,
     StopIn,
 )
-from app.services import audit
+from app.services import audit, route_versions
 from app.services.common import apply_changes, like_pattern, paginate
 
 ROUTE_AUDITED = (
@@ -181,6 +181,8 @@ def create_route(db: Session, *, actor: User, data: RouteCreate) -> RouteDefinit
     db.add(route)
     db.flush()
     _sync_stops(db, route, _ordered_stops(data.origin, data.intermediate_stops, data.destination))
+    db.refresh(route)
+    route_versions.record(db, route, actor)  # U08: version 1
     audit.record(
         db,
         action="route.created",
@@ -234,6 +236,7 @@ def update_route(
         before, {**audit.snapshot(route, ROUTE_AUDITED), "stops": _stops_snapshot(route)}
     )
     if changes:
+        version = route_versions.record(db, route, actor)  # U08: a new version
         audit.record(
             db,
             action="route.updated",
@@ -241,6 +244,7 @@ def update_route(
             entity_type="route",
             entity_id=route.id,
             changes=changes,
+            details={"version": version.version},
         )
         db.commit()
     return route

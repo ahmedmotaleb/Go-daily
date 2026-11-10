@@ -390,6 +390,18 @@ ExceptionRun (window, per-rule counts, per-rule errors)
 - **Failure isolation.** Each rule runs in a savepoint; a failing rule is logged and recorded on the run, and the others still run.
 - **Audit.** Every review step is an audit entry with the status change, the note and the resolution.
 
+### Route versioning (U08)
+
+- **Immutable versions.** Each route definition is stored as immutable versions in `route_versions` (migration 0024).
+  - **Contents:** name, trip pattern, expected distance and duration, time window and days, and the stops with their ids, order, coordinates and radius.
+  - **When a version is made:** creating a route stores version 1, and every edit that changes it stores the next one, effective from that moment, with who made it. A save without changes stores nothing.
+  - **Existing routes:** they were given version 1 from their current definition.
+- **Events are pinned.** Route events record `route_version`, the version in force when they happened (`route_versions.version_at`). Editing a route therefore never changes what past loops, legs and review cases were measured against.
+- **Stable stop ids.** Stop ids stay stable across versions, as before, and each version keeps the coordinates and radius the stop had then.
+- **Where to see them:** `GET /routes/{id}/versions`, and «إصدارات المسار» on the route page.
+- **Thresholds:** detection thresholds are company policies (U47), which are versioned separately.
+- **Tests:** `test_route_versions.py`.
+
 ### Severity and escalation (U27)
 
 - **Levels:** INFO (للعلم, new; migration 0023), LOW, MEDIUM, HIGH.

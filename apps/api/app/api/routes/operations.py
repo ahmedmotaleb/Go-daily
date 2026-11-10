@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel
+from sqlalchemy import select
 
 from app.api.deps import DbSession, require_permissions
 from app.core.permissions import Permission
@@ -21,6 +24,7 @@ from app.schemas.operations import (
     RouteUpdate,
 )
 from app.services import operations as ops_service
+from app.services import route_versions
 
 router = APIRouter(tags=["operations"])
 
@@ -97,3 +101,28 @@ def activate_route(route_id: uuid.UUID, actor: Writer, db: DbSession) -> RouteDe
 @router.post("/routes/{route_id}/deactivate", response_model=RouteOut)
 def deactivate_route(route_id: uuid.UUID, actor: Writer, db: DbSession) -> RouteDefinition:
     return ops_service.set_route_active(db, actor=actor, route_id=route_id, active=False)
+
+
+class RouteVersionOut(BaseModel):
+    version: int
+    effective_from: datetime
+    created_by: str | None
+    snapshot: dict[str, Any]
+
+
+@router.get("/routes/{route_id}/versions", response_model=list[RouteVersionOut])
+def route_version_history(route_id: uuid.UUID, _: Reader, db: DbSession) -> list[RouteVersionOut]:
+    """U08: every definition the route has had, newest first (immutable)."""
+    ops_service.get_route(db, route_id)
+    versions = route_versions.history(db, route_id)
+    ids = {v.created_by_id for v in versions if v.created_by_id}
+    names = {u.id: u.full_name for u in db.scalars(select(User).where(User.id.in_(ids))).all()}
+    return [
+        RouteVersionOut(
+            version=v.version,
+            effective_from=v.effective_from,
+            created_by=names.get(v.created_by_id) if v.created_by_id else None,
+            snapshot=v.snapshot,
+        )
+        for v in versions
+    ]

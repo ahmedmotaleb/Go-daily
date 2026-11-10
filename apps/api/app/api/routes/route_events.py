@@ -51,6 +51,7 @@ OpsWriter = Annotated[User, Depends(require_permissions(Permission.OPERATIONS_WR
 def _event_out(e: RouteEvent, stop_names: dict[uuid.UUID, str]) -> RouteEventOut:
     return RouteEventOut(
         id=e.id,
+        route_version=e.route_version,
         session_id=e.session_id,
         stop_id=e.stop_id,
         stop_name=stop_names.get(e.stop_id) if e.stop_id else None,
