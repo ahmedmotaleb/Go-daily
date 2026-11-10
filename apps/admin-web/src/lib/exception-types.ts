@@ -2,7 +2,7 @@ import type { Ref } from "@/lib/finance-types";
 
 export type ExceptionStatus =
   "OPEN" | "UNDER_REVIEW" | "EXPLAINED" | "CORRECTED" | "DISMISSED" | "ESCALATED";
-export type ExceptionSeverity = "LOW" | "MEDIUM" | "HIGH";
+export type ExceptionSeverity = "INFO" | "LOW" | "MEDIUM" | "HIGH";
 export type ExceptionLabel = "REVIEW_REQUIRED" | "UNUSUAL";
 
 export type OperationalException = {
@@ -35,6 +35,15 @@ export type OperationalException = {
   observed: Record<string, unknown>;
   thresholds: Record<string, unknown>;
   review_action: string;
+  /** U27: how the severity was set from the current evidence. */
+  severity_basis?: {
+    rule_severity: ExceptionSeverity;
+    final_severity: ExceptionSeverity;
+    money: string | null;
+    duration_minutes: number | null;
+    reasons: string[];
+    history_used: boolean;
+  } | null;
 };
 
 export type ExceptionRun = {

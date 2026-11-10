@@ -2295,8 +2295,9 @@ class Explanation:
 def explain(rule_code: str, evidence: dict[str, Any]) -> Explanation:
     """Reason, observed values, thresholds and review action for one case."""
     info = RULE_INFO.get(rule_code)
-    thresholds = {k: v for k, v in evidence.items() if any(m in k for m in _THRESHOLD_MARKERS)}
-    observed = {k: v for k, v in evidence.items() if k not in thresholds}
+    facts = {k: v for k, v in evidence.items() if k != "severity_basis"}  # shown apart (U27)
+    thresholds = {k: v for k, v in facts.items() if any(m in k for m in _THRESHOLD_MARKERS)}
+    observed = {k: v for k, v in facts.items() if k not in thresholds}
     return Explanation(
         reason=info.description_ar if info else rule_code,
         observed=observed,

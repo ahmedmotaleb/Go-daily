@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core import monitoring
+from app.core.config import Settings
 from app.core.errors import ConflictError, NotFoundError, field_error
 from app.core.time import local_day_bounds_utc, utcnow
 from app.models.exceptions import (
@@ -30,6 +31,7 @@ from app.models.exceptions import (
 from app.models.user import User
 from app.schemas.common import PageParams
 from app.services import audit, policies
+from app.services import severity as severity_model
 from app.services.common import paginate
 from app.services.exception_rules import RULES, Context, RuleInfo, RuleResult, is_enabled
 
@@ -82,7 +84,7 @@ def run_detection(
         try:
             with db.begin_nested():
                 outcome = rule(ctx)
-                new = _store(db, info, outcome)
+                new = _store(db, info, outcome, settings)
             results[info.code] = {"found": len(outcome.candidates), "new": new}
         except Exception as exc:
             # One broken rule must not stop the others; the run records it.
@@ -96,16 +98,20 @@ def run_detection(
     return run
 
 
-def _store(db: Session, info: RuleInfo, outcome: RuleResult) -> int:
+def _store(db: Session, info: RuleInfo, outcome: RuleResult, settings: Settings) -> int:
     now = utcnow()
     produced: set[str] = set()
     new = 0
     for c in outcome.candidates:
         produced.add(c.dedupe_key)
-        evidence = audit.to_jsonable(c.evidence)
+        # U27: the rule's severity adjusted by the current evidence only.
+        level, basis = severity_model.assess(
+            c.severity, c.evidence, c.occurred_at, c.occurred_until, settings
+        )
+        evidence = audit.to_jsonable({**c.evidence, "severity_basis": basis})
         values: dict[str, Any] = {
             "rule_code": c.rule_code,
-            "severity": c.severity,
+            "severity": level,
             "label": info.label,
             "summary": c.summary[:300],
             "evidence": evidence,
@@ -140,7 +146,7 @@ def _store(db: Session, info: RuleInfo, outcome: RuleResult) -> int:
         if existing.status in ACTIVE:
             existing.summary = values["summary"]
             existing.evidence = evidence
-            existing.severity = c.severity
+            existing.severity = level
             existing.occurred_at = c.occurred_at
             existing.occurred_until = c.occurred_until
     stale = outcome.scopes - produced

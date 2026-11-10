@@ -43,6 +43,7 @@ ROUTE = "المسارات"
 ODOMETER = "العداد"
 FUEL = "الوقود"
 REVENUE = "الإيرادات والنقدية"
+SEVERITY = "الأهمية والتصعيد"
 
 CATALOG: tuple[PolicyKey, ...] = (
     PolicyKey("exception_gps_disabled_minutes", GPS, "إيقاف الموقع أثناء الوردية", "دقيقة", 1, 240),
@@ -81,6 +82,15 @@ CATALOG: tuple[PolicyKey, ...] = (
         "exception_revenue_ratio", REVENUE, "دخل بعيد عن المعتاد (مضاعف)", "×", 1.1, 10, False
     ),
     PolicyKey("cash_handover_days", REVENUE, "مهلة تسليم نقدية التقفيل", "يوم", 1, 30),
+    PolicyKey("severity_info_amount", SEVERITY, "أقل من هذا المبلغ: للعلم", "ج.م", 0, 1000, False),
+    PolicyKey("severity_medium_amount", SEVERITY, "أهمية متوسطة من مبلغ", "ج.م", 1, 100000, False),
+    PolicyKey("severity_high_amount", SEVERITY, "أهمية عالية من مبلغ", "ج.م", 1, 1000000, False),
+    PolicyKey(
+        "severity_long_minutes", SEVERITY, "أهمية متوسطة إذا استمرت الحالة", "دقيقة", 10, 1440
+    ),
+    PolicyKey(
+        "escalation_hours", SEVERITY, "تنبيه للحالات العالية غير المراجعة بعد", "ساعة", 1, 168
+    ),
 )
 BY_KEY = {k.key: k for k in CATALOG}
 

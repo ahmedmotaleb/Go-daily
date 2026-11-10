@@ -71,6 +71,7 @@ def _out(e: OperationalException) -> ExceptionOut:
         observed=why.observed,
         thresholds=why.thresholds,
         review_action=why.action,
+        severity_basis=e.evidence.get("severity_basis") if e.evidence else None,
     )
 
 

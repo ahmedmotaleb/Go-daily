@@ -41,7 +41,7 @@ export default async function ExceptionsPage({ searchParams }: PageProps<"/excep
     status:
       spEnum(sp, "status", Object.keys(STATUS_FILTER) as (keyof typeof STATUS_FILTER)[]) ??
       "ACTIVE",
-    severity: spEnum(sp, "severity", ["HIGH", "MEDIUM", "LOW"] as const),
+    severity: spEnum(sp, "severity", ["HIGH", "MEDIUM", "LOW", "INFO"] as const),
     rule_code: spString(sp, "rule_code"),
     vehicle_id: spUuid(sp, "vehicle_id"),
     driver_id: spUuid(sp, "driver_id"),

@@ -24,6 +24,7 @@ const SEVERITY: Record<ExceptionSeverity, { label: string; badge: string; tile: 
     badge: "bg-neutral-100 text-neutral-700",
     tile: "bg-neutral-100 text-neutral-700",
   },
+  INFO: { label: "للعلم", badge: "bg-info-soft text-info", tile: "bg-info-soft text-info" },
 };
 
 /** Icon by the kind of rule: GPS, fuel, odometer, money, schedule, anything else. */

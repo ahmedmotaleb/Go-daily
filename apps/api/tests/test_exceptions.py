@@ -665,8 +665,8 @@ def test_candidate_storage_keeps_links_and_label(db: Session) -> None:
             )
         ]
     )
-    assert engine._store(db, info, outcome) == 1
-    assert engine._store(db, info, outcome) == 0
+    assert engine._store(db, info, outcome, get_settings()) == 1
+    assert engine._store(db, info, outcome, get_settings()) == 0
     row = db.scalars(
         select(OperationalException).where(OperationalException.dedupe_key == f"TEST:{shift.id}")
     ).one()

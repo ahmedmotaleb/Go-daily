@@ -390,9 +390,21 @@ ExceptionRun (window, per-rule counts, per-rule errors)
 - **Failure isolation.** Each rule runs in a savepoint; a failing rule is logged and recorded on the run, and the others still run.
 - **Audit.** Every review step is an audit entry with the status change, the note and the resolution.
 
+### Severity and escalation (U27)
+
+- **Levels:** INFO (للعلم, new; migration 0023), LOW, MEDIUM, HIGH.
+- **Severity from current evidence.** Each rule proposes a severity. `app/services/severity.py` then adjusts it using only the current case:
+  - **money involved:** the largest amount in the evidence. At least MEDIUM from `SEVERITY_MEDIUM_AMOUNT` (500), HIGH from `SEVERITY_HIGH_AMOUNT` (2,000). A LOW case about less than `SEVERITY_INFO_AMOUNT` (50) becomes INFO.
+  - **duration:** at least MEDIUM from `SEVERITY_LONG_MINUTES` (120).
+- **History is never used.** Earlier cases for the same driver or vehicle never raise severity; they are context, not evidence.
+- **Severity basis.** It is stored with each case and shown on the case page: the rule's level, the final level, the amount, the duration and the reasons.
+- **Escalation reminders.** A HIGH case still OPEN after `ESCALATION_HOURS` (24) notifies reviewers (`ESCALATION` notification, once per case). Escalating stays a human decision, and the reminder stops once someone starts reviewing.
+- **Policy:** all five thresholds are versioned policy keys (U47).
+- **Tests:** `test_severity.py`.
+
 ### Versioned company policies (U47)
 
-- **What it covers:** 22 review thresholds (`app/services/policies.py` → `CATALOG`), each with a label, unit and allowed range. Staff with `settings:manage` change them on «سياسات المراجعة» (`/policies`); readers with `exceptions:read` can view them.
+- **What it covers:** 27 review thresholds (`app/services/policies.py` → `CATALOG`), each with a label, unit and allowed range. Staff with `settings:manage` change them on «سياسات المراجعة» (`/policies`); readers with `exceptions:read` can view them.
   - **GPS:** gap, disabled, tracking interrupted, late upload, clock skew, long stop, outside area, movement between shifts.
   - **Routes:** corridor, deviation minutes, incomplete legs.
   - **Odometer:** tolerance %/km, maximum average speed.

@@ -29,7 +29,7 @@ from app.core.errors import NotFoundError
 from app.core.permissions import ROLE_PERMISSIONS, Permission, UserRole
 from app.core.time import local_today, utcnow
 from app.models.driver import Driver, EmploymentStatus
-from app.models.exceptions import ExceptionSeverity, OperationalException
+from app.models.exceptions import ExceptionSeverity, ExceptionStatus, OperationalException
 from app.models.finance import Expense, FuelTransaction, RecordStatus, RideHailingStatement
 from app.models.fleet import Vehicle
 from app.models.maintenance import MaintenanceRecord
@@ -243,6 +243,41 @@ def open_exceptions(db: Session) -> list[Draft]:
     return drafts
 
 
+def escalations(db: Session) -> list[Draft]:
+    """U27: HIGH cases nobody has started reviewing after ESCALATION_HOURS.
+
+    Only a reminder to reviewers: escalating a case stays a human decision.
+    """
+    from app.services import policies  # noqa: PLC0415 - avoids an import cycle
+
+    hours = policies.effective_settings(db).escalation_hours
+    cases = db.scalars(
+        select(OperationalException).where(
+            OperationalException.status == ExceptionStatus.OPEN,
+            OperationalException.severity == ExceptionSeverity.HIGH,
+            OperationalException.detected_at <= utcnow() - timedelta(hours=hours),
+            OperationalException.cleared_at.is_(None),
+        )
+    ).all()
+    drafts: list[Draft] = []
+    for c in cases:
+        info = RULE_INFO.get(c.rule_code)
+        drafts.append(
+            Draft(
+                permission=Permission.EXCEPTIONS_REVIEW,
+                severity=N.CRITICAL,
+                title=f"حالة عالية الأهمية لم تُراجع منذ أكثر من {hours} ساعة: "
+                f"{info.title_ar if info else c.rule_code}",
+                body=c.summary,
+                dedupe_key=f"ESCALATION:{c.id}",
+                link=f"/exceptions/{c.id}",
+                entity_type="operational_exception",
+                entity_id=c.id,
+            )
+        )
+    return drafts
+
+
 def pending_reviews(db: Session) -> list[Draft]:
     cutoff = utcnow() - timedelta(hours=get_settings().notification_pending_review_hours)
     counts: list[tuple[str, str, int]] = []
@@ -283,6 +318,7 @@ GENERATORS: list[tuple[str, Generator]] = [
     ("MAINTENANCE_DUE", maintenance_due),
     ("TRACKING_INTERRUPTED", tracking_interrupted),
     ("EXCEPTION", open_exceptions),
+    ("ESCALATION", escalations),
     ("PENDING_REVIEW", pending_reviews),
 ]
 

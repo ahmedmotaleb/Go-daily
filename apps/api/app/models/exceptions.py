@@ -24,6 +24,7 @@ from app.models.user import User
 
 
 class ExceptionSeverity(StrEnum):
+    INFO = "INFO"  # للعلم (U27)
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"

@@ -138,6 +138,13 @@ class Settings(BaseSettings):
     driver_start_photo_max_age_minutes: int = 120
     # Exception engine V2 (U26).
     cash_handover_days: int = 2
+    # Severity from current evidence (U27): money involved and duration.
+    severity_info_amount: Decimal = Decimal("50")
+    severity_medium_amount: Decimal = Decimal("500")
+    severity_high_amount: Decimal = Decimal("2000")
+    severity_long_minutes: int = 120
+    # A HIGH case still OPEN this long notifies reviewers (U27).
+    escalation_hours: int = 24
     exception_incomplete_legs: int = 2
     # School run verification (U12).
     school_late_grace_minutes: int = 10

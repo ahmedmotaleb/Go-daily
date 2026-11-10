@@ -205,6 +205,15 @@ export default async function ExceptionPage({
               <dl className="divide-y divide-line">
                 <DetailRow label="الأهمية">
                   <Badge tone={SEVERITY_TONE[e.severity]}>{SEVERITY_AR[e.severity]}</Badge>
+                  {e.severity_basis ? (
+                    <span className="mt-1 block text-xs text-ink-soft">
+                      {e.severity_basis.reasons.join("، ")}
+                      {e.severity_basis.rule_severity !== e.severity_basis.final_severity
+                        ? ` (القاعدة: ${SEVERITY_AR[e.severity_basis.rule_severity]})`
+                        : ""}
+                      . لا تُرفع الأهمية بسبب حالات سابقة.
+                    </span>
+                  ) : null}
                 </DetailRow>
                 <DetailRow label="وقت الحدوث">
                   <span className="ltr-nums">

@@ -42,6 +42,8 @@ class ExceptionOut(BaseModel):
     observed: dict[str, Any]
     thresholds: dict[str, Any]
     review_action: str
+    # U27: how the severity was set from the current evidence.
+    severity_basis: dict[str, Any] | None = None
 
 
 class ReviewIn(BaseModel):

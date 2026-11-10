@@ -39,12 +39,14 @@ export const SEVERITY_AR: Record<ExceptionSeverity, string> = {
   HIGH: "عالية",
   MEDIUM: "متوسطة",
   LOW: "منخفضة",
+  INFO: "للعلم",
 };
 
 export const SEVERITY_TONE: Record<ExceptionSeverity, Tone> = {
   HIGH: "danger",
   MEDIUM: "warning",
   LOW: "neutral",
+  INFO: "info",
 };
 
 /** Admin page of the record an exception is about. */
@@ -67,6 +69,8 @@ export const SUBJECT_AR: Record<string, string> = {
 };
 
 export const EVIDENCE_KEYS: Record<string, string> = {
+  time_used: "الوقت المعتمد للقيد",
+  difference_minutes: "الفرق (دقيقة)",
   event: "الحدث",
   disabled_at: "وقت الإيقاف",
   restored_at: "وقت الاسترجاع",
