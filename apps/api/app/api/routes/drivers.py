@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
 from app.api.deps import DbSession, require_permissions
 from app.api.presenters import assignment_out, driver_out
-from app.core.permissions import Permission
+from app.api.routes.vehicles import SECTION_PERMISSIONS, TimelineItemOut
+from app.core.permissions import Permission, has_permission
+from app.core.time import local_today
 from app.models.driver import DriverCompensationPlan, EmploymentStatus
 from app.models.user import User
 from app.schemas.assignment import AssignmentOut
@@ -25,6 +28,7 @@ from app.schemas.driver import (
 )
 from app.schemas.user import PasswordReset
 from app.services import assignments as assignments_service
+from app.services import driver_timeline
 from app.services import drivers as drivers_service
 
 router = APIRouter(prefix="/drivers", tags=["drivers"])
@@ -163,3 +167,23 @@ def add_compensation_plan(
     db: DbSession,
 ) -> DriverCompensationPlan:
     return drivers_service.add_compensation_plan(db, actor=actor, driver_id=driver_id, data=body)
+
+
+@router.get("/{driver_id}/timeline", response_model=list[TimelineItemOut])
+def driver_day_timeline(
+    driver_id: uuid.UUID, user: Reader, db: DbSession, day: date | None = None
+) -> list[TimelineItemOut]:
+    """Driver daily timeline (U25); each kind only with its own read permission.
+
+    Account entries (advances, deductions, settlements) need settlement access.
+    """
+    drivers_service.get_driver(db, driver_id)
+    sections = {s for s, p in SECTION_PERMISSIONS.items() if has_permission(user.role, p)}
+    items = driver_timeline.timeline(
+        db,
+        driver_id,
+        day or local_today(),
+        sections,
+        ledger=has_permission(user.role, Permission.SETTLEMENTS_READ),
+    )
+    return [TimelineItemOut(**i.__dict__) for i in items]

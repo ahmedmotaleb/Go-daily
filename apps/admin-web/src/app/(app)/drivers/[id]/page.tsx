@@ -17,7 +17,16 @@ import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { can, requirePermission } from "@/lib/auth";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { Assignment, CompensationPlan, Driver, Page, Vehicle } from "@/lib/types";
+import { cairoToday, spDate } from "@/lib/search";
+import type {
+  Assignment,
+  CompensationPlan,
+  Driver,
+  Page,
+  TimelineItem,
+  Vehicle,
+} from "@/lib/types";
+import { DayTimeline } from "@/components/vehicles/day-timeline";
 import {
   addCompensationPlanAction,
   createDriverAccountAction,
@@ -56,7 +65,8 @@ export default async function DriverDetailPage({
 
   const canEdit = can(me, "drivers:write");
   const canAssign = can(me, "assignments:write");
-  const [history, vehicles, plans] = await Promise.all([
+  const day = spDate(sp, "day") ?? cairoToday();
+  const [history, vehicles, plans, timeline] = await Promise.all([
     can(me, "assignments:read")
       ? api.get<Page<Assignment>>(`/drivers/${id}/assignments`, { page_size: 50 })
       : Promise.resolve(null),
@@ -66,6 +76,7 @@ export default async function DriverDetailPage({
     can(me, "settlements:read")
       ? api.get<CompensationPlan[]>(`/drivers/${id}/compensation-plans`)
       : Promise.resolve(null),
+    api.get<TimelineItem[]>(`/drivers/${id}/timeline`, { day }),
   ]);
   const vehicleChoices = (vehicles?.items ?? []).map((v) => {
     const primary = v.current_assignments.find((a) => a.role === "PRIMARY");
@@ -111,6 +122,14 @@ export default async function DriverDetailPage({
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          <DayTimeline
+            day={day}
+            items={timeline}
+            title="يوم السائق"
+            basePath={`/drivers/${id}`}
+            description="كل ما سُجل للسائق في اليوم على أي سيارة: الورديات والتتبع والوقود والمصروفات والتقفيل والتسليم وحسابه وحالات المراجعة، حسب صلاحيتك."
+            empty="لا يوجد شيء مسجل لهذا السائق في هذا اليوم."
+          />
           <Card>
             <CardHeader
               title="بيانات السائق"

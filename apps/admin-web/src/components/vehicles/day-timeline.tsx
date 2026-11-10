@@ -28,6 +28,8 @@ const DOT: Record<string, string> = {
   CASH: "bg-lime-400",
   MAINTENANCE: "bg-neutral-500",
   REVIEW: "bg-red-400",
+  DAY_OFF: "bg-blue-400",
+  LEDGER: "bg-neutral-500",
 };
 
 /** «يوم السيارة» (U24): everything recorded for the vehicle on one day, in order. */
@@ -37,25 +39,34 @@ export function DayTimeline({
   items,
   picker = true,
   title = "يوم السيارة",
+  basePath,
+  description = "كل ما سُجل للسيارة في اليوم: الورديات والتشغيل والتتبع والوقود والمصروفات والتحصيل والصيانة وحالات المراجعة.",
+  empty = "لا يوجد شيء مسجل لهذه السيارة في هذا اليوم.",
 }: {
-  vehicleId: string;
+  vehicleId?: string;
   day: string;
   items: TimelineItem[];
   /** Off where the day is fixed by the page (the investigation workspace). */
   picker?: boolean;
   title?: string;
+  /** Page the day picker reloads (default: the vehicle page). */
+  basePath?: string;
+  description?: string;
+  empty?: string;
 }) {
   return (
     <Card>
       <CardHeader
         title={title}
-        description="كل ما سُجل للسيارة في اليوم: الورديات والتشغيل والتتبع والوقود والمصروفات والتحصيل والصيانة وحالات المراجعة."
-        actions={picker ? <DayPicker value={day} basePath={`/vehicles/${vehicleId}`} /> : undefined}
+        description={description}
+        actions={
+          picker ? (
+            <DayPicker value={day} basePath={basePath ?? `/vehicles/${vehicleId}`} />
+          ) : undefined
+        }
       />
       {items.length === 0 ? (
-        <p className="px-5 py-6 text-sm text-ink-muted">
-          لا يوجد شيء مسجل لهذه السيارة في هذا اليوم.
-        </p>
+        <p className="px-5 py-6 text-sm text-ink-muted">{empty}</p>
       ) : (
         <ol className="px-5 py-4">
           {items.map((it, i) => (
