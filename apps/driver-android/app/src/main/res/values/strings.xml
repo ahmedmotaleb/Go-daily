@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Go Daily السائق</string>
+    <string name="channel_tracking">تتبع الوردية</string>
+    <string name="channel_tracking_desc">إشعار دائم يظهر طوال مدة تتبع موقع المركبة أثناء الوردية</string>
+    <string name="channel_alerts">تنبيهات التتبع</string>
+    <string name="channel_alerts_desc">تنبيه عند توقف التتبع أثناء وردية نشطة</string>
+    <string name="notification_tracking_title">وردية نشطة — يتم تتبع موقع المركبة</string>
+    <string name="notification_resume_title">التتبع متوقف أثناء وردية نشطة</string>
+    <string name="notification_resume_text">اضغط لفتح التطبيق واستئناف تتبع الوردية</string>
+</resources>

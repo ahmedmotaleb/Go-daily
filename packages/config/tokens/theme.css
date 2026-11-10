@@ -1,0 +1,95 @@
+/*
+ * Go Daily design tokens for Tailwind CSS v4 (Design System 0.1).
+ *
+ * Arabic first, RTL, light mode. Brand:
+ *   - forest green #103D32  -> primary, headings, confirm buttons
+ *   - dark green   #082B24  -> sidebar and dark surfaces
+ *   - lime         #B5E33D  -> the single most important action, live tracking
+ *   - page #F6F8F5, white cards, charcoal text #202A27
+ * Status colours have a dot shade and a darker text shade so text meets 4.5:1.
+ * The logo pin green #7EBC3C is for the logo only.
+ *
+ * Keep in sync with tokens.ts.
+ */
+@theme {
+  --color-forest-50: #eef4f0;
+  --color-forest-100: #dce8e2;
+  --color-forest-200: #b9d1c5;
+  --color-forest-300: #8db3a2;
+  --color-forest-400: #5e907b;
+  --color-forest-500: #3c735f;
+  --color-forest-600: #2e6555;
+  --color-forest-700: #1b4a3e;
+  --color-forest-800: #103d32;
+  --color-forest-900: #082b24;
+  --color-forest-950: #051d18;
+
+  --color-lime-50: #f4fae6;
+  --color-lime-100: #eef7d9;
+  --color-lime-200: #dcefb2;
+  --color-lime-300: #c9ea78;
+  --color-lime-400: #b5e33d;
+  --color-lime-500: #9ccb27;
+  --color-lime-600: #7fa61e;
+  --color-lime-700: #5f7f14;
+  --color-lime-800: #3a5a0e;
+  --color-lime-900: #2c4409;
+
+  --color-neutral-50: #f6f8f5;
+  --color-neutral-100: #eef1ef;
+  --color-neutral-200: #e3eae5;
+  --color-neutral-300: #d6dfd9;
+  --color-neutral-400: #9aa59f;
+  --color-neutral-500: #7b8983;
+  --color-neutral-600: #5e6b65;
+  --color-neutral-700: #4f5b56;
+  --color-neutral-800: #333d39;
+  --color-neutral-900: #202a27;
+  --color-neutral-950: #141b19;
+
+  /* Status dots and indicators (never for small text). */
+  --color-amber-400: #e8a23a;
+  --color-red-400: #d9534f;
+  --color-blue-400: #4a7fb5;
+
+  /* Semantic aliases */
+  --color-background: var(--color-neutral-50);
+  --color-surface: #ffffff;
+  --color-surface-muted: var(--color-neutral-50);
+  --color-ink: var(--color-neutral-900);
+  /* Secondary text: #5E6B65 passes 4.5:1 on white and on the page colour. */
+  --color-ink-muted: var(--color-neutral-600);
+  --color-ink-soft: var(--color-neutral-700);
+  --color-line: var(--color-neutral-200);
+  --color-line-strong: var(--color-neutral-300);
+  --color-primary: var(--color-forest-800);
+  --color-primary-hover: var(--color-forest-900);
+  --color-accent: var(--color-lime-400);
+  --color-accent-hover: var(--color-lime-500);
+  --color-on-accent: var(--color-forest-900);
+  --color-gps: var(--color-lime-400);
+  --color-sidebar: var(--color-forest-900);
+
+  --color-success: #3a5a0e;
+  --color-success-soft: #eef7d9;
+  --color-warning: #7a4e08;
+  --color-warning-soft: #fdf1dc;
+  --color-danger: #a3302c;
+  --color-danger-soft: #fbe6e5;
+  --color-danger-action: #b83a36;
+  --color-info: #24507a;
+  --color-info-soft: #e5eef8;
+
+  --radius-badge: 0.5rem;
+  --radius-control: 0.75rem;
+  --radius-card: 1rem;
+  --radius-panel: 1.25rem;
+  --radius-sheet: 1.75rem;
+
+  --shadow-card: 0 1px 2px rgb(16 61 50 / 0.04);
+  --shadow-panel: 0 1px 2px rgb(16 61 50 / 0.04), 0 8px 24px rgb(16 61 50 / 0.05);
+  --shadow-dialog: 0 12px 32px rgb(8 43 36 / 0.16);
+
+  /* Inter first: digits, plates' numbers and Latin take Inter, Arabic falls to Plex. */
+  --font-sans: "Inter", "IBM Plex Sans Arabic", "Segoe UI", Tahoma, system-ui, sans-serif;
+}

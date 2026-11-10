@@ -1,0 +1,48 @@
+@import "tailwindcss";
+@import "../../../../packages/config/tokens/theme.css";
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "kern";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Numbers, plates and codes stay left-to-right inside RTL text. */
+  .ltr-nums,
+  input[type="number"],
+  input[type="tel"],
+  input[type="email"] {
+    direction: ltr;
+    unicode-bidi: plaintext;
+  }
+
+  /* Grid columns may shrink below their content (e.g. a wide table), so
+     tables scroll inside their own box instead of widening the page. */
+  .grid > * {
+    min-width: 0;
+  }
+
+  /* Forest outline: visible on white and on the page colour (lime alone is too faint). */
+  :focus-visible {
+    outline: 2px solid var(--color-forest-800);
+    outline-offset: 2px;
+  }
+
+  /* Fields: forest border plus a soft lime ring, as in the design system. */
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: none;
+    border-color: var(--color-forest-800);
+    box-shadow:
+      0 0 0 1px var(--color-forest-800),
+      0 0 0 4px rgb(181 227 61 / 0.35);
+  }
+}
