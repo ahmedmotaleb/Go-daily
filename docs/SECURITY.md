@@ -18,6 +18,13 @@ Reviewed 2026-10-30 against the Task 25 checklist. Each area lists what is in pl
   - **Otherwise:** the API answers 403 `reauth_required`. The admin web sends the user to «تأكيد الهوية» and back to the page.
   - **Audit and limits:** confirmations and failed confirmations are audited (`auth.reauth`, `auth.reauth.failed`), and they share the per-user sensitive-action rate limit.
   - **Reading** is never blocked.
+- **Security event dashboard (U36).** «أحداث الأمان» (`/security`, `GET /security/events`, `settings:manage`) summarises the audit log for the last 24 h, 72 h or a week:
+  - **Counts:** failed logins (per-hour chart, with a spike warning at 20 or more in an hour), lockouts, wrong two-factor codes, failed re-confirmations, two-factor resets or disables, admin password resets, permission denials and attempts on unknown numbers.
+  - **Top sources:** the accounts and addresses with the most failures.
+  - **Recent events.**
+  - **Configuration warnings:** not in production, privileged accounts without two-factor login, two-factor login not enforced, no shared rate-limit store, metrics off, bootstrap password still set.
+  - **Permission denials** are now audited (`auth.permission_denied`, with the route template, method and missing permission), since staff never see actions they cannot use.
+  - **Never shown:** secrets, codes or national IDs. Unknown numbers appear only masked, as the audit log stores them.
 - **Distributed rate limits (U32).**
   - **Shared count:** with `REDIS_URL` set, the login, 2FA-code and sensitive-action limits are counted in a Redis-compatible store, so every API worker and server shares one count (fixed windows, atomic `INCR` + `EXPIRE`). Spreading attempts across workers does not get around them.
   - **Sensitive actions** (password change, enabling or turning off 2FA, new recovery codes) are limited per user: 10 per 15 minutes.
@@ -34,7 +41,7 @@ Reviewed 2026-10-30 against the Task 25 checklist. Each area lists what is in pl
   - **Turning it off and new recovery codes** need the password and a current code. Required roles cannot turn it off.
   - **Admin reset:** an administrator can reset two-factor login for a user who lost their phone. It needs a reason, follows the same role rules as password resets, and ends that user's sessions.
   - **Audit:** setup, enable, disable, renewal, reset, failed codes and the login method (password, TOTP or recovery code) are audited. Secrets and codes are never logged or audited.
-- Tests: `test_auth.py`, `test_users_rbac.py`, `test_security.py::test_login_is_throttled_per_client`, `test_two_factor.py`, `test_totp.py`, `test_ratelimit_shared.py`, `test_reauth.py`.
+- Tests: `test_auth.py`, `test_users_rbac.py`, `test_security.py::test_login_is_throttled_per_client`, `test_two_factor.py`, `test_totp.py`, `test_ratelimit_shared.py`, `test_reauth.py`, `test_security_events.py`.
 
 ## Authorization and least privilege
 

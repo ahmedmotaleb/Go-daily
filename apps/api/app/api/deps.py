@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -53,10 +53,10 @@ def get_current_user(session: CurrentSession) -> User:
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-def require_permissions(*permissions: Permission) -> Callable[[User], User]:
+def require_permissions(*permissions: Permission) -> Callable[..., User]:
     """Dependency factory: the current user must be staff and hold every permission."""
 
-    def _dependency(user: CurrentUser) -> User:
+    def _dependency(user: CurrentUser, request: Request, db: DbSession) -> User:
         if user.role not in STAFF_ROLES:
             raise PermissionDenied()
         if two_factor.setup_needed(user):
@@ -67,6 +67,24 @@ def require_permissions(*permissions: Permission) -> Callable[[User], User]:
             )
         missing = [p for p in permissions if not has_permission(user.role, p)]
         if missing:
+            # U36: staff never see actions they cannot use, so a denial is
+            # worth recording (route template only, no query or body).
+            from app.services import audit  # noqa: PLC0415 - avoids an import cycle
+
+            route = request.scope.get("route")
+            audit.record(
+                db,
+                action="auth.permission_denied",
+                actor=user,
+                entity_type="user",
+                entity_id=user.id,
+                details={
+                    "route": getattr(route, "path", None),
+                    "method": request.method,
+                    "missing": [p.value for p in missing],
+                },
+            )
+            db.commit()
             raise PermissionDenied(details={"missing": [p.value for p in missing]})
         return user
 

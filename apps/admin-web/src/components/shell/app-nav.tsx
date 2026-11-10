@@ -44,6 +44,7 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   control: Gauge,
   pilot: FlaskConical,
   quality: ClipboardCheck,
+  security: ShieldAlert,
   collections: Banknote,
   handover: HandCoins,
   rides: CarTaxiFront,

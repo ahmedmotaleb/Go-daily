@@ -28,6 +28,7 @@ from app.api.routes import (
     revenue,
     ride_hailing,
     route_events,
+    security,
     shifts,
     tracking,
     users,
@@ -64,3 +65,4 @@ api_router.include_router(reports.router)
 api_router.include_router(pilot.router)
 api_router.include_router(data_quality.router)
 api_router.include_router(policies.router)
+api_router.include_router(security.router)
