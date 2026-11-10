@@ -35,6 +35,17 @@ def get_current_session(
 CurrentSession = Annotated[AuthSession, Depends(get_current_session)]
 
 
+def require_recent_auth(session: CurrentSession) -> AuthSession:
+    """U35: the action is sensitive; the session must be recently confirmed."""
+    from app.services import reauth  # noqa: PLC0415 - avoids an import cycle
+
+    reauth.require(session)
+    return session
+
+
+RecentAuth = Annotated[AuthSession, Depends(require_recent_auth)]
+
+
 def get_current_user(session: CurrentSession) -> User:
     return session.user
 

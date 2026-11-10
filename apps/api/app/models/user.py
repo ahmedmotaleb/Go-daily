@@ -70,6 +70,9 @@ class AuthSession(UUIDPrimaryKeyMixin, Base):
     expires_at: Mapped[datetime]
     last_used_at: Mapped[datetime] = mapped_column(server_default=func.now())
     revoked_at: Mapped[datetime | None]
+    # Last password (+2FA) confirmation in this session (U35); sensitive
+    # actions need it, or the login itself, within REAUTH_WINDOW_MINUTES.
+    reauthenticated_at: Mapped[datetime | None]
     revoke_reason: Mapped[str | None] = mapped_column(String(50))
 
     user: Mapped[User] = relationship(back_populates="sessions")

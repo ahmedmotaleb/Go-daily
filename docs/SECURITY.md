@@ -12,6 +12,12 @@ Reviewed 2026-10-30 against the Task 25 checklist. Each area lists what is in pl
   - **After a correct password:** only then does the response differ (account deactivated, wrong client type, the 2FA step, a lock at the code step). Whoever sees those already knows the password.
   - **Password resets:** there is no self-service reset; resets are done by administrators.
 - Per-client-IP login throttle (60 attempts per 5 minutes, configurable). Because the admin web logs users in from its own server, the limit is generous and the edge proxy should add a stricter per-IP limit.
+- **Re-authentication for sensitive actions (U35).**
+  - **What needs it:** creating users, changing roles or account status, password and two-factor resets for others, company policy changes, and finalizing a settlement of at least `REAUTH_SETTLEMENT_AMOUNT` (10,000 EGP).
+  - **What counts:** a login, or a confirmation of the password (plus the two-factor code when enabled), within `REAUTH_WINDOW_MINUTES` (10).
+  - **Otherwise:** the API answers 403 `reauth_required`. The admin web sends the user to «تأكيد الهوية» and back to the page.
+  - **Audit and limits:** confirmations and failed confirmations are audited (`auth.reauth`, `auth.reauth.failed`), and they share the per-user sensitive-action rate limit.
+  - **Reading** is never blocked.
 - **Distributed rate limits (U32).**
   - **Shared count:** with `REDIS_URL` set, the login, 2FA-code and sensitive-action limits are counted in a Redis-compatible store, so every API worker and server shares one count (fixed windows, atomic `INCR` + `EXPIRE`). Spreading attempts across workers does not get around them.
   - **Sensitive actions** (password change, enabling or turning off 2FA, new recovery codes) are limited per user: 10 per 15 minutes.
@@ -28,7 +34,7 @@ Reviewed 2026-10-30 against the Task 25 checklist. Each area lists what is in pl
   - **Turning it off and new recovery codes** need the password and a current code. Required roles cannot turn it off.
   - **Admin reset:** an administrator can reset two-factor login for a user who lost their phone. It needs a reason, follows the same role rules as password resets, and ends that user's sessions.
   - **Audit:** setup, enable, disable, renewal, reset, failed codes and the login method (password, TOTP or recovery code) are audited. Secrets and codes are never logged or audited.
-- Tests: `test_auth.py`, `test_users_rbac.py`, `test_security.py::test_login_is_throttled_per_client`, `test_two_factor.py`, `test_totp.py`, `test_ratelimit_shared.py`.
+- Tests: `test_auth.py`, `test_users_rbac.py`, `test_security.py::test_login_is_throttled_per_client`, `test_two_factor.py`, `test_totp.py`, `test_ratelimit_shared.py`, `test_reauth.py`.
 
 ## Authorization and least privilege
 

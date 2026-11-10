@@ -1,4 +1,5 @@
 import "server-only";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { env } from "./env";
 import { getSessionToken } from "./session";
@@ -101,6 +102,13 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     // U31: two-factor login must be turned on first (account page stays available).
     redirect("/account");
   }
+  if (
+    res.status === 403 &&
+    (data as { error?: ApiErrorBody } | null)?.error?.code === "reauth_required"
+  ) {
+    // U35: a sensitive action needs a recent password (and 2FA) confirmation.
+    redirect(`/confirm?next=${encodeURIComponent(await returnPath())}`);
+  }
   if (!res.ok) {
     const body = (data as { error?: ApiErrorBody } | null)?.error ?? {
       code: "http_error",
@@ -125,3 +133,19 @@ export const api = {
   /** Multipart upload (the browser's file is forwarded as is). */
   upload: <T>(path: string, form: FormData) => request<T>(path, { method: "POST", body: form }),
 };
+
+/** Same-site path of the page the user was on (for returning after a confirmation). */
+async function returnPath(): Promise<string> {
+  try {
+    const referer = (await headers()).get("referer");
+    if (referer) {
+      const url = new URL(referer);
+      if (url.pathname.startsWith("/") && !url.pathname.startsWith("//")) {
+        return `${url.pathname}${url.search}`;
+      }
+    }
+  } catch {
+    // Outside a request (should not happen): fall back to the dashboard.
+  }
+  return "/";
+}

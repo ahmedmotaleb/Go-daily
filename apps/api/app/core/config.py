@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # the recommended one the app shows an update notice. 0 = no policy.
     driver_app_min_version: int = 0
     driver_app_recommended_version: int = 0
+    # Sensitive actions (U35) need a login or re-confirmation this recent.
+    reauth_window_minutes: int = 10
+    # Finalizing a settlement of at least this amount (EGP) is sensitive.
+    reauth_settlement_amount: Decimal = Decimal("10000")
     twofa_enforce: bool = False
     twofa_required_roles: str = "SUPER_ADMIN,ADMIN"
     # Minutes allowed between the password step and the code step.

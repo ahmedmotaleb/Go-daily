@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, status
+from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentSession, CurrentUser, DbSession
 from app.core import ratelimit
@@ -26,7 +27,7 @@ from app.schemas.auth import (
 from app.schemas.common import Message
 from app.schemas.user import CurrentUserOut, UserOut
 from app.services import auth as auth_service
-from app.services import two_factor
+from app.services import reauth, two_factor
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -163,6 +164,19 @@ def logout(session: CurrentSession, db: DbSession) -> Message:
 @router.get("/me", response_model=CurrentUserOut)
 def me(user: CurrentUser) -> CurrentUserOut:
     return current_user_out(user)
+
+
+class ReauthIn(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
+    code: str | None = Field(default=None, max_length=20)
+
+
+@router.post("/reauth", response_model=Message)
+def reauthenticate(body: ReauthIn, session: CurrentSession, db: DbSession) -> Message:
+    """U35: confirm the password (and 2FA code) before a sensitive action."""
+    _limit_user(session.user)
+    reauth.confirm(db, session=session, password=body.password, code=body.code)
+    return Message(message="تم التأكيد")
 
 
 @router.post("/change-password", response_model=Message, status_code=status.HTTP_200_OK)

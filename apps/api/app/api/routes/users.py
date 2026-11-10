@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.deps import DbSession, require_permissions
+from app.api.deps import DbSession, RecentAuth, require_permissions
 from app.core.permissions import Permission, UserRole
 from app.models.user import User
 from app.schemas.auth import TwoFactorResetIn
@@ -42,7 +42,7 @@ def list_users(
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def create_user(body: UserCreate, actor: Manager, db: DbSession) -> User:
+def create_user(body: UserCreate, actor: Manager, db: DbSession, _: RecentAuth) -> User:
     return users_service.create_user(db, actor=actor, data=body)
 
 
@@ -52,13 +52,15 @@ def get_user(user_id: uuid.UUID, _: Reader, db: DbSession) -> User:
 
 
 @router.patch("/{user_id}", response_model=UserOut)
-def update_user(user_id: uuid.UUID, body: UserUpdate, actor: Manager, db: DbSession) -> User:
+def update_user(
+    user_id: uuid.UUID, body: UserUpdate, actor: Manager, db: DbSession, _: RecentAuth
+) -> User:
     return users_service.update_user(db, actor=actor, user_id=user_id, data=body)
 
 
 @router.post("/{user_id}/reset-password", response_model=Message)
 def reset_password(
-    user_id: uuid.UUID, body: PasswordReset, actor: Manager, db: DbSession
+    user_id: uuid.UUID, body: PasswordReset, actor: Manager, db: DbSession, _: RecentAuth
 ) -> Message:
     users_service.reset_password(db, actor=actor, user_id=user_id, new_password=body.new_password)
     return Message(message="تم تعيين كلمة مرور جديدة وإنهاء جلسات المستخدم")
@@ -66,7 +68,7 @@ def reset_password(
 
 @router.post("/{user_id}/2fa/reset", response_model=Message)
 def reset_two_factor(
-    user_id: uuid.UUID, body: TwoFactorResetIn, actor: Manager, db: DbSession
+    user_id: uuid.UUID, body: TwoFactorResetIn, actor: Manager, db: DbSession, _: RecentAuth
 ) -> Message:
     """For a user who lost their phone and recovery codes (U31); ends their sessions."""
     user = users_service.get_user(db, user_id)

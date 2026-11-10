@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.api.deps import DbSession, require_permissions
+from app.api.deps import DbSession, RecentAuth, require_permissions
 from app.core.config import get_settings
 from app.core.permissions import Permission
 from app.models.audit import AuditLog
@@ -108,6 +108,8 @@ def get_policies(_: Reader, db: DbSession) -> PoliciesOut:
 
 
 @router.post("", response_model=PoliciesOut)
-def update_policies(body: PolicyUpdateIn, actor: Manager, db: DbSession) -> PoliciesOut:
+def update_policies(
+    body: PolicyUpdateIn, actor: Manager, db: DbSession, _: RecentAuth
+) -> PoliciesOut:
     policies.update(db, actor=actor, changes=dict(body.changes), reason=body.reason)
     return _out(db)

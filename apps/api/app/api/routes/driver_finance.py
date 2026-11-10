@@ -9,13 +9,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.deps import DbSession, require_permissions
+from app.api.deps import CurrentSession, DbSession, require_permissions
 from app.api.finance_presenters import ledger_outs, settlement_outs
 from app.core.errors import NotFoundError, ValidationFailed
 from app.core.permissions import Permission
 from app.core.time import local_today
 from app.models.driver import Driver
-from app.models.finance import LedgerEntryType, SettlementStatus
+from app.models.finance import DriverSettlement, LedgerEntryType, SettlementStatus
 from app.models.user import User
 from app.schemas.common import Page, PageParams, page_params
 from app.schemas.finance import (
@@ -27,7 +27,7 @@ from app.schemas.finance import (
     SettlementOut,
     VoidAction,
 )
-from app.services import driver_ledger
+from app.services import driver_ledger, reauth
 from app.services import settlements as settlements_service
 from app.services.finance_common import money
 
@@ -134,7 +134,14 @@ def recalculate_settlement(settlement_id: uuid.UUID, actor: Writer, db: DbSessio
 
 
 @router.post("/settlements/{settlement_id}/finalize", response_model=SettlementOut)
-def finalize_settlement(settlement_id: uuid.UUID, actor: Finalizer, db: DbSession) -> SettlementOut:
+def finalize_settlement(
+    settlement_id: uuid.UUID, actor: Finalizer, db: DbSession, session: CurrentSession
+) -> SettlementOut:
+    # U35: large settlements need a recent password (and 2FA) confirmation.
+    current = db.get(DriverSettlement, settlement_id)
+    if current is not None:
+        amounts = [abs(current.earnings_amount), abs(current.closing_balance or Decimal(0))]
+        reauth.require_for_amount(session, max(amounts))
     settlement = settlements_service.finalize(db, actor=actor, settlement_id=settlement_id)
     return settlement_outs(db, [settlement])[0]
 
