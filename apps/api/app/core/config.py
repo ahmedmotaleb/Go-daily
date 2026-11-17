@@ -193,6 +193,15 @@ class Settings(BaseSettings):
     notification_channel_min_severity: Literal["INFO", "WARNING", "CRITICAL"] = "CRITICAL"
     # Financial records waiting longer than this are summarised for approvers.
     notification_pending_review_hours: int = 24
+    # Which notification kinds are generated (U48); 0 turns one off and
+    # clears its open notifications. Changed through the versioned policies.
+    notify_vehicle_document: int = 1
+    notify_driver_license: int = 1
+    notify_maintenance_due: int = 1
+    notify_tracking_interrupted: int = 1
+    notify_exception: int = 1
+    notify_escalation: int = 1
+    notify_pending_review: int = 1
 
     # Optional bootstrap admin (used only by `python -m app.cli bootstrap-admin`).
     bootstrap_admin_phone: str | None = None

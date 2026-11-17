@@ -380,36 +380,87 @@ export async function settlementAction(
 
 // --- Finance settings ---------------------------------------------------------------------
 
-type SettingsKind = "platforms" | "fuel-types" | "expense-categories";
+type SettingsKind =
+  | "platforms"
+  | "fuel-types"
+  | "expense-categories"
+  | "operation-types"
+  | "vehicle-types"
+  | "maintenance-types";
 const SETTINGS_PATH: Record<SettingsKind, string> = {
   platforms: "/ride-hailing/platforms",
   "fuel-types": "/fuel-types",
   "expense-categories": "/expense-categories",
+  "operation-types": "/operation-types",
+  "vehicle-types": "/vehicle-types",
+  "maintenance-types": "/maintenance/types",
 };
+const SETTINGS_KINDS = Object.keys(SETTINGS_PATH) as SettingsKind[];
+
+function settingsDone(notice: NoticeCode): never {
+  revalidatePath("/finance/settings");
+  redirect(`/finance/settings?notice=${notice}`);
+}
 
 export async function createSettingAction(
   kind: SettingsKind,
   _: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  kind = boundOneOf(kind, Object.keys(SETTINGS_PATH) as SettingsKind[]);
+  kind = boundOneOf(kind, SETTINGS_KINDS);
   const body =
     kind === "platforms"
       ? compact({ name: text(formData, "name"), notes: text(formData, "notes") })
       : compact({
           code: text(formData, "code")?.toUpperCase(),
           name_ar: text(formData, "name_ar"),
+          kind: text(formData, "kind"),
           category: text(formData, "category"),
           default_unit: text(formData, "default_unit"),
           pnl_group: text(formData, "pnl_group"),
+          interval_km: int(formData, "interval_km"),
+          interval_days: int(formData, "interval_days"),
+          consumable_type_id: text(formData, "consumable_type_id"),
         });
   try {
     await api.post(SETTINGS_PATH[kind], body);
   } catch (error) {
     return errorToFormState(error, formValues(formData));
   }
-  revalidatePath("/finance/settings");
-  redirect("/finance/settings?notice=created");
+  settingsDone("created");
+}
+
+/** U48: rename, reorder or (for service types) change intervals and consumable. */
+export async function editSettingAction(
+  kind: SettingsKind,
+  id: string,
+  _: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  kind = boundOneOf(kind, SETTINGS_KINDS);
+  id = boundId(id);
+  const body =
+    kind === "platforms"
+      ? compact({ name: text(formData, "name") })
+      : {
+          ...compact({
+            name_ar: text(formData, "name_ar"),
+            sort_order: int(formData, "sort_order"),
+          }),
+          ...(kind === "maintenance-types"
+            ? {
+                interval_km: intOrNull(formData, "interval_km"),
+                interval_days: intOrNull(formData, "interval_days"),
+                consumable_type_id: textOrNull(formData, "consumable_type_id"),
+              }
+            : {}),
+        };
+  try {
+    await api.patch(`${SETTINGS_PATH[kind]}/${id}`, body);
+  } catch (error) {
+    return errorToFormState(error, formValues(formData));
+  }
+  settingsDone("record_updated");
 }
 
 export async function toggleSettingAction(
@@ -419,15 +470,14 @@ export async function toggleSettingAction(
   _state: FormState,
   _formData: FormData,
 ): Promise<FormState> {
-  kind = boundOneOf(kind, Object.keys(SETTINGS_PATH) as SettingsKind[]);
+  kind = boundOneOf(kind, SETTINGS_KINDS);
   id = boundId(id);
   try {
     await api.patch(`${SETTINGS_PATH[kind]}/${id}`, { is_active: active === true });
   } catch (error) {
     return errorToFormState(error);
   }
-  revalidatePath("/finance/settings");
-  redirect("/finance/settings?notice=record_updated");
+  settingsDone("record_updated");
 }
 
 // --- Maintenance ----------------------------------------------------------------------

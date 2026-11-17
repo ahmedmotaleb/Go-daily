@@ -279,7 +279,10 @@ def escalations(db: Session) -> list[Draft]:
 
 
 def pending_reviews(db: Session) -> list[Draft]:
-    cutoff = utcnow() - timedelta(hours=get_settings().notification_pending_review_hours)
+    from app.services import policies  # noqa: PLC0415 - avoids an import cycle
+
+    hours = policies.effective_settings(db).notification_pending_review_hours
+    cutoff = utcnow() - timedelta(hours=hours)
     counts: list[tuple[str, str, int]] = []
     for label, path, model in (
         ("وقود", "/finance/fuel", FuelTransaction),
@@ -342,10 +345,16 @@ def generate(db: Session) -> dict[str, Any]:
     created: list[uuid.UUID] = []
     audience: dict[Permission, list[User]] = {}
     now = utcnow()
+    from app.services import policies  # noqa: PLC0415 - avoids an import cycle
+
+    effective = policies.effective_settings(db)
     for kind, generator in GENERATORS:
+        enabled = bool(getattr(effective, f"notify_{kind.lower()}", 1))
         try:
             with db.begin_nested():
-                drafts = generator(db)
+                # A kind turned off (U48) produces nothing, so its open
+                # notifications are cleared below like any resolved condition.
+                drafts = generator(db) if enabled else []
                 keys: set[str] = set()
                 new = 0
                 for d in drafts:
@@ -393,7 +402,12 @@ def generate(db: Session) -> dict[str, Any]:
                         )
                         .values(cleared_at=None)
                     )
-            results[kind] = {"conditions": len(drafts), "new": new, "cleared": int(cleared or 0)}
+            results[kind] = {
+                "conditions": len(drafts),
+                "new": new,
+                "cleared": int(cleared or 0),
+                "enabled": enabled,
+            }
         except Exception as exc:
             logger.exception("notification_generator_failed", extra={"kind": kind})
             monitoring.capture_exception(exc, component="notification_generator", name=kind)

@@ -451,6 +451,14 @@ ExceptionRun (window, per-rule counts, per-rule errors)
 - **Not yet configurable:** receipt rules and settlement approval thresholds. They do not exist as rules yet; adding them is a business decision.
 - **Tests:** `test_policies.py`, including that lowering cash handover days makes the review rule flag a one-day-old close-out.
 
+### Master data management (U48)
+
+«البيانات الأساسية» (`/finance/settings`, `settings:manage`) is one screen for the lists the rest of the system picks from: operation types, vehicle types, maintenance types (default intervals and the consumable each uses, U17), fuel and consumable types, expense categories and ride-hailing platforms. Each can be added, renamed, reordered and deactivated. There is no delete endpoint for any of them, so history keeps pointing at what it used; deactivated items disappear from pick lists and stay visible with `include_inactive`. Every change is audited. Routes, fuel stations (U16) and review/notification policies have their own pages, linked from the screen.
+
+**Notification rules** are part of the versioned policies (U47), group «التنبيهات»: each generated kind (documents, licences, maintenance due, tracking interrupted, new review cases, escalations, pending financial reviews) can be turned off, and the pending-review summary delay set. A kind turned off generates nothing, so its open notifications are cleared (never deleted) and come back when it is turned on again while the condition still holds.
+
+Tests: `test_master_data.py`.
+
 ### Pilot command center and daily close (U50/U51)
 
 - **Pilot vehicles.** A vehicle joins the pilot through `vehicles.pilot` (migration 0019). It is set from the page or by `PATCH /vehicles/{id}`, and the change is audited.

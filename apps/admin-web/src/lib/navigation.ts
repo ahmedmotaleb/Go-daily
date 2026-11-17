@@ -107,7 +107,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/users", label: "المستخدمون", icon: "users", permission: "users:read" },
   {
     href: "/finance/settings",
-    label: "الإعدادات",
+    label: "البيانات الأساسية",
     icon: "settings",
     permission: "settings:manage",
   },

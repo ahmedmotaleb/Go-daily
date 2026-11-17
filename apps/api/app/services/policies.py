@@ -36,6 +36,8 @@ class PolicyKey:
     minimum: float
     maximum: float
     integer: bool = True
+    # On (1) / off (0) instead of a number.
+    toggle: bool = False
 
 
 GPS = "التتبع"
@@ -44,6 +46,12 @@ ODOMETER = "العداد"
 FUEL = "الوقود"
 REVENUE = "الإيرادات والنقدية"
 SEVERITY = "الأهمية والتصعيد"
+NOTIFY = "التنبيهات"
+
+
+def _toggle(key: str, title: str) -> PolicyKey:
+    return PolicyKey(key, NOTIFY, title, "", 0, 1, toggle=True)
+
 
 CATALOG: tuple[PolicyKey, ...] = (
     PolicyKey("exception_gps_disabled_minutes", GPS, "إيقاف الموقع أثناء الوردية", "دقيقة", 1, 240),
@@ -90,6 +98,21 @@ CATALOG: tuple[PolicyKey, ...] = (
     ),
     PolicyKey(
         "escalation_hours", SEVERITY, "تنبيه للحالات العالية غير المراجعة بعد", "ساعة", 1, 168
+    ),
+    _toggle("notify_vehicle_document", "انتهاء مستندات السيارات"),
+    _toggle("notify_driver_license", "انتهاء رخص السائقين"),
+    _toggle("notify_maintenance_due", "صيانة مستحقة"),
+    _toggle("notify_tracking_interrupted", "توقف التتبع أثناء الوردية"),
+    _toggle("notify_exception", "حالات مراجعة جديدة"),
+    _toggle("notify_escalation", "حالات عالية الأهمية لم تُراجع"),
+    _toggle("notify_pending_review", "سجلات مالية بانتظار المراجعة"),
+    PolicyKey(
+        "notification_pending_review_hours",
+        NOTIFY,
+        "ملخص السجلات المالية المنتظرة بعد",
+        "ساعة",
+        1,
+        168,
     ),
 )
 BY_KEY = {k.key: k for k in CATALOG}

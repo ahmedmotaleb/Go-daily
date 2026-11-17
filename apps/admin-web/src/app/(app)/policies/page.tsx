@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ActionForm } from "@/components/forms/action-form";
-import { TextareaField, TextField } from "@/components/forms/fields";
+import { SelectField, TextareaField, TextField } from "@/components/forms/fields";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -23,6 +23,7 @@ type PolicyValue = {
   minimum: number;
   maximum: number;
   integer: boolean;
+  toggle?: boolean;
   overridden: boolean;
 };
 
@@ -38,7 +39,16 @@ type Policies = {
   }[];
 };
 
-/** U47: review thresholds, versioned and audited. */
+const ON_OFF = [
+  { value: "1", label: "تشغيل" },
+  { value: "0", label: "إيقاف" },
+];
+
+function onOff(value: number) {
+  return value ? "تشغيل" : "إيقاف";
+}
+
+/** U47: review thresholds, versioned and audited; U48: notification rules. */
 export default async function PoliciesPage() {
   const me = await requirePermission("exceptions:read");
   const data = await api.get<Policies>("/policies");
@@ -54,8 +64,8 @@ export default async function PoliciesPage() {
         description={`حدود قواعد المراجعة الحالية · الإصدار ${formatNumber(data.version)}`}
       />
       <Alert tone="info" className="mb-6">
-        هذه الحدود تحدد متى تظهر حالة «مراجعة مطلوبة»، ولا تغيّر أي سجل. كل تغيير يحفظ نسخة جديدة مع
-        السبب واسم من غيّره، وكل حالة تحتفظ بالحدود التي قيّمت بها.
+        هذه الحدود تحدد متى تظهر حالة «مراجعة مطلوبة» ومتى تُرسل التنبيهات، ولا تغيّر أي سجل. كل
+        تغيير يحفظ نسخة جديدة مع السبب واسم من غيّره، وكل حالة تحتفظ بالحدود التي قيّمت بها.
       </Alert>
 
       {canEdit ? (
@@ -71,16 +81,27 @@ export default async function PoliciesPage() {
               <CardBody className="grid gap-4 sm:grid-cols-2">
                 {data.values
                   .filter((v) => v.group === g)
-                  .map((v) => (
-                    <TextField
-                      key={v.key}
-                      name={v.key}
-                      label={`${v.title} (${v.unit})`}
-                      defaultValue={v.value}
-                      inputMode="decimal"
-                      hint={`الافتراضي ${formatNumber(v.default)} · المسموح ${formatNumber(v.minimum)}–${formatNumber(v.maximum)}${v.overridden ? " · معدّل" : ""}`}
-                    />
-                  ))}
+                  .map((v) =>
+                    v.toggle ? (
+                      <SelectField
+                        key={v.key}
+                        name={v.key}
+                        label={v.title}
+                        options={ON_OFF}
+                        defaultValue={String(v.value)}
+                        hint={`الافتراضي ${onOff(v.default)}${v.overridden ? " · معدّل" : ""}`}
+                      />
+                    ) : (
+                      <TextField
+                        key={v.key}
+                        name={v.key}
+                        label={`${v.title} (${v.unit})`}
+                        defaultValue={v.value}
+                        inputMode="decimal"
+                        hint={`الافتراضي ${formatNumber(v.default)} · المسموح ${formatNumber(v.minimum)}–${formatNumber(v.maximum)}${v.overridden ? " · معدّل" : ""}`}
+                      />
+                    ),
+                  )}
               </CardBody>
             </Card>
           ))}
@@ -113,10 +134,12 @@ export default async function PoliciesPage() {
                     {v.title} <span className="text-xs text-ink-muted">· {v.group}</span>
                   </TD>
                   <TD className="ltr-nums">
-                    {formatNumber(v.value)} {v.unit}{" "}
+                    {v.toggle ? onOff(v.value) : `${formatNumber(v.value)} ${v.unit}`}{" "}
                     {v.overridden ? <Badge tone="info">معدّل</Badge> : null}
                   </TD>
-                  <TD className="ltr-nums">{formatNumber(v.default)}</TD>
+                  <TD className="ltr-nums">
+                    {v.toggle ? onOff(v.default) : formatNumber(v.default)}
+                  </TD>
                 </TR>
               ))}
             </tbody>

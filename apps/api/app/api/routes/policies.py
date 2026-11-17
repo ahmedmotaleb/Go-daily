@@ -32,6 +32,7 @@ class PolicyValueOut(BaseModel):
     minimum: float
     maximum: float
     integer: bool
+    toggle: bool = False
     overridden: bool
 
 
@@ -85,6 +86,7 @@ def _out(db: DbSession) -> PoliciesOut:
                 minimum=k.minimum,
                 maximum=k.maximum,
                 integer=k.integer,
+                toggle=k.toggle,
                 overridden=k.key in overrides,
             )
             for k in policies.CATALOG
