@@ -5,12 +5,24 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, StringConstraints, model_validator
 
 from app.schemas.common import ORMModel
-from app.schemas.finance import Code, MoneyOrZero, NameAr, Notes, Reason, Ref, ReviewOut, ShortText
+from app.schemas.finance import (
+    Code,
+    MoneyOrZero,
+    NameAr,
+    Notes,
+    Qty,
+    Reason,
+    Ref,
+    ReviewOut,
+    ShortText,
+)
+
+Spec = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 
 
 class MaintenanceTypeOut(ORMModel):
@@ -21,6 +33,7 @@ class MaintenanceTypeOut(ORMModel):
     interval_days: int | None
     is_active: bool
     sort_order: int
+    consumable_type_id: uuid.UUID | None = None
 
 
 class MaintenanceTypeCreate(BaseModel):
@@ -29,6 +42,7 @@ class MaintenanceTypeCreate(BaseModel):
     interval_km: int | None = Field(default=None, gt=0, le=500_000)
     interval_days: int | None = Field(default=None, gt=0, le=3650)
     sort_order: int = Field(default=0, ge=0, le=999)
+    consumable_type_id: uuid.UUID | None = None
 
 
 class MaintenanceTypeUpdate(BaseModel):
@@ -37,6 +51,7 @@ class MaintenanceTypeUpdate(BaseModel):
     interval_days: int | None = Field(default=None, gt=0, le=3650)
     is_active: bool | None = None
     sort_order: int | None = Field(default=None, ge=0, le=999)
+    consumable_type_id: uuid.UUID | None = None
 
 
 class ScheduleIn(BaseModel):
@@ -82,6 +97,11 @@ class RecordFields(BaseModel):
     downtime_start: AwareDatetime | None = None
     downtime_end: AwareDatetime | None = None
     fuel_transaction_id: uuid.UUID | None = None
+    consumable_quantity: Qty | None = None
+    consumable_spec: Spec | None = None
+    # Blank: computed from the vehicle's schedule or the type's interval.
+    next_due_km: int | None = Field(default=None, ge=0, le=5_000_000)
+    next_due_on: date | None = None
     notes: Notes | None = None
 
     @model_validator(mode="after")
@@ -118,3 +138,61 @@ class RecordOut(ReviewOut):
     downtime_end: datetime | None
     downtime_hours: float | None
     fuel_transaction_id: uuid.UUID | None
+    consumable_quantity: Decimal | None = None
+    consumable_spec: str | None = None
+    next_due_km: int | None = None
+    next_due_on: date | None = None
+
+
+# --- Oil and service reconciliation (U17) ----------------------------------------
+
+
+class OilPurchaseRow(BaseModel):
+    id: uuid.UUID
+    vehicle: str
+    vehicle_id: uuid.UUID
+    day: date
+    item: str
+    quantity: Decimal
+    unit: str
+    total_amount: Decimal
+    used: Decimal | None
+    services: list[uuid.UUID]
+    status: Literal["NOT_LINKED", "OVER_USED", "PARTLY_USED", "USED"]
+    label: str
+
+
+class OilServiceRow(BaseModel):
+    id: uuid.UUID
+    vehicle: str
+    vehicle_id: uuid.UUID
+    day: date
+    service: str
+    quantity: Decimal | None
+    spec: str | None
+    purchase_id: uuid.UUID | None
+    parts_cost: Decimal
+    next_due_km: int | None
+    next_due_on: date | None
+    status: Literal["NO_QUANTITY", "NO_PURCHASE", "OK"]
+    label: str
+
+
+class OilExpenseRow(BaseModel):
+    id: uuid.UUID
+    vehicle: str
+    vehicle_id: uuid.UUID
+    day: date
+    amount: Decimal
+    service_id: uuid.UUID | None
+    status: Literal["NO_SERVICE", "MATCHED"]
+    label: str
+
+
+class OilReconciliationOut(BaseModel):
+    date_from: date
+    date_to: date
+    purchases: list[OilPurchaseRow]
+    services: list[OilServiceRow]
+    expenses: list[OilExpenseRow]
+    to_check: int

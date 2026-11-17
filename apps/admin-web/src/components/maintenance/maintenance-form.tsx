@@ -118,6 +118,33 @@ export function MaintenanceForm({
             hint="شراء الزيت سجل وقود؛ التغيير سجل صيانة"
           />
         ) : null}
+        <TextField
+          name="consumable_quantity"
+          label="الكمية المستخدمة"
+          inputMode="decimal"
+          defaultValue={record?.consumable_quantity ?? undefined}
+          hint="بوحدة الشراء (لتر للزيت)"
+        />
+        <TextField
+          name="consumable_spec"
+          label="النوع / اللزوجة"
+          defaultValue={record?.consumable_spec ?? undefined}
+          hint="مثال: 5W-30"
+        />
+        <TextField
+          name="next_due_km"
+          label="العداد المستهدف للخدمة القادمة"
+          inputMode="numeric"
+          defaultValue={record?.next_due_km ?? undefined}
+          hint="فارغ = حسب فترة الصيانة"
+        />
+        <TextField
+          name="next_due_on"
+          label="موعد الخدمة القادمة"
+          type="date"
+          defaultValue={record?.next_due_on ?? undefined}
+          hint="فارغ = حسب فترة الصيانة"
+        />
       </div>
       <TextareaField
         name="description"

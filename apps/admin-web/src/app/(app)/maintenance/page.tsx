@@ -50,12 +50,17 @@ export default async function MaintenancePage({ searchParams }: PageProps<"/main
         title="الصيانة"
         description="جداول الصيانة حسب الكيلومترات أو المدة، وسجلات الصيانة المنفذة وتكاليفها"
         actions={
-          can(me, "maintenance:write") ? (
-            <ButtonLink href="/maintenance/records/new" variant="accent">
-              <Plus className="size-4" aria-hidden="true" />
-              تسجيل صيانة
+          <>
+            <ButtonLink href="/maintenance/oil" variant="secondary">
+              مطابقة الزيوت والخدمات
             </ButtonLink>
-          ) : null
+            {can(me, "maintenance:write") ? (
+              <ButtonLink href="/maintenance/records/new" variant="accent">
+                <Plus className="size-4" aria-hidden="true" />
+                تسجيل صيانة
+              </ButtonLink>
+            ) : null}
+          </>
         }
       />
       <div className="mb-4 grid gap-3 sm:grid-cols-3">

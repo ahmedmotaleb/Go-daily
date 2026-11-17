@@ -92,6 +92,21 @@ export default async function MaintenanceRecordPage({
                   {r.downtime_hours !== null ? ` (${formatNumber(r.downtime_hours)} ساعة)` : ""}
                 </DetailRow>
               ) : null}
+              {r.consumable_quantity || r.consumable_spec ? (
+                <DetailRow label="المستخدم في الخدمة">
+                  <span className="ltr-nums">{formatNumber(r.consumable_quantity)}</span>
+                  {r.consumable_spec ? ` · ${r.consumable_spec}` : ""}
+                </DetailRow>
+              ) : null}
+              {r.next_due_km || r.next_due_on ? (
+                <DetailRow label="الخدمة القادمة">
+                  {r.next_due_km ? (
+                    <span className="ltr-nums">{formatNumber(r.next_due_km)} كم</span>
+                  ) : null}
+                  {r.next_due_km && r.next_due_on ? " أو " : ""}
+                  {r.next_due_on ? formatDate(r.next_due_on) : ""}
+                </DetailRow>
+              ) : null}
               {r.fuel_transaction_id ? (
                 <DetailRow label="شراء الزيت المرتبط">
                   <Link

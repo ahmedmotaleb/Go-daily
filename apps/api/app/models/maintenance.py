@@ -26,8 +26,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.finance import ReviewMixin
+from app.models.base import Base, Quantity, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.finance import FuelType, ReviewMixin
 from app.models.fleet import Vehicle
 
 
@@ -41,6 +41,11 @@ class MaintenanceType(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     interval_days: Mapped[int | None] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     sort_order: Mapped[int] = mapped_column(SmallInteger, default=0, server_default=text("0"))
+    # The consumable this service uses (U17), e.g. an oil change uses engine
+    # oil: its records are reconciled with the purchases of that consumable.
+    consumable_type_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fuel_types.id"))
+
+    consumable_type: Mapped[FuelType | None] = relationship(lazy="joined")
 
     __table_args__ = (
         CheckConstraint("interval_km IS NULL OR interval_km > 0", name="interval_km_positive"),
@@ -94,6 +99,12 @@ class MaintenanceRecord(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Base):
     fuel_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("fuel_transactions.id")
     )
+    # What was put in (U17): quantity in the purchase's unit, and the grade
+    # (e.g. 5W-30). The next targets are stored as decided at the service.
+    consumable_quantity: Mapped[Decimal | None] = mapped_column(Quantity)
+    consumable_spec: Mapped[str | None] = mapped_column(String(80))
+    next_due_km: Mapped[int | None] = mapped_column(Integer)
+    next_due_on: Mapped[date | None]
     corrects_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("maintenance_records.id"))
 
     vehicle: Mapped[Vehicle] = relationship(lazy="joined")
@@ -104,6 +115,10 @@ class MaintenanceRecord(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Base):
             "parts_cost >= 0 AND labor_cost >= 0 AND other_cost >= 0", name="costs_non_negative"
         ),
         CheckConstraint("odometer_km IS NULL OR odometer_km >= 0", name="odometer_non_negative"),
+        CheckConstraint(
+            "consumable_quantity IS NULL OR consumable_quantity > 0",
+            name="consumable_quantity_positive",
+        ),
         CheckConstraint(
             "downtime_end IS NULL OR "
             "(downtime_start IS NOT NULL AND downtime_end >= downtime_start)",

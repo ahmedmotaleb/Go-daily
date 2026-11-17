@@ -384,6 +384,18 @@ Vehicle 1─* MaintenanceRecord (review lifecycle, parts/labour/other, downtime)
 - An oil purchase stays a consumable fuel transaction. A service record may link to it, but its cost is not added again; the record carries its own parts, labour and other cost.
 - Maintenance cost in the vehicle P&L = approved maintenance records + approved expenses in maintenance-group categories. Staff are told not to record the same invoice in both places.
 
+#### Oil and service reconciliation (U17)
+
+- **What was put in.** A service record stores the quantity used (in the purchase's unit) and the grade (e.g. 5W-30). A service type can name the consumable it uses (`maintenance_types.consumable_type_id`; the engine oil change uses engine oil). A record of such a type may only link to a purchase of that consumable.
+- **Next targets.** Each record stores the next service odometer and date. Left blank, they are computed from the vehicle's schedule or the type's interval; a target set at the service wins in the due list. Targets must be after the service. Records from before U17 keep these empty (never back-filled) and the due list keeps computing them.
+- **Reconciliation** (`app/services/oil_reconciliation.py`, `GET /api/v1/maintenance/oil-reconciliation`, page «مطابقة الزيوت والخدمات»), for up to a year:
+  - consumable purchases with the services linked to them and the quantity used: not linked, partly used, used, or used more than bought («مراجعة مطلوبة»);
+  - services of consumable-using types missing the quantity, or with neither a linked purchase nor a parts cost;
+  - oil-change expenses from close-outs, matched to a service record of the same vehicle within 3 days.
+  Everything listed is to check, not a finding: a missing link is often an entry not done yet.
+
+Tests: `test_oil_reconciliation.py`.
+
 ### Exception detection (Task 20)
 
 ```text

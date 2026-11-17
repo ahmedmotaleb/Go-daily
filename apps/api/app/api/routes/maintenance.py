@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from dataclasses import asdict
+from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
 from app.api.deps import DbSession, require_permissions
 from app.api.finance_presenters import maintenance_outs
+from app.core.errors import field_error
 from app.core.permissions import Permission, has_permission
+from app.core.time import local_today
 from app.models.finance import RecordStatus
 from app.models.maintenance import MaintenanceType
 from app.models.user import User
@@ -21,6 +24,7 @@ from app.schemas.maintenance import (
     MaintenanceTypeCreate,
     MaintenanceTypeOut,
     MaintenanceTypeUpdate,
+    OilReconciliationOut,
     RecordCorrection,
     RecordCreate,
     RecordFields,
@@ -28,6 +32,7 @@ from app.schemas.maintenance import (
     ScheduleIn,
 )
 from app.services import maintenance as maintenance_service
+from app.services import oil_reconciliation as oil_reconciliation_service
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
 
@@ -38,6 +43,26 @@ Approver = Annotated[
     User, Depends(require_permissions(Permission.MAINTENANCE_READ, Permission.EXPENSES_APPROVE))
 ]
 SettingsAdmin = Annotated[User, Depends(require_permissions(Permission.SETTINGS_MANAGE))]
+
+
+@router.get("/oil-reconciliation", response_model=OilReconciliationOut)
+def oil_reconciliation(
+    _: Reader,
+    db: DbSession,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    vehicle_id: uuid.UUID | None = None,
+) -> OilReconciliationOut:
+    """Oil purchases, the services that used them, and field oil-change expenses (U17)."""
+    end = date_to or local_today()
+    start = date_from or end - timedelta(days=90)
+    if start > end:
+        raise field_error("date_from", "البداية بعد النهاية")
+    if (end - start).days > 366:
+        raise field_error("date_from", "الفترة سنة على الأكثر")
+    return OilReconciliationOut.model_validate(
+        asdict(oil_reconciliation_service.report(db, start, end, vehicle_id))
+    )
 
 
 @router.get("/types", response_model=list[MaintenanceTypeOut])

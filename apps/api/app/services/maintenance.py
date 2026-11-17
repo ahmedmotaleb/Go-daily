@@ -5,13 +5,14 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import Any
 
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import NotFoundError, field_error
 from app.core.time import local_today
-from app.models.finance import FuelCategory, FuelTransaction, RecordStatus
+from app.models.finance import FuelCategory, FuelTransaction, FuelType, RecordStatus
 from app.models.fleet import Vehicle
 from app.models.maintenance import MaintenanceRecord, MaintenanceSchedule, MaintenanceType
 from app.models.user import User
@@ -43,13 +44,33 @@ AUDITED = (
     "downtime_start",
     "downtime_end",
     "fuel_transaction_id",
+    "consumable_quantity",
+    "consumable_spec",
+    "next_due_km",
+    "next_due_on",
     "notes",
+)
+TYPE_FIELDS = (
+    "name_ar",
+    "interval_km",
+    "interval_days",
+    "is_active",
+    "sort_order",
+    "consumable_type_id",
 )
 DUE_SOON_DAYS = 14
 DUE_SOON_KM_MIN = 500
 
 
 # --- Types ---------------------------------------------------------------------------
+
+
+def _check_consumable(db: Session, type_id: uuid.UUID | None) -> None:
+    if type_id is None:
+        return
+    consumable = db.get(FuelType, type_id)
+    if consumable is None or consumable.category is not FuelCategory.CONSUMABLE:
+        raise field_error("consumable_type_id", "اختر نوعًا من الزيوت والمستهلكات")
 
 
 def list_types(db: Session, *, include_inactive: bool = False) -> list[MaintenanceType]:
@@ -62,6 +83,7 @@ def list_types(db: Session, *, include_inactive: bool = False) -> list[Maintenan
 def create_type(db: Session, *, actor: User, data: MaintenanceTypeCreate) -> MaintenanceType:
     if db.scalar(select(MaintenanceType.id).where(MaintenanceType.code == data.code)):
         raise field_error("code", "الرمز مستخدم بالفعل", code="duplicate_code")
+    _check_consumable(db, data.consumable_type_id)
     mtype = MaintenanceType(**data.model_dump())
     db.add(mtype)
     db.flush()
@@ -83,11 +105,10 @@ def update_type(
     mtype = db.get(MaintenanceType, type_id)
     if mtype is None:
         raise NotFoundError("نوع الصيانة غير موجود")
-    changes = apply_changes(
-        mtype,
-        data.model_dump(exclude_unset=True),
-        ("name_ar", "interval_km", "interval_days", "is_active", "sort_order"),
-    )
+    fields = data.model_dump(exclude_unset=True)
+    if fields.get("consumable_type_id"):
+        _check_consumable(db, fields["consumable_type_id"])
+    changes = apply_changes(mtype, fields, TYPE_FIELDS)
     if changes:
         audit.record(
             db,
@@ -201,6 +222,11 @@ def due_status(
         next_date = (
             base_date + timedelta(days=interval_days) if base_date and interval_days else None
         )
+        # The targets decided at the last service win (U17).
+        if last is not None and last.next_due_km is not None:
+            next_km = last.next_due_km
+        if last is not None and last.next_due_on is not None:
+            next_date = last.next_due_on
         current = s.vehicle.current_odometer_km
         km_left = next_km - current if next_km is not None and current is not None else None
         days_left = (next_date - today).days if next_date else None
@@ -239,6 +265,35 @@ def _validate(db: Session, r: MaintenanceRecord) -> None:
             raise field_error(
                 "fuel_transaction_id", "يمكن ربط مشتريات الزيوت والمستهلكات فقط، وليس الوقود"
             )
+        wanted = r.type.consumable_type
+        if wanted is not None and tx.fuel_type_id != wanted.id:
+            raise field_error(
+                "fuel_transaction_id",
+                f"هذه الخدمة تستخدم {wanted.name_ar}؛ اربط شراء من هذا النوع",
+                code="consumable_mismatch",
+            )
+    if r.next_due_on is not None and r.next_due_on <= r.performed_on:
+        raise field_error("next_due_on", "الموعد القادم بعد تاريخ الخدمة")
+    if r.next_due_km is not None and r.odometer_km is not None and r.next_due_km <= r.odometer_km:
+        raise field_error("next_due_km", "العداد المستهدف أكبر من قراءة الخدمة")
+
+
+def _targets(
+    db: Session, vehicle_id: uuid.UUID, mtype: MaintenanceType, values: dict[str, Any]
+) -> None:
+    """Fill blank next targets from the vehicle's schedule or the type's interval."""
+    schedule = db.scalar(
+        select(MaintenanceSchedule).where(
+            MaintenanceSchedule.vehicle_id == vehicle_id,
+            MaintenanceSchedule.type_id == mtype.id,
+        )
+    )
+    interval_km = (schedule.interval_km if schedule else None) or mtype.interval_km
+    interval_days = (schedule.interval_days if schedule else None) or mtype.interval_days
+    if values.get("next_due_km") is None and interval_km and values.get("odometer_km") is not None:
+        values["next_due_km"] = values["odometer_km"] + interval_km
+    if values.get("next_due_on") is None and interval_days:
+        values["next_due_on"] = values["performed_on"] + timedelta(days=interval_days)
 
 
 def _new(
@@ -250,8 +305,10 @@ def _new(
     mtype = db.get(MaintenanceType, data.type_id)
     if mtype is None or not mtype.is_active:
         raise field_error("type_id", "نوع الصيانة غير موجود أو غير مفعل")
+    values = data.model_dump(include=set(AUDITED))
+    _targets(db, vehicle.id, mtype, values)
     record = MaintenanceRecord(
-        **data.model_dump(include=set(AUDITED)),
+        **values,
         status=RecordStatus.SUBMITTED,
         created_by_id=actor.id,
         corrects_id=corrects.id if corrects else None,
@@ -306,7 +363,9 @@ def update(
         if mtype is None:
             raise field_error("type_id", "نوع الصيانة غير موجود")
         record.type = mtype
-    changes = apply_changes(record, data.model_dump(include=set(AUDITED)), AUDITED)
+    values = data.model_dump(include=set(AUDITED))
+    _targets(db, record.vehicle_id, record.type, values)
+    changes = apply_changes(record, values, AUDITED)
     _validate(db, record)
     fc.resubmit_if_rejected(record)
     if changes:
