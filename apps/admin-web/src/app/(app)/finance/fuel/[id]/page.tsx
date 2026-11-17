@@ -18,7 +18,7 @@ import {
   FUEL_CATEGORY_LABELS,
 } from "@/lib/finance-labels";
 import { fleetOptions } from "@/lib/finance-refs";
-import type { FuelTx, FuelType, PlausibilityCheck } from "@/lib/finance-types";
+import type { FuelTx, FuelType, PlausibilityCheck, FuelStation } from "@/lib/finance-types";
 import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 
 export const metadata: Metadata = { title: "سجل وقود" };
@@ -37,10 +37,15 @@ export default async function FuelDetailPage({
   const canEdit = can(me, "fuel:write") && (tx.status === "SUBMITTED" || tx.status === "REJECTED");
   const canReview = can(me, "expenses:approve");
   const needsForm = canEdit || (canReview && tx.status === "APPROVED");
-  const [types, fleet] = needsForm
-    ? await Promise.all([api.get<FuelType[]>("/fuel-types"), fleetOptions()])
-    : [[], { vehicles: [], drivers: [] }];
+  const [types, fleet, stations] = needsForm
+    ? await Promise.all([
+        api.get<FuelType[]>("/fuel-types"),
+        fleetOptions(),
+        api.get<FuelStation[]>("/fuel-stations"),
+      ])
+    : [[], { vehicles: [], drivers: [] }, []];
   const typeOptions = types.map((t) => ({ value: t.id, label: t.name_ar }));
+  const stationOptions = stations.map((s) => ({ value: s.id, label: s.name }));
 
   return (
     <>
@@ -93,7 +98,18 @@ export default async function FuelDetailPage({
               <DetailRow label="قراءة العداد">
                 {tx.odometer_km === null ? "—" : `${formatNumber(tx.odometer_km)} كم`}
               </DetailRow>
-              <DetailRow label="المحطة / المورد">{tx.vendor ?? "—"}</DetailRow>
+              <DetailRow label="المحطة / المورد">
+                {tx.station ? (
+                  <Link href={`/finance/stations/${tx.station.id}`} className="hover:underline">
+                    {tx.station.name}
+                  </Link>
+                ) : (
+                  (tx.vendor ?? "—")
+                )}
+                {tx.station && tx.vendor && tx.vendor !== tx.station.name ? (
+                  <span className="ms-2 text-xs text-ink-muted">{tx.vendor}</span>
+                ) : null}
+              </DetailRow>
               {tx.device_recorded_at ? (
                 <DetailRow label="الوقت">
                   <div className="space-y-1 text-sm">
@@ -157,6 +173,7 @@ export default async function FuelDetailPage({
               vehicles={fleet.vehicles}
               drivers={fleet.drivers}
               fuelTypes={typeOptions}
+              stations={stationOptions}
               record={tx}
               canApprove={false}
             />
@@ -176,6 +193,7 @@ export default async function FuelDetailPage({
               vehicles={fleet.vehicles}
               drivers={fleet.drivers}
               fuelTypes={typeOptions}
+              stations={stationOptions}
               record={tx}
               canApprove
             />

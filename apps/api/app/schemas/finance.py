@@ -122,6 +122,7 @@ class FuelFields(BaseModel):
     occurred_at: AwareDatetime
     odometer_km: Odometer | None = None
     vendor: ShortText | None = None
+    station_id: uuid.UUID | None = None
     payment_method: PaymentMethod = PaymentMethod.CASH
     paid_by: PaidBy = PaidBy.COMPANY
     notes: Notes | None = None
@@ -153,6 +154,7 @@ class FuelUpdate(BaseModel):
     occurred_at: AwareDatetime | None = None
     odometer_km: Odometer | None = None
     vendor: ShortText | None = None
+    station_id: uuid.UUID | None = None
     payment_method: PaymentMethod | None = None
     paid_by: PaidBy | None = None
     driver_id: uuid.UUID | None = None
@@ -174,6 +176,7 @@ class FuelOut(ReviewOut):
     occurred_at: datetime
     odometer_km: int | None
     vendor: str | None
+    station: Ref | None = None
     payment_method: PaymentMethod
     paid_by: PaidBy
     latitude: float | None

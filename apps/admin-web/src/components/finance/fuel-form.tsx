@@ -22,6 +22,7 @@ export function FuelForm({
   vehicles,
   drivers,
   fuelTypes,
+  stations,
   record,
   canApprove,
 }: {
@@ -30,6 +31,7 @@ export function FuelForm({
   vehicles: Option[];
   drivers: Option[];
   fuelTypes: Option[];
+  stations: Option[];
   record?: FuelTx;
   canApprove: boolean;
 }) {
@@ -111,6 +113,14 @@ export function FuelForm({
           label="قراءة العداد (كم)"
           inputMode="numeric"
           defaultValue={record?.odometer_km}
+        />
+        <SelectField
+          name="station_id"
+          label="المحطة المسجلة"
+          options={stations}
+          placeholder="غير مسجلة"
+          defaultValue={record?.station?.id}
+          hint="محطة جديدة؟ اتركها واكتب اسمها في المورد"
         />
         <TextField name="vendor" label="المحطة / المورد" defaultValue={record?.vendor} />
         <SelectField

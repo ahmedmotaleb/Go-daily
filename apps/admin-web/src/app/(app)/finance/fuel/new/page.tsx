@@ -7,13 +7,17 @@ import { PageHeader } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
 import { can, requirePermission } from "@/lib/auth";
 import { fleetOptions } from "@/lib/finance-refs";
-import type { FuelType } from "@/lib/finance-types";
+import type { FuelStation, FuelType } from "@/lib/finance-types";
 
 export const metadata: Metadata = { title: "تسجيل وقود" };
 
 export default async function NewFuelPage() {
   const me = await requirePermission("fuel:write");
-  const [types, fleet] = await Promise.all([api.get<FuelType[]>("/fuel-types"), fleetOptions()]);
+  const [types, fleet, stations] = await Promise.all([
+    api.get<FuelType[]>("/fuel-types"),
+    fleetOptions(),
+    api.get<FuelStation[]>("/fuel-stations"),
+  ]);
   return (
     <>
       <PageHeader
@@ -28,6 +32,7 @@ export default async function NewFuelPage() {
             vehicles={fleet.vehicles}
             drivers={fleet.drivers}
             fuelTypes={types.map((t) => ({ value: t.id, label: t.name_ar }))}
+            stations={stations.map((s) => ({ value: s.id, label: s.name }))}
             canApprove={can(me, "expenses:approve")}
           />
         </CardBody>

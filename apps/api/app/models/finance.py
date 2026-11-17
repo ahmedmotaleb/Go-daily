@@ -18,12 +18,14 @@ from typing import Any
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Column,
     ForeignKey,
     Index,
     Integer,
     Numeric,
     SmallInteger,
     String,
+    Table,
     Text,
     func,
     text,
@@ -115,6 +117,46 @@ class FuelType(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     sort_order: Mapped[int] = mapped_column(SmallInteger, default=0, server_default=text("0"))
 
 
+fuel_station_types = Table(
+    "fuel_station_fuel_types",
+    Base.metadata,
+    Column("station_id", ForeignKey("fuel_stations.id", ondelete="CASCADE"), primary_key=True),
+    Column("fuel_type_id", ForeignKey("fuel_types.id"), primary_key=True),
+)
+
+
+class FuelStation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A fuel station or vendor (U16).
+
+    Optional on a purchase: an unknown or new station is never refused, the
+    free-text vendor stays. A trusted station with a location and radius is
+    matched automatically to driver-app purchases made inside it.
+    Stations are deactivated, never deleted, so history keeps its link.
+    """
+
+    __tablename__ = "fuel_stations"
+
+    name: Mapped[str] = mapped_column(String(150))
+    brand: Mapped[str | None] = mapped_column(String(80))
+    address: Mapped[str | None] = mapped_column(String(255))
+    latitude: Mapped[float | None]
+    longitude: Mapped[float | None]
+    radius_m: Mapped[int] = mapped_column(Integer, default=150, server_default=text("150"))
+    is_trusted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    fuel_types: Mapped[list[FuelType]] = relationship(
+        secondary=fuel_station_types, lazy="selectin", order_by="FuelType.sort_order"
+    )
+
+    __table_args__ = (
+        CheckConstraint("radius_m BETWEEN 20 AND 5000", name="radius_range"),
+        CheckConstraint("(latitude IS NULL) = (longitude IS NULL)", name="location_complete"),
+        CheckConstraint("NOT is_trusted OR latitude IS NOT NULL", name="trusted_has_location"),
+    )
+
+
 class FuelTransaction(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Base):
     __tablename__ = "fuel_transactions"
 
@@ -129,6 +171,7 @@ class FuelTransaction(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Base):
     occurred_at: Mapped[datetime]
     odometer_km: Mapped[int | None] = mapped_column(Integer)
     vendor: Mapped[str | None] = mapped_column(String(150))
+    station_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fuel_stations.id"))
     payment_method: Mapped[PaymentMethod] = mapped_column(
         enum_column_type(PaymentMethod, "payment_method"), default=PaymentMethod.CASH
     )
@@ -148,6 +191,7 @@ class FuelTransaction(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Base):
     vehicle: Mapped[Vehicle] = relationship(lazy="joined")
     driver: Mapped[Driver | None] = relationship(lazy="joined")
     fuel_type: Mapped[FuelType] = relationship(lazy="joined")
+    station: Mapped[FuelStation | None] = relationship(lazy="joined")
     created_by: Mapped[User | None] = relationship(foreign_keys="FuelTransaction.created_by_id")
     reviewed_by: Mapped[User | None] = relationship(foreign_keys="FuelTransaction.reviewed_by_id")
 
@@ -159,6 +203,7 @@ class FuelTransaction(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Base):
         Index("ix_fuel_transactions_vehicle", "vehicle_id", "occurred_at"),
         Index("ix_fuel_transactions_driver", "driver_id", "occurred_at"),
         Index("ix_fuel_transactions_status", "status"),
+        Index("ix_fuel_transactions_station", "station_id", "occurred_at"),
         Index(
             "uq_fuel_transactions_client_entry",
             "driver_id",

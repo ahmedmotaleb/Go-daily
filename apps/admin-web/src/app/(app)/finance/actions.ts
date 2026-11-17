@@ -125,6 +125,7 @@ export async function saveFuelAction(
           driver_id: textOrNull(formData, "driver_id"),
           odometer_km: intOrNull(formData, "odometer_km"),
           vendor: textOrNull(formData, "vendor"),
+          station_id: textOrNull(formData, "station_id"),
           notes: textOrNull(formData, "notes"),
         }
       : compact({
@@ -133,6 +134,7 @@ export async function saveFuelAction(
           driver_id: text(formData, "driver_id"),
           odometer_km: int(formData, "odometer_km"),
           vendor: text(formData, "vendor"),
+          station_id: text(formData, "station_id"),
           notes: text(formData, "notes"),
           ...lifecycle(formData, mode),
         });

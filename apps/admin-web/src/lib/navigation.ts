@@ -60,6 +60,7 @@ export const NAV_ITEMS: NavItem[] = [
     permission: "revenue:read",
   },
   { href: "/finance/fuel", label: "الوقود والزيوت", icon: "fuel", permission: "fuel:read" },
+  { href: "/finance/stations", label: "محطات الوقود", icon: "fuel", permission: "fuel:read" },
   {
     href: "/finance/revenue",
     label: "الإيرادات والتحصيل",

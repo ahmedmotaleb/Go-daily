@@ -100,6 +100,7 @@ def fuel_outs(db: Session, records: Sequence[FuelTransaction]) -> list[FuelOut]:
             occurred_at=r.occurred_at,
             odometer_km=r.odometer_km,
             vendor=r.vendor,
+            station=Ref(id=r.station.id, name=r.station.name) if r.station else None,
             payment_method=r.payment_method,
             paid_by=r.paid_by,
             device_recorded_at=r.device_recorded_at,

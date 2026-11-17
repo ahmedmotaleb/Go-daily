@@ -22,6 +22,7 @@ from app.core.time import local_day_bounds_utc, to_local_date, utcnow
 from app.models.driver import Driver
 from app.models.finance import (
     FuelCategory,
+    FuelStation,
     FuelTransaction,
     FuelType,
     LedgerEntryType,
@@ -41,7 +42,7 @@ from app.schemas.finance import (
     FuelTypeUpdate,
     FuelUpdate,
 )
-from app.services import audit, clock, driver_ledger
+from app.services import audit, clock, driver_ledger, fuel_stations
 from app.services import finance_common as fc
 from app.services import shifts as shifts_service
 from app.services.common import apply_changes, paginate
@@ -59,12 +60,15 @@ AUDITED = (
     "occurred_at",
     "odometer_km",
     "vendor",
+    "station_id",
     "payment_method",
     "paid_by",
     "notes",
 )
 # |quantity × unit price − total| tolerated before refusing the entry.
 TOTAL_TOLERANCE = Decimal("0.50")
+# A driver-app location less precise than this is not matched to a station.
+STATION_ACCURACY_M = 100
 
 
 # --- Types ----------------------------------------------------------------------------
@@ -181,6 +185,7 @@ def _new(
         db, vehicle_id=data.vehicle_id, driver_id=data.driver_id, shift_id=data.shift_id
     )
     fuel_type = _active_type(db, data.fuel_type_id)
+    station = fuel_stations.active(db, data.station_id) if data.station_id else None
     tx = FuelTransaction(
         vehicle_id=vehicle.id,
         driver_id=driver.id if driver else None,
@@ -192,7 +197,8 @@ def _new(
         total_amount=data.total_amount,
         occurred_at=data.occurred_at,
         odometer_km=data.odometer_km,
-        vendor=data.vendor,
+        vendor=data.vendor or (station.name if station else None),
+        station_id=station.id if station else None,
         payment_method=data.payment_method,
         paid_by=data.paid_by,
         notes=data.notes,
@@ -257,6 +263,18 @@ def _by_client_id(db: Session, driver: Driver, client_entry_id: str) -> FuelTran
     )
 
 
+def _station_at(db: Session, data: DriverFuelCreate) -> FuelStation | None:
+    """A trusted station containing the purchase location (U16), if any.
+
+    A location too imprecise to tell stations apart links nothing.
+    """
+    if data.latitude is None or data.longitude is None:
+        return None
+    if data.location_accuracy_m is not None and data.location_accuracy_m > STATION_ACCURACY_M:
+        return None
+    return fuel_stations.match(db, data.latitude, data.longitude)
+
+
 def create_from_driver(
     db: Session, *, actor: User, driver: Driver, data: DriverFuelCreate
 ) -> FuelTransaction:
@@ -300,6 +318,10 @@ def create_from_driver(
             tx.latitude = data.latitude
             tx.longitude = data.longitude
             tx.location_accuracy_m = data.location_accuracy_m
+            station = _station_at(db, data)
+            if station is not None:
+                tx.station_id = station.id
+                tx.vendor = tx.vendor or station.name
             tx.client_entry_id = data.client_entry_id
             tx.device_recorded_at = data.recorded_at
             db.flush()
@@ -320,6 +342,7 @@ def create_from_driver(
             "source": "DRIVER_APP",
             "device_recorded_at": data.recorded_at,
             "device_time_used": when.device_time_used,
+            "station_matched": tx.station_id is not None,
         },
     )
     db.commit()
@@ -341,6 +364,8 @@ def update(db: Session, *, actor: User, tx_id: uuid.UUID, data: FuelUpdate) -> F
         fields["shift_id"] = shift.id if shift else None
     if "fuel_type_id" in fields:
         tx.fuel_type = _active_type(db, fields["fuel_type_id"])
+    if fields.get("station_id") and fields["station_id"] != tx.station_id:
+        fuel_stations.active(db, fields["station_id"])
     if "unit_price" in fields and "total_amount" not in fields:
         fields["total_amount"] = None  # recompute from the new price
     changes = apply_changes(tx, fields, AUDITED)
@@ -451,6 +476,7 @@ class FuelFilters:
     status: RecordStatus | None = None
     date_from: date | None = None
     date_to: date | None = None
+    station_id: uuid.UUID | None = None
 
 
 def _filtered(f: FuelFilters) -> Select[FuelTransaction]:
@@ -461,6 +487,8 @@ def _filtered(f: FuelFilters) -> Select[FuelTransaction]:
         stmt = stmt.where(FuelTransaction.driver_id == f.driver_id)
     if f.fuel_type_id:
         stmt = stmt.where(FuelTransaction.fuel_type_id == f.fuel_type_id)
+    if f.station_id:
+        stmt = stmt.where(FuelTransaction.station_id == f.station_id)
     if f.category:
         stmt = stmt.join(FuelType, FuelType.id == FuelTransaction.fuel_type_id).where(
             FuelType.category == f.category

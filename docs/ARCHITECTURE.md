@@ -273,6 +273,17 @@ The review rule `FUEL_PLAUSIBILITY` ("مراجعة مطلوبة") raises one cas
 
 Tests: `test_fuel_plausibility.py`.
 
+### Fuel stations and vendors (U16)
+
+`fuel_stations` is the station master (`app/services/fuel_stations.py`, `/api/v1/fuel-stations`, pages under «محطات الوقود»): name, company, address, optional location and radius, fuel types sold, notes, trusted flag. Stations are deactivated, never deleted; every change is audited.
+
+- **Optional link.** A purchase may point to a station (`fuel_transactions.station_id`). The free-text vendor stays, and an unknown or new station never blocks an entry. When a station is chosen and the vendor is empty, the vendor takes the station's name. Existing purchases were not linked by the migration: nothing is guessed.
+- **Trusted geofences.** A station marked trusted must have a location. A driver-app purchase recorded inside its radius, with a location accurate to 100 m or better, is linked to the nearest such station automatically (`station_matched` in the audit entry). Untrusted stations are never matched, and a purchase outside every station is accepted as is.
+- **Prices.** The station page shows purchase history, receipts, average, minimum, maximum and last unit price per fuel type and unit, the monthly average, and the fleet's quantity-weighted average for comparison. Only approved purchases count. The difference from the fleet is a figure to look at, not a finding.
+- **Access.** Fuel readers see stations; only `settings:manage` creates or edits them. The fuel list can be filtered by station.
+
+Tests: `test_fuel_stations.py`.
+
 ### Expected collection per loop (U10)
 
 `app/services/expected_revenue.py` compares what a fixed route should have collected with what was recorded.

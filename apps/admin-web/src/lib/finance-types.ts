@@ -66,6 +66,7 @@ export type FuelTx = Reviewable & {
   occurred_at: string;
   odometer_km: number | null;
   vendor: string | null;
+  station: Ref | null;
   payment_method: PaymentMethod;
   paid_by: PaidBy;
   receipt_attachment_id: string | null;
@@ -101,6 +102,7 @@ export type Expense = Reviewable & {
   amount: string;
   occurred_at: string;
   vendor: string | null;
+  station: Ref | null;
   payment_method: PaymentMethod;
   paid_by: PaidBy;
   receipt_attachment_id: string | null;
@@ -328,4 +330,53 @@ export type PlausibilityCheck = {
   note: string | null;
   covered_by: string | null;
   details: Record<string, unknown>;
+};
+
+export type FuelStation = {
+  id: string;
+  name: string;
+  brand: string | null;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  radius_m: number;
+  is_trusted: boolean;
+  is_active: boolean;
+  notes: string | null;
+  fuel_types: FuelType[];
+  transactions_count: number;
+  last_purchase_at: string | null;
+};
+
+export type StationPrice = {
+  fuel_type: FuelType;
+  unit: QuantityUnit;
+  count: number;
+  quantity: string;
+  total_amount: string;
+  average_price: string;
+  min_price: string;
+  max_price: string;
+  last_price: string;
+  fleet_average_price: string | null;
+  difference_pct: string | null;
+};
+
+export type FuelStationDetail = FuelStation & {
+  prices: StationPrice[];
+  monthly: { month: string; fuel_type: string; average_price: string; count: number }[];
+  recent: {
+    id: string;
+    occurred_at: string;
+    vehicle: Ref;
+    driver: Ref | null;
+    fuel_type: string;
+    quantity: string;
+    unit_price: string;
+    total_amount: string;
+    status: RecordStatus;
+    has_receipt: boolean;
+  }[];
+  receipts_count: number;
+  pending_count: number;
 };

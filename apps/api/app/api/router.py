@@ -18,6 +18,7 @@ from app.api.routes import (
     expected_revenue,
     expenses,
     fuel,
+    fuel_stations,
     maintenance,
     notifications,
     operations,
@@ -50,6 +51,7 @@ api_router.include_router(driver_cash.router)
 api_router.include_router(tracking.router)
 api_router.include_router(route_events.router)
 api_router.include_router(fuel.router)
+api_router.include_router(fuel_stations.router)
 api_router.include_router(expenses.router)
 api_router.include_router(revenue.router)
 api_router.include_router(expected_revenue.router)

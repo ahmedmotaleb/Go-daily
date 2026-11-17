@@ -48,6 +48,7 @@ def _filters(
     status: RecordStatus | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    station_id: uuid.UUID | None = None,
 ) -> fuel_service.FuelFilters:
     return fuel_service.FuelFilters(
         vehicle_id=vehicle_id,
@@ -57,6 +58,7 @@ def _filters(
         status=status,
         date_from=date_from,
         date_to=date_to,
+        station_id=station_id,
     )
 
 
