@@ -1,0 +1,16 @@
+{
+  "name": "go-daily",
+  "private": true,
+  "description": "Go Daily Fleet Control & Operations System (monorepo)",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "web:dev": "pnpm --filter admin-web dev",
+    "web:build": "pnpm --filter admin-web build",
+    "web:lint": "pnpm --filter admin-web lint",
+    "web:typecheck": "pnpm --filter admin-web typecheck",
+    "web:test": "pnpm --filter admin-web test"
+  }
+}
