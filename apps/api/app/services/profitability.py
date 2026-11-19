@@ -41,7 +41,8 @@ from app.models.finance import (
 )
 from app.models.fleet import Vehicle
 from app.models.maintenance import MaintenanceRecord
-from app.models.operations import OperationType
+from app.models.operations import OperationType, RouteDefinition
+from app.models.route_events import EventStatus, RouteEvent, RouteEventType
 from app.models.shift import OperationSession, SessionStatus, Shift, ShiftStatus
 from app.services import finance_common as fc
 from app.services import ride_hailing, tracking
@@ -66,6 +67,10 @@ class _VehicleAcc:
     driver_cost: Decimal = ZERO
     shifts: list[Shift] = field(default_factory=list)
     minutes_by_type: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    # U22: the same split by route, and completed loops.
+    minutes_by_route: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    revenue_by_route: dict[str, Decimal] = field(default_factory=lambda: defaultdict(lambda: ZERO))
+    loops: int = 0
     pending: int = 0
     drivers_uncovered: set[uuid.UUID] = field(default_factory=set)
 
@@ -135,6 +140,18 @@ def _add_revenue(db: Session, r: _Range, acc: _Acc) -> None:
             func.coalesce(RevenueEntry.period_start, RevenueEntry.occurred_on) <= r.date_to,
         )
     ).all()
+    session_ids = {e.session_id for e in rows if e.session_id}
+    routes: dict[uuid.UUID, uuid.UUID | None] = (
+        dict(
+            db.execute(
+                select(OperationSession.id, OperationSession.route_id).where(
+                    OperationSession.id.in_(session_ids)
+                )
+            ).all()
+        )
+        if session_ids
+        else {}
+    )
     for e in rows:
         a = acc[e.vehicle_id]
         if e.period_start and e.period_end:
@@ -150,6 +167,8 @@ def _add_revenue(db: Session, r: _Range, acc: _Acc) -> None:
         a.fees += e.fees_withheld * share
         key = str(e.operation_type_id) if e.operation_type_id else UNTYPED
         a.revenue_by_type[key] += e.amount * share
+        route = routes.get(e.session_id) if e.session_id else None
+        a.revenue_by_route[str(route) if route else UNTYPED] += e.amount * share
 
 
 def _add_costs(db: Session, r: _Range, acc: _Acc) -> None:
@@ -203,10 +222,11 @@ def _add_activity(db: Session, r: _Range, acc: _Acc) -> dict[uuid.UUID, float]:
     ).all()
     for s in shifts:
         acc[s.vehicle_id].shifts.append(s)
-    for vehicle, type_id, started, ended in db.execute(
+    for vehicle, type_id, route_id, started, ended in db.execute(
         select(
             Shift.vehicle_id,
             OperationSession.operation_type_id,
+            OperationSession.route_id,
             OperationSession.started_at,
             OperationSession.ended_at,
         )
@@ -219,6 +239,20 @@ def _add_activity(db: Session, r: _Range, acc: _Acc) -> dict[uuid.UUID, float]:
         )
     ).all():
         acc[vehicle].minutes_by_type[str(type_id)] += _minutes(started, ended)
+        acc[vehicle].minutes_by_route[str(route_id) if route_id else UNTYPED] += _minutes(
+            started, ended
+        )
+    if shifts:
+        for vehicle, loops in db.execute(
+            select(RouteEvent.vehicle_id, func.count())
+            .where(
+                RouteEvent.shift_id.in_([s.id for s in shifts]),
+                RouteEvent.event_type == RouteEventType.LOOP_COMPLETED,
+                RouteEvent.status == EventStatus.ACTIVE,
+            )
+            .group_by(RouteEvent.vehicle_id)
+        ).all():
+            acc[vehicle].loops += loops
     return tracking.gps_distance_km(db, [s.id for s in shifts])
 
 
@@ -340,6 +374,9 @@ def compute(
     r = _Range(date_from, date_to)
     acc: _Acc = defaultdict(_VehicleAcc)
     types = {str(t.id): t for t in db.scalars(select(OperationType)).all()}
+    route_names = {
+        str(i): n for i, n in db.execute(select(RouteDefinition.id, RouteDefinition.name))
+    }
     _add_revenue(db, r, acc)
     _add_costs(db, r, acc)
     gps = _add_activity(db, r, acc)
@@ -352,7 +389,9 @@ def compute(
         stmt = stmt.where(Vehicle.id == vehicle_id)
     vehicles = [v for v in db.scalars(stmt).all() if v.is_active or v.id in acc]
     results = [
-        _vehicle_result(v, acc[v.id], date_from, date_to, gps, types, unstated.get(v.id, 0))
+        _vehicle_result(
+            v, acc[v.id], date_from, date_to, gps, types, unstated.get(v.id, 0), route_names
+        )
         for v in vehicles
     ]
     totals: dict[str, Decimal] = dict.fromkeys(TOTAL_KEYS, ZERO)
@@ -361,6 +400,36 @@ def compute(
             totals[key] += row[key]
     totals["unallocated_driver_cost"] = fc.money(unallocated)
     return results, totals
+
+
+def _by_route(
+    a: _VehicleAcc, cost_total: Decimal, route_names: dict[str, str]
+) -> list[dict[str, Any]]:
+    """Revenue recorded on each route's sessions; costs split by route session minutes.
+
+    Time without a route (ride-hailing, private trips) is one "no route" row.
+    """
+    total_minutes = sum(a.minutes_by_route.values())
+    keys = set(a.minutes_by_route) | set(a.revenue_by_route)
+    out = []
+    for key in sorted(keys, key=lambda k: (k == UNTYPED, route_names.get(k, ""))):
+        minutes = a.minutes_by_route.get(key, 0)
+        allocated = (
+            fc.money(cost_total * Decimal(minutes) / Decimal(total_minutes))
+            if total_minutes
+            else ZERO
+        )
+        revenue = fc.money(a.revenue_by_route.get(key, ZERO))
+        out.append(
+            {
+                "route": {"id": key, "name": route_names.get(key, "")} if key != UNTYPED else None,
+                "revenue": revenue,
+                "allocated_cost": allocated,
+                "profit": revenue - allocated,
+                "session_minutes": minutes,
+            }
+        )
+    return out
 
 
 def _ratio(amount: Decimal, divisor: float | int) -> Decimal | None:
@@ -377,6 +446,7 @@ def _vehicle_result(
     gps: dict[uuid.UUID, float],
     types: dict[str, OperationType],
     unstated_days: int,
+    route_names: dict[str, str],
 ) -> dict[str, Any]:
     m = fc.money
     gross = m(a.gross)
@@ -423,6 +493,7 @@ def _vehicle_result(
             }
         )
 
+    by_route = _by_route(a, cost_total, route_names)
     warnings: list[dict[str, Any]] = []
 
     def warn(code: str, message: str, count: int | None = None) -> None:
@@ -475,6 +546,61 @@ def _vehicle_result(
         "cost_per_km": _ratio(direct + driver_cost, odometer_km),
         "revenue_per_km": _ratio(gross, odometer_km),
         "profit_per_shift": _ratio(net, len(a.shifts)),
+        "profit_per_km": _ratio(net, odometer_km),
+        "loops_count": a.loops,
+        "profit_per_loop": _ratio(net, a.loops),
+        "oil_and_service_cost": m(a.consumables + a.maintenance),
         "by_operation_type": by_type,
+        "by_route": by_route,
         "warnings": warnings,
     }
+
+
+# --- U22: the same figures per day, week or month --------------------------------------
+
+GRAIN_LIMITS = {"day": 62, "week": 53, "month": 24}
+
+
+def buckets(date_from: date, date_to: date, grain: str) -> list[tuple[date, date]]:
+    """Calendar buckets clipped to the range; weeks start on Saturday (Egypt)."""
+    out: list[tuple[date, date]] = []
+    cursor = date_from
+    while cursor <= date_to:
+        if grain == "day":
+            end = cursor
+        elif grain == "week":
+            end = cursor + timedelta(days=(4 - cursor.weekday()) % 7)  # Friday
+        else:
+            nxt = (cursor.replace(day=1) + timedelta(days=32)).replace(day=1)
+            end = nxt - timedelta(days=1)
+        end = min(end, date_to)
+        out.append((cursor, end))
+        cursor = end + timedelta(days=1)
+    return out
+
+
+def series(
+    db: Session, vehicle_id: uuid.UUID, date_from: date, date_to: date, grain: str
+) -> list[dict[str, Any]]:
+    """One vehicle's P&L per bucket, computed exactly like the whole period."""
+    out = []
+    for start, end in buckets(date_from, date_to, grain):
+        rows, _ = compute(db, start, end, vehicle_id)
+        row = rows[0] if rows else None
+        out.append(
+            {
+                "period_start": start,
+                "period_end": end,
+                "gross_revenue": row["gross_revenue"] if row else ZERO,
+                "platform_fees": row["platform_fees"] if row else ZERO,
+                "direct_operating_cost": row["direct_operating_cost"] if row else ZERO,
+                "driver_cost": row["driver_cost"] if row else ZERO,
+                "net_operating_profit": row["net_operating_profit"] if row else ZERO,
+                "shifts_count": row["shifts_count"] if row else 0,
+                "odometer_km": row["odometer_km"] if row else 0,
+                "loops_count": row["loops_count"] if row else 0,
+                "profit_per_km": row["profit_per_km"] if row else None,
+                "warnings": [w["code"] for w in row["warnings"]] if row else [],
+            }
+        )
+    return out

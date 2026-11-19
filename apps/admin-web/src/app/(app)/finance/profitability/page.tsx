@@ -9,8 +9,8 @@ import { api } from "@/lib/api";
 import { requirePermission } from "@/lib/auth";
 import { EXPENSE_GROUP_LABELS } from "@/lib/finance-labels";
 import { fleetOptions } from "@/lib/finance-refs";
-import type { FleetPnl, VehiclePnl } from "@/lib/finance-types";
-import { formatMoney, formatNumber } from "@/lib/format";
+import type { FleetPnl, PnlPeriod, VehiclePnl } from "@/lib/finance-types";
+import { formatDate, formatMoney, formatNumber } from "@/lib/format";
 import { firstOfMonth, cairoToday, spDate, spUuid } from "@/lib/search";
 
 export const metadata: Metadata = { title: "ربحية المركبات" };
@@ -124,7 +124,10 @@ function VehicleDetail({ v }: { v: VehiclePnl }) {
             <div className="grid grid-cols-3 gap-2">
               <Stat label="تكلفة/كم" value={formatMoney(v.cost_per_km)} />
               <Stat label="إيراد/كم" value={formatMoney(v.revenue_per_km)} />
+              <Stat label="ربح/كم" value={formatMoney(v.profit_per_km)} />
               <Stat label="ربح/وردية" value={formatMoney(v.profit_per_shift)} />
+              <Stat label="دورات مكتملة" value={formatNumber(v.loops_count ?? 0)} />
+              <Stat label="ربح/دورة" value={formatMoney(v.profit_per_loop)} />
             </div>
             {v.by_operation_type.length ? (
               <Table>
@@ -154,12 +157,42 @@ function VehicleDetail({ v }: { v: VehiclePnl }) {
                 </tbody>
               </Table>
             ) : null}
+            {v.by_route?.some((r) => r.route) ? (
+              <Table>
+                <THead>
+                  <tr>
+                    <TH>المسار</TH>
+                    <TH>إيراد</TH>
+                    <TH>تكلفة موزعة</TH>
+                    <TH>ربح</TH>
+                  </tr>
+                </THead>
+                <tbody>
+                  {v.by_route.map((row) => (
+                    <TR key={row.route?.id ?? "none"}>
+                      <TD>{row.route?.name ?? "بدون مسار"}</TD>
+                      <TD>
+                        <Money value={row.revenue} />
+                      </TD>
+                      <TD>
+                        <Money value={row.allocated_cost} />
+                      </TD>
+                      <TD>
+                        <Money value={row.profit} />
+                      </TD>
+                    </TR>
+                  ))}
+                </tbody>
+              </Table>
+            ) : null}
           </div>
         </div>
       </CardBody>
     </Card>
   );
 }
+
+const GRAIN_LABEL = { day: "اليوم", week: "الأسبوع", month: "الشهر" } as const;
 
 export default async function ProfitabilityPage({
   searchParams,
@@ -171,9 +204,19 @@ export default async function ProfitabilityPage({
     date_to: spDate(sp, "date_to") ?? cairoToday(),
     vehicle_id: spUuid(sp, "vehicle_id"),
   };
-  const [data, fleet] = await Promise.all([
+  const span =
+    (Date.parse(filters.date_to) - Date.parse(filters.date_from)) / (24 * 3600 * 1000) + 1;
+  const grain = span <= 31 ? "day" : span <= 180 ? "week" : "month";
+  const [data, fleet, series] = await Promise.all([
     api.get<FleetPnl>("/profitability/vehicles", filters),
     fleetOptions(),
+    filters.vehicle_id && span > 0
+      ? api.get<PnlPeriod[]>(`/profitability/vehicles/${filters.vehicle_id}/series`, {
+          date_from: filters.date_from,
+          date_to: filters.date_to,
+          grain,
+        })
+      : Promise.resolve(null),
   ]);
   const t = data.totals;
   return (
@@ -271,6 +314,59 @@ export default async function ProfitabilityPage({
               </tbody>
             </Table>
           </Card>
+          {series ? (
+            <Card className="mb-6">
+              <CardHeader
+                title={`حسب ${GRAIN_LABEL[grain]}`}
+                description="بنفس قواعد الفترة كاملة؛ الفترة ذات التنبيهات بياناتها غير مكتملة"
+              />
+              <Table>
+                <THead>
+                  <tr>
+                    <TH>الفترة</TH>
+                    <TH>الإيراد</TH>
+                    <TH>تكلفة مباشرة</TH>
+                    <TH>سائقون</TH>
+                    <TH>الصافي</TH>
+                    <TH>كم</TH>
+                    <TH>دورات</TH>
+                    <TH>ربح/كم</TH>
+                    <TH>تنبيهات</TH>
+                  </tr>
+                </THead>
+                <tbody>
+                  {series.map((p) => (
+                    <TR key={p.period_start}>
+                      <TD className="ltr-nums">
+                        {formatDate(p.period_start)}
+                        {p.period_end !== p.period_start ? ` — ${formatDate(p.period_end)}` : ""}
+                      </TD>
+                      <TD>
+                        <Money value={p.gross_revenue} />
+                      </TD>
+                      <TD>
+                        <Money value={p.direct_operating_cost} />
+                      </TD>
+                      <TD>
+                        <Money value={p.driver_cost} />
+                      </TD>
+                      <TD>
+                        <Money value={p.net_operating_profit} strong />
+                      </TD>
+                      <TD className="ltr-nums">{formatNumber(p.odometer_km)}</TD>
+                      <TD className="ltr-nums">{formatNumber(p.loops_count)}</TD>
+                      <TD>
+                        <Money value={p.profit_per_km} />
+                      </TD>
+                      <TD className="ltr-nums">
+                        {formatNumber(p.warnings.filter((w) => w !== "MAINTENANCE_SOURCES").length)}
+                      </TD>
+                    </TR>
+                  ))}
+                </tbody>
+              </Table>
+            </Card>
+          ) : null}
           <div className="space-y-6">
             {data.vehicles.map((v) => (
               <section key={v.vehicle.id} id={`v-${v.vehicle.id}`}>

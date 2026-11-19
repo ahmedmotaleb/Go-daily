@@ -309,6 +309,17 @@ export type VehiclePnl = {
   cost_per_km: string | null;
   revenue_per_km: string | null;
   profit_per_shift: string | null;
+  profit_per_km?: string | null;
+  loops_count?: number;
+  profit_per_loop?: string | null;
+  oil_and_service_cost?: string;
+  by_route?: {
+    route: Ref | null;
+    revenue: string;
+    allocated_cost: string;
+    profit: string;
+    session_minutes: number;
+  }[];
   by_operation_type: {
     operation_type: Ref | null;
     revenue: string;
@@ -433,4 +444,19 @@ export type ImportBatch = {
   void_reason: string | null;
   statements: Ref[];
   pending: number;
+};
+
+export type PnlPeriod = {
+  period_start: string;
+  period_end: string;
+  gross_revenue: string;
+  platform_fees: string;
+  direct_operating_cost: string;
+  driver_cost: string;
+  net_operating_profit: string;
+  shifts_count: number;
+  odometer_km: number;
+  loops_count: number;
+  profit_per_km: string | null;
+  warnings: string[];
 };

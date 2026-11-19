@@ -691,6 +691,14 @@ class OperationTypePnl(BaseModel):
     session_minutes: int
 
 
+class RoutePnl(BaseModel):
+    route: Ref | None  # None: time and revenue without a route
+    revenue: Decimal
+    allocated_cost: Decimal
+    profit: Decimal
+    session_minutes: int
+
+
 class VehiclePnl(BaseModel):
     vehicle: Ref
     date_from: date
@@ -712,8 +720,29 @@ class VehiclePnl(BaseModel):
     cost_per_km: Decimal | None
     revenue_per_km: Decimal | None
     profit_per_shift: Decimal | None
+    # U22
+    profit_per_km: Decimal | None = None
+    loops_count: int = 0
+    profit_per_loop: Decimal | None = None
+    oil_and_service_cost: Decimal = Decimal("0")
     by_operation_type: list[OperationTypePnl]
+    by_route: list[RoutePnl] = []
     warnings: list[PnlWarning]
+
+
+class PnlPeriod(BaseModel):
+    period_start: date
+    period_end: date
+    gross_revenue: Decimal
+    platform_fees: Decimal
+    direct_operating_cost: Decimal
+    driver_cost: Decimal
+    net_operating_profit: Decimal
+    shifts_count: int
+    odometer_km: int
+    loops_count: int
+    profit_per_km: Decimal | None
+    warnings: list[str]
 
 
 class FleetPnl(BaseModel):
