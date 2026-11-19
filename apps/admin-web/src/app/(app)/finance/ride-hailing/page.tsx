@@ -44,13 +44,18 @@ export default async function StatementsPage({ searchParams }: PageProps<"/finan
     <>
       <PageHeader
         title="النقل الذكي"
-        description="كشوف أرباح المنصات تُدخل يدويًا من كشف المنصة؛ لا يتم سحب بيانات من أي منصة"
+        description="كشوف أرباح المنصات تُدخل يدويًا أو تُستورد من ملف CSV صدّرته المنصة؛ لا يتم سحب بيانات من أي منصة"
         actions={
           <div className="flex flex-wrap gap-2">
             <ButtonLink href="/finance/ride-hailing/reconciliation" variant="secondary">
               <Scale className="size-4" aria-hidden="true" />
               المطابقة مع التشغيل
             </ButtonLink>
+            {can(me, "revenue:write") ? (
+              <ButtonLink href="/finance/ride-hailing/import" variant="secondary">
+                استيراد CSV
+              </ButtonLink>
+            ) : null}
             {can(me, "revenue:write") ? (
               <ButtonLink href="/finance/ride-hailing/new" variant="accent">
                 <Plus className="size-4" aria-hidden="true" />

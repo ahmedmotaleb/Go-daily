@@ -31,6 +31,7 @@ from app.api.routes import (
     route_events,
     security,
     shifts,
+    statement_imports,
     tracking,
     users,
     vehicles,
@@ -52,6 +53,7 @@ api_router.include_router(tracking.router)
 api_router.include_router(route_events.router)
 api_router.include_router(fuel.router)
 api_router.include_router(fuel_stations.router)
+api_router.include_router(statement_imports.router)
 api_router.include_router(expenses.router)
 api_router.include_router(revenue.router)
 api_router.include_router(expected_revenue.router)

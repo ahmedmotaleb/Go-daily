@@ -380,3 +380,45 @@ export type FuelStationDetail = FuelStation & {
   receipts_count: number;
   pending_count: number;
 };
+
+export type ImportRow = {
+  row: number;
+  status: "OK" | "ERROR" | "DUPLICATE";
+  messages: string[];
+  warnings: string[];
+  driver: string | null;
+  vehicle: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  gross_earnings: string | null;
+  platform_fees: string | null;
+  net_earnings: string | null;
+  statement_reference: string | null;
+};
+
+export type ImportPreview = {
+  platform_id: string;
+  file_name: string;
+  headers: string[];
+  mapping: Record<string, string>;
+  fields: { key: string; label: string; required: boolean }[];
+  rows: ImportRow[];
+  counts: { OK: number; ERROR: number; DUPLICATE: number; warnings: number };
+  already_imported: boolean;
+};
+
+export type ImportBatch = {
+  id: string;
+  platform: Ref;
+  file_name: string;
+  rows_total: number;
+  rows_imported: number;
+  skipped: { row: number; status: string; messages: string[] }[];
+  status: "IMPORTED" | "VOIDED";
+  created_by: { id: string; full_name: string } | null;
+  created_at: string;
+  voided_at: string | null;
+  void_reason: string | null;
+  statements: Ref[];
+  pending: number;
+};

@@ -689,3 +689,65 @@ class PlausibilityCheckOut(BaseModel):
     note: str | None = None
     covered_by: str | None = None
     details: dict[str, Any] = {}
+
+
+# --- Ride-hailing CSV import (U19) --------------------------------------------------
+
+
+class StatementImportIn(BaseModel):
+    platform_id: uuid.UUID
+    file_name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+    ]
+    # The CSV text; the admin reads the file and sends it (1 MB at most).
+    content: Annotated[str, StringConstraints(min_length=1, max_length=1_000_000)]
+    # field -> CSV column; omitted: the platform's last mapping or a guess from the headers.
+    mapping: dict[str, str] | None = None
+
+
+class ImportRowOut(BaseModel):
+    row: int
+    status: Literal["OK", "ERROR", "DUPLICATE"]
+    messages: list[str]
+    warnings: list[str]
+    driver: str | None
+    vehicle: str | None
+    period_start: date | None
+    period_end: date | None
+    gross_earnings: Decimal | None
+    platform_fees: Decimal | None
+    net_earnings: Decimal | None
+    statement_reference: str | None
+
+
+class ImportFieldOut(BaseModel):
+    key: str
+    label: str
+    required: bool
+
+
+class ImportPreviewOut(BaseModel):
+    platform_id: uuid.UUID
+    file_name: str
+    headers: list[str]
+    mapping: dict[str, str]
+    fields: list[ImportFieldOut]
+    rows: list[ImportRowOut]
+    counts: dict[str, int]
+    already_imported: bool
+
+
+class ImportBatchOut(BaseModel):
+    id: uuid.UUID
+    platform: Ref
+    file_name: str
+    rows_total: int
+    rows_imported: int
+    skipped: list[dict[str, Any]]
+    status: Literal["IMPORTED", "VOIDED"]
+    created_by: UserRef | None
+    created_at: datetime
+    voided_at: datetime | None
+    void_reason: str | None
+    statements: list[Ref] = []
+    pending: int = 0

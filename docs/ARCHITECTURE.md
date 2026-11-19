@@ -273,6 +273,18 @@ The review rule `FUEL_PLAUSIBILITY` ("مراجعة مطلوبة") raises one cas
 
 Tests: `test_fuel_plausibility.py`.
 
+### Ride-hailing statement import (U19)
+
+`app/services/statement_import.py`, `/api/v1/ride-hailing/imports`, page «استيراد كشوف المنصات». Platform statements exported as CSV by the platform itself are imported; nothing is scraped and no platform is called (a direct integration needs an approved API, U55).
+
+- **Mapping.** Staff choose which column holds each field; common header names are recognised and the last mapping used per platform is remembered. Comma, semicolon or tab separated, UTF-8 (with or without BOM), up to 1 MB and 2000 rows.
+- **Preview first.** Every row is checked without saving anything: driver by phone; vehicle by internal code or plate, else the driver's assignment at the start of the period; dates (`2026-11-05` or `05/11/2026`); amounts parsed as decimals (Arabic digits, thousands commas, currency words, parentheses for negatives; more than two decimals is refused); and the statement rules (fees not above income, no future period).
+- **Duplicates.** The same file already imported for the platform (SHA-256), rows repeated or overlapping inside the file, a statement reference already recorded, or a period already covered by another statement for the driver and platform.
+- **Import.** Valid rows become ordinary SUBMITTED statements that go through the usual review and approval; they keep their batch and row number. Rows not imported are kept in the batch with their reasons. A row with no ride-hailing shift recorded for the driver in the period is imported with the note «مراجعة مطلوبة» and appears on the reconciliation page.
+- **Rollback.** Voiding a batch (revenue approval) voids every statement it created, and the revenue of those already approved. Nothing is deleted; the same file can then be imported again.
+
+Tests: `test_statement_import.py`.
+
 ### Fuel stations and vendors (U16)
 
 `fuel_stations` is the station master (`app/services/fuel_stations.py`, `/api/v1/fuel-stations`, pages under «محطات الوقود»): name, company, address, optional location and radius, fuel types sold, notes, trusted flag. Stations are deactivated, never deleted; every change is audited.

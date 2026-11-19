@@ -384,6 +384,55 @@ class RideHailingPlatform(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(80), unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     notes: Mapped[str | None] = mapped_column(Text)
+    # Last column mapping used to import this platform's CSV statements (U19).
+    import_mapping: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+
+class ImportBatchStatus(StrEnum):
+    IMPORTED = "IMPORTED"
+    VOIDED = "VOIDED"  # rolled back: every statement it created is voided
+
+
+class RideHailingImportBatch(UUIDPrimaryKeyMixin, Base):
+    """One CSV file of platform statements imported at once (U19).
+
+    The statements it creates are ordinary SUBMITTED statements that go
+    through the usual review; the batch only records where they came from
+    and lets the whole file be rolled back.
+    """
+
+    __tablename__ = "ride_hailing_import_batches"
+
+    platform_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("ride_hailing_platforms.id"))
+    file_name: Mapped[str] = mapped_column(String(200))
+    file_sha256: Mapped[str] = mapped_column(String(64))
+    mapping: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    rows_total: Mapped[int] = mapped_column(Integer)
+    rows_imported: Mapped[int] = mapped_column(Integer)
+    # [{row, status, messages}] for rows not imported.
+    skipped: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    status: Mapped[ImportBatchStatus] = mapped_column(
+        enum_column_type(ImportBatchStatus, "import_batch_status"),
+        default=ImportBatchStatus.IMPORTED,
+    )
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow, server_default=func.now())
+    voided_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    voided_at: Mapped[datetime | None]
+    void_reason: Mapped[str | None] = mapped_column(Text)
+
+    platform: Mapped[RideHailingPlatform] = relationship(lazy="joined")
+
+    __table_args__ = (
+        # The same file is imported once for a platform unless rolled back.
+        Index(
+            "uq_ride_hailing_import_batches_file",
+            "platform_id",
+            "file_sha256",
+            unique=True,
+            postgresql_where=text("status = 'IMPORTED'"),
+        ),
+    )
 
 
 class RideHailingStatement(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Base):
@@ -408,6 +457,11 @@ class RideHailingStatement(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Bas
     )
     statement_reference: Mapped[str | None] = mapped_column(String(100))
     corrects_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ride_hailing_statements.id"))
+    # Set when the statement came from a CSV import (U19): the batch and row.
+    import_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("ride_hailing_import_batches.id")
+    )
+    import_row: Mapped[int | None] = mapped_column(Integer)
 
     platform: Mapped[RideHailingPlatform] = relationship(lazy="joined")
     driver: Mapped[Driver] = relationship(lazy="joined")
@@ -422,6 +476,7 @@ class RideHailingStatement(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Bas
         CheckConstraint("trips_count IS NULL OR trips_count >= 0", name="trips_non_negative"),
         Index("ix_ride_hailing_statements_driver", "driver_id", "period_start"),
         Index("ix_ride_hailing_statements_vehicle", "vehicle_id", "period_start"),
+        Index("ix_ride_hailing_statements_import_batch", "import_batch_id"),
     )
 
     @property
