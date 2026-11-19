@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.core.time import local_day_bounds_utc, to_local_date, utcnow
 from app.models.finance import (
+    POSTED_SETTLEMENTS,
     DriverLedgerEntry,
     DriverSettlement,
     Expense,
@@ -37,7 +38,6 @@ from app.models.finance import (
     RecordStatus,
     RevenueEntry,
     RideHailingStatement,
-    SettlementStatus,
 )
 from app.models.fleet import Vehicle
 from app.models.maintenance import MaintenanceRecord
@@ -265,7 +265,7 @@ def _add_driver_cost(db: Session, r: _Range, acc: _Acc) -> Decimal:
         select(
             DriverSettlement.driver_id, DriverSettlement.period_start, DriverSettlement.period_end
         ).where(
-            DriverSettlement.status == SettlementStatus.FINALIZED,
+            DriverSettlement.status.in_(POSTED_SETTLEMENTS),
             DriverSettlement.period_end >= r.date_from,
             DriverSettlement.period_start <= r.date_to,
         )

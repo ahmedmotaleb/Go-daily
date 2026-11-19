@@ -31,11 +31,19 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import ConflictError, field_error
 from app.core.time import local_day_bounds_utc, to_local_date, utcnow
-from app.models.driver import CompensationMethod, Driver, DriverCompensationPlan
+from app.models.driver import (
+    CompensationMethod,
+    Driver,
+    DriverCompensationPlan,
+    EmploymentStatus,
+)
 from app.models.finance import (
+    POSTED_SETTLEMENTS,
+    DriverLedgerEntry,
     DriverSettlement,
     LedgerEntryType,
     LedgerSource,
+    PaymentMethod,
     RecordStatus,
     RevenueEntry,
     SettlementStatus,
@@ -259,7 +267,7 @@ def _finalized_overlap(
     return db.scalar(
         select(DriverSettlement).where(
             DriverSettlement.driver_id == driver_id,
-            DriverSettlement.status == SettlementStatus.FINALIZED,
+            DriverSettlement.status.in_(POSTED_SETTLEMENTS),
             DriverSettlement.period_start <= end,
             DriverSettlement.period_end >= start,
         )
@@ -282,12 +290,13 @@ def create_draft(db: Session, *, actor: User, data: SettlementCreate) -> DriverS
         period_end=data.period_end,
         status=SettlementStatus.DRAFT,
         earnings_amount=comp.total,
-        details=comp.as_details(),
+        details={},
         notes=data.notes,
         created_by_id=actor.id,
     )
     db.add(settlement)
     db.flush()
+    _apply(db, settlement, comp)
     audit.record(
         db,
         action=f"{ENTITY}.created",
@@ -311,41 +320,49 @@ def recalculate(db: Session, *, actor: User, settlement_id: uuid.UUID) -> Driver
         raise ConflictError("إعادة الحساب للمسودات فقط", code="invalid_state")
     comp = compute(db, settlement.driver_id, settlement.period_start, settlement.period_end)
     before = settlement.earnings_amount
-    settlement.earnings_amount = comp.total
-    settlement.details = comp.as_details()
+    _apply(db, settlement, comp)
     audit.record(
         db,
         action=f"{ENTITY}.recalculated",
         actor=actor,
         entity_type="driver",
         entity_id=settlement.driver_id,
-        details={"settlement_id": settlement.id, "before": before, "after": comp.total},
+        details={
+            "settlement_id": settlement.id,
+            "before": before,
+            "after": settlement.earnings_amount,
+        },
     )
     db.commit()
     return settlement
 
 
 def finalize(db: Session, *, actor: User, settlement_id: uuid.UUID) -> DriverSettlement:
+    """Approve exactly what was reviewed (U20) and post the earnings."""
     settlement = get(db, settlement_id, lock=True)
-    if settlement.status is not SettlementStatus.DRAFT:
-        raise ConflictError("يمكن اعتماد المسودات فقط", code="invalid_state")
+    if settlement.status is not SettlementStatus.REVIEWED:
+        raise ConflictError("راجع التسوية قبل اعتمادها", code="invalid_state")
     if _finalized_overlap(db, settlement.driver_id, settlement.period_start, settlement.period_end):
         raise ConflictError(
             "توجد تسوية نهائية تغطي جزءًا من هذه الفترة", code="overlapping_settlement"
         )
-    # Recompute so the frozen figures reflect the data at finalisation time.
+    # The reviewed inputs are frozen: if the records changed since, the
+    # settlement goes back for another review instead of silently changing.
     comp = compute(db, settlement.driver_id, settlement.period_start, settlement.period_end)
-    settlement.earnings_amount = comp.total
-    settlement.details = comp.as_details()
+    if fc.money(comp.total) != Decimal(str(settlement.details.get("computed_total", comp.total))):
+        raise ConflictError(
+            "تغيرت البيانات منذ المراجعة؛ أعد التسوية إلى مسودة وراجعها مرة أخرى",
+            code="inputs_changed",
+        )
     settlement.opening_balance = driver_ledger.balance(
         db, settlement.driver_id, before=settlement.period_start
     )
-    if comp.total > 0:
+    if settlement.earnings_amount > 0:
         driver_ledger.post(
             db,
             driver_id=settlement.driver_id,
             entry_type=LedgerEntryType.EARNING,
-            amount=comp.total,
+            amount=settlement.earnings_amount,
             occurred_on=settlement.period_end,
             description=(
                 f"مستحقات الفترة {settlement.period_start.isoformat()} — "
@@ -376,7 +393,7 @@ def finalize(db: Session, *, actor: User, settlement_id: uuid.UUID) -> DriverSet
         actor=actor,
         entity_type="driver",
         entity_id=settlement.driver_id,
-        details={"settlement_id": settlement.id, "earnings_amount": comp.total},
+        details={"settlement_id": settlement.id, "earnings_amount": settlement.earnings_amount},
     )
     db.commit()
     return settlement
@@ -386,8 +403,10 @@ def void(db: Session, *, actor: User, settlement_id: uuid.UUID, reason: str) -> 
     settlement = get(db, settlement_id, lock=True)
     if settlement.status is SettlementStatus.VOIDED:
         raise ConflictError("التسوية ملغاة بالفعل", code="invalid_state")
-    if settlement.status is SettlementStatus.FINALIZED:
+    if settlement.status in POSTED_SETTLEMENTS:
+        # The earnings and, if recorded, the payment.
         driver_ledger.void_source(db, LedgerSource.SETTLEMENT, settlement.id, actor, reason)
+        driver_ledger.void_settlement_payments(db, settlement.id, actor, reason)
     settlement.status = SettlementStatus.VOIDED
     settlement.voided_by_id = actor.id
     settlement.voided_at = utcnow()
@@ -403,6 +422,271 @@ def void(db: Session, *, actor: User, settlement_id: uuid.UUID, reason: str) -> 
     )
     db.commit()
     return settlement
+
+
+# --- U20: review, adjustments, payment, drafts for everyone ----------------------------
+
+
+def account_summary(
+    db: Session, driver_id: uuid.UUID, start: date, end: date, settlement_id: uuid.UUID
+) -> dict[str, Any]:
+    """The driver account around the period: opening balance and the period's entries.
+
+    Bonuses, reimbursements, advances, deductions, cash and earlier payments
+    are already on the account; the settlement shows them so the reviewer
+    sees what the driver will be owed, without counting them twice.
+    """
+    rows = db.execute(
+        select(DriverLedgerEntry.entry_type, func.sum(DriverLedgerEntry.amount))
+        .where(
+            DriverLedgerEntry.driver_id == driver_id,
+            DriverLedgerEntry.voided_at.is_(None),
+            DriverLedgerEntry.occurred_on >= start,
+            DriverLedgerEntry.occurred_on <= end,
+            ~(
+                (DriverLedgerEntry.source_type == LedgerSource.SETTLEMENT)
+                & (DriverLedgerEntry.source_id == settlement_id)
+            ),
+        )
+        .group_by(DriverLedgerEntry.entry_type)
+    ).all()
+    opening = driver_ledger.balance(db, driver_id, before=start)
+    by_type = {t.value: str(fc.money(total)) for t, total in rows if total}
+    period = sum((Decimal(v) for v in by_type.values()), ZERO)
+    return {
+        "opening_balance": str(fc.money(opening)),
+        "by_type": by_type,
+        "period_entries": str(fc.money(period)),
+    }
+
+
+def _apply(db: Session, settlement: DriverSettlement, comp: Computation) -> None:
+    """Store a computation, keeping the manual adjustments already made."""
+    adjustments = list((settlement.details or {}).get("adjustments", []))
+    total = comp.total + sum((Decimal(a["amount"]) for a in adjustments), ZERO)
+    if total < 0:
+        raise field_error("amount", "المستحقات بعد التعديل لا تكون سالبة", code="negative_total")
+    details = comp.as_details()
+    details["computed_total"] = str(comp.total)
+    details["adjustments"] = adjustments
+    if settlement.id is not None:
+        details["account"] = account_summary(
+            db, settlement.driver_id, settlement.period_start, settlement.period_end, settlement.id
+        )
+        account = details["account"]
+        details["expected_balance"] = str(
+            fc.money(
+                Decimal(account["opening_balance"]) + Decimal(account["period_entries"]) + total
+            )
+        )
+    settlement.details = details
+    settlement.earnings_amount = fc.money(total)
+
+
+def adjust(
+    db: Session, *, actor: User, settlement_id: uuid.UUID, amount: Decimal, reason: str
+) -> DriverSettlement:
+    """A manual change to a draft's earnings, with its reason (audited)."""
+    settlement = get(db, settlement_id, lock=True)
+    if settlement.status is not SettlementStatus.DRAFT:
+        raise ConflictError("التعديل على المسودات فقط", code="invalid_state")
+    if amount == 0:
+        raise field_error("amount", "أدخل مبلغًا")
+    before = settlement.earnings_amount
+    details = dict(settlement.details or {})
+    details["adjustments"] = [
+        *details.get("adjustments", []),
+        {
+            "amount": str(fc.money(amount)),
+            "reason": reason,
+            "by": actor.full_name,
+            "by_id": str(actor.id),
+            "at": utcnow().isoformat(),
+        },
+    ]
+    settlement.details = details
+    comp = compute(db, settlement.driver_id, settlement.period_start, settlement.period_end)
+    _apply(db, settlement, comp)
+    audit.record(
+        db,
+        action=f"{ENTITY}.adjusted",
+        actor=actor,
+        entity_type="driver",
+        entity_id=settlement.driver_id,
+        details={
+            "settlement_id": settlement.id,
+            "amount": fc.money(amount),
+            "before": before,
+            "after": settlement.earnings_amount,
+        },
+        reason=reason,
+    )
+    db.commit()
+    return settlement
+
+
+def review(db: Session, *, actor: User, settlement_id: uuid.UUID) -> DriverSettlement:
+    """Freeze the inputs: from here the figures change only by going back to draft."""
+    settlement = get(db, settlement_id, lock=True)
+    if settlement.status is not SettlementStatus.DRAFT:
+        raise ConflictError("المراجعة للمسودات فقط", code="invalid_state")
+    comp = compute(db, settlement.driver_id, settlement.period_start, settlement.period_end)
+    _apply(db, settlement, comp)
+    settlement.status = SettlementStatus.REVIEWED
+    settlement.reviewed_by_id = actor.id
+    settlement.reviewed_at = utcnow()
+    audit.record(
+        db,
+        action=f"{ENTITY}.reviewed",
+        actor=actor,
+        entity_type="driver",
+        entity_id=settlement.driver_id,
+        details={"settlement_id": settlement.id, "earnings_amount": settlement.earnings_amount},
+    )
+    db.commit()
+    return settlement
+
+
+def reopen(db: Session, *, actor: User, settlement_id: uuid.UUID, reason: str) -> DriverSettlement:
+    """Back to draft from review (before approval), with a reason."""
+    settlement = get(db, settlement_id, lock=True)
+    if settlement.status is not SettlementStatus.REVIEWED:
+        raise ConflictError("الإرجاع للمسودة قبل الاعتماد فقط", code="invalid_state")
+    settlement.status = SettlementStatus.DRAFT
+    settlement.reviewed_by_id = None
+    settlement.reviewed_at = None
+    audit.record(
+        db,
+        action=f"{ENTITY}.reopened",
+        actor=actor,
+        entity_type="driver",
+        entity_id=settlement.driver_id,
+        details={"settlement_id": settlement.id},
+        reason=reason,
+    )
+    db.commit()
+    return settlement
+
+
+def pay(
+    db: Session,
+    *,
+    actor: User,
+    settlement_id: uuid.UUID,
+    amount: Decimal,
+    paid_on: date,
+    method: PaymentMethod,
+    reference: str | None,
+) -> DriverSettlement:
+    """Record a payment made outside the system. Nothing is transferred here."""
+    settlement = get(db, settlement_id, lock=True)
+    if settlement.status is not SettlementStatus.FINALIZED:
+        raise ConflictError("يُسجل الدفع للتسويات المعتمدة فقط", code="invalid_state")
+    fc.check_day(paid_on, "paid_on")
+    if paid_on < settlement.period_start:
+        raise field_error("paid_on", "تاريخ الدفع قبل بداية الفترة")
+    driver_ledger.post(
+        db,
+        driver_id=settlement.driver_id,
+        entry_type=LedgerEntryType.PAYMENT,
+        amount=amount,
+        occurred_on=paid_on,
+        description=(
+            f"دفع تسوية {settlement.period_start.isoformat()} — {settlement.period_end.isoformat()}"
+        ),
+        actor=actor,
+        # Linked by settlement_id: the settlement's own source is its earnings.
+        settlement_id=settlement.id,
+    )
+    settlement.status = SettlementStatus.PAID
+    settlement.paid_amount = fc.money(amount)
+    settlement.paid_on = paid_on
+    settlement.payment_method = method
+    settlement.payment_reference = reference
+    settlement.paid_by_id = actor.id
+    settlement.paid_at = utcnow()
+    audit.record(
+        db,
+        action=f"{ENTITY}.paid",
+        actor=actor,
+        entity_type="driver",
+        entity_id=settlement.driver_id,
+        details={
+            "settlement_id": settlement.id,
+            "amount": settlement.paid_amount,
+            "method": method.value,
+            "paid_on": paid_on,
+        },
+    )
+    db.commit()
+    return settlement
+
+
+@dataclass
+class Generated:
+    created: list[DriverSettlement] = field(default_factory=list)
+    skipped: list[dict[str, str]] = field(default_factory=list)
+
+
+def generate_drafts(db: Session, *, actor: User, start: date, end: date) -> Generated:
+    """A draft for every active driver with a compensation plan in the period.
+
+    Drivers who already have a settlement (other than voided) touching the
+    period are skipped and listed. Drafts are only calculations: nothing is
+    posted or paid until each is reviewed and approved.
+    """
+    out = Generated()
+    drivers = db.scalars(
+        select(Driver)
+        .where(
+            Driver.employment_status == EmploymentStatus.ACTIVE,
+            select(DriverCompensationPlan.id)
+            .where(
+                DriverCompensationPlan.driver_id == Driver.id,
+                DriverCompensationPlan.effective_from <= end,
+                (DriverCompensationPlan.effective_to.is_(None))
+                | (DriverCompensationPlan.effective_to >= start),
+            )
+            .exists(),
+        )
+        .order_by(Driver.full_name)
+    ).all()
+    for driver in drivers:
+        existing = db.scalar(
+            select(DriverSettlement).where(
+                DriverSettlement.driver_id == driver.id,
+                DriverSettlement.status != SettlementStatus.VOIDED,
+                DriverSettlement.period_start <= end,
+                DriverSettlement.period_end >= start,
+            )
+        )
+        if existing is not None:
+            out.skipped.append(
+                {"driver": driver.full_name, "reason": "توجد تسوية تغطي جزءًا من الفترة"}
+            )
+            continue
+        out.created.append(
+            create_draft(
+                db,
+                actor=actor,
+                data=SettlementCreate(driver_id=driver.id, period_start=start, period_end=end),
+            )
+        )
+    audit.record(
+        db,
+        action=f"{ENTITY}.generated",
+        actor=actor,
+        entity_type=ENTITY,
+        entity_id=None,
+        details={
+            "period_start": start,
+            "period_end": end,
+            "created": len(out.created),
+            "skipped": len(out.skipped),
+        },
+    )
+    db.commit()
+    return out
 
 
 def list_settlements(

@@ -626,6 +626,52 @@ class SettlementOut(BaseModel):
     finalized_by: UserRef | None
     voided_at: datetime | None
     void_reason: str | None
+    reviewed_at: datetime | None = None
+    reviewed_by: UserRef | None = None
+    paid_at: datetime | None = None
+    paid_by: UserRef | None = None
+    paid_on: date | None = None
+    paid_amount: Decimal | None = None
+    payment_method: PaymentMethod | None = None
+    payment_reference: str | None = None
+
+
+class SettlementAdjustIn(BaseModel):
+    """A manual change to a draft's earnings (+ or -), always with a reason (U20)."""
+
+    amount: SignedMoney
+    reason: Reason
+
+
+class SettlementReopenIn(BaseModel):
+    reason: Reason
+
+
+class SettlementPayIn(BaseModel):
+    """A payment already made outside the system; the system never pays."""
+
+    amount: Money
+    paid_on: date
+    method: PaymentMethod
+    reference: Reference | None = None
+
+
+class SettlementGenerateIn(BaseModel):
+    period_start: date
+    period_end: date
+
+    @model_validator(mode="after")
+    def _range(self) -> SettlementGenerateIn:
+        if self.period_end < self.period_start:
+            raise ValueError("نهاية الفترة قبل بدايتها")
+        if (self.period_end - self.period_start).days > 92:
+            raise ValueError("فترة التسوية لا تتجاوز ثلاثة أشهر")
+        return self
+
+
+class SettlementGenerateOut(BaseModel):
+    created: list[SettlementOut]
+    skipped: list[dict[str, str]]
 
 
 # --- Profitability ----------------------------------------------------------------------

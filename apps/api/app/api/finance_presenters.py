@@ -249,7 +249,9 @@ def ledger_outs(db: Session, entries: Sequence[DriverLedgerEntry]) -> list[Ledge
 
 
 def settlement_outs(db: Session, records: Sequence[DriverSettlement]) -> list[SettlementOut]:
-    users = load_users(db, (s.finalized_by_id for s in records))
+    users = load_users(
+        db, [u for s in records for u in (s.finalized_by_id, s.reviewed_by_id, s.paid_by_id)]
+    )
     return [
         SettlementOut(
             id=s.id,
@@ -267,6 +269,14 @@ def settlement_outs(db: Session, records: Sequence[DriverSettlement]) -> list[Se
             finalized_by=_user(users, s.finalized_by_id),
             voided_at=s.voided_at,
             void_reason=s.void_reason,
+            reviewed_at=s.reviewed_at,
+            reviewed_by=_user(users, s.reviewed_by_id),
+            paid_at=s.paid_at,
+            paid_by=_user(users, s.paid_by_id),
+            paid_on=s.paid_on,
+            paid_amount=_money(s.paid_amount),
+            payment_method=s.payment_method,
+            payment_reference=s.payment_reference,
         )
         for s in records
     ]

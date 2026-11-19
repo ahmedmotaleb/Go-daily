@@ -102,6 +102,7 @@ def test_daily_wage_counts_distinct_worked_days_and_finalize_posts_earning(
     assert draft["details"]["days_worked"] == 3
     assert draft["details"]["lines"][0]["basis"].startswith("3 يوم عمل")
 
+    client.post(f"/api/v1/settlements/{draft['id']}/review", headers=h)
     final = client.post(f"/api/v1/settlements/{draft['id']}/finalize", headers=h).json()
     assert final["status"] == "FINALIZED"
     assert final["opening_balance"] == "-300.00"
@@ -185,6 +186,7 @@ def test_fixed_monthly_is_prorated_and_plan_changes_split_the_period(
     assert len(lines) == 2
     expected = D("3000") * 10 / days + D("4500") * (days - 10) / days
     assert D(draft["earnings_amount"]) == expected.quantize(D("0.01"))
+    client.post(f"/api/v1/settlements/{draft['id']}/review", headers=h)
     final = client.post(f"/api/v1/settlements/{draft['id']}/finalize", headers=h).json()
 
     # A later plan change never rewrites the finalised settlement.
@@ -215,7 +217,9 @@ def test_finalized_settlements_cannot_overlap_until_voided(client: TestClient, d
     make_completed_shift(db, driver, make_vehicle(db), day=_day(5))
     first = _settle(client, h, str(driver.id), _day(10), _day(1))
     second = _settle(client, h, str(driver.id), _day(5), _day(0))  # drafts may overlap
+    client.post(f"/api/v1/settlements/{first['id']}/review", headers=h)
     client.post(f"/api/v1/settlements/{first['id']}/finalize", headers=h)
+    client.post(f"/api/v1/settlements/{second['id']}/review", headers=h)
     blocked = client.post(f"/api/v1/settlements/{second['id']}/finalize", headers=h)
     assert blocked.status_code == 409
     assert blocked.json()["error"]["code"] == "overlapping_settlement"
@@ -240,6 +244,7 @@ def test_finalized_settlements_cannot_overlap_until_voided(client: TestClient, d
         headers=h,
     ).json()
     assert statement["earned"] == "0.00"
+    client.post(f"/api/v1/settlements/{second['id']}/review", headers=h)
     ok = client.post(f"/api/v1/settlements/{second['id']}/finalize", headers=h)
     assert ok.status_code == 200, ok.text
 
@@ -382,6 +387,7 @@ def test_vehicle_pnl_from_approved_records(client: TestClient, db: Session) -> N
         amount="130",
     )
     settlement = _settle(client, h, str(driver.id), _day(6), _day(0))
+    client.post(f"/api/v1/settlements/{settlement['id']}/review", headers=h)
     client.post(f"/api/v1/settlements/{settlement['id']}/finalize", headers=h)
 
     pnl = _pnl(client, h, v, _day(6), _day(0))

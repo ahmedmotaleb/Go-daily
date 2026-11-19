@@ -593,9 +593,15 @@ class DriverLedgerEntry(UUIDPrimaryKeyMixin, Base):
 
 
 class SettlementStatus(StrEnum):
-    DRAFT = "DRAFT"
-    FINALIZED = "FINALIZED"  # earnings posted to the ledger; immutable
+    DRAFT = "DRAFT"  # recalculated freely; manual adjustments allowed
+    REVIEWED = "REVIEWED"  # inputs frozen and checked; waiting for approval (U20)
+    FINALIZED = "FINALIZED"  # approved: earnings posted to the ledger; immutable
+    PAID = "PAID"  # payment made outside the system and recorded (U20)
     VOIDED = "VOIDED"
+
+
+# Settlements whose earnings are on the driver account.
+POSTED_SETTLEMENTS = (SettlementStatus.FINALIZED, SettlementStatus.PAID)
 
 
 class DriverSettlement(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -624,19 +630,31 @@ class DriverSettlement(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     voided_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     voided_at: Mapped[datetime | None]
     void_reason: Mapped[str | None] = mapped_column(Text)
+    # U20 workflow: reviewed (inputs frozen), then paid outside the system.
+    reviewed_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None]
+    paid_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    paid_at: Mapped[datetime | None]
+    paid_on: Mapped[date | None]
+    paid_amount: Mapped[Decimal | None]
+    payment_method: Mapped[PaymentMethod | None] = mapped_column(
+        enum_column_type(PaymentMethod, "payment_method")
+    )
+    payment_reference: Mapped[str | None] = mapped_column(String(100))
 
     driver: Mapped[Driver] = relationship(lazy="joined")
 
     __table_args__ = (
         CheckConstraint("period_end >= period_start", name="period_range"),
         CheckConstraint("earnings_amount >= 0", name="earnings_non_negative"),
+        CheckConstraint("paid_amount IS NULL OR paid_amount > 0", name="paid_amount_positive"),
         # Finalised settlements of one driver never overlap.
         ExcludeConstraint(
             ("driver_id", "="),
             (func.daterange(text("period_start"), text("period_end"), text("'[]'")), "&&"),
             name="ex_driver_settlements_overlap",
             using="gist",
-            where=text("status = 'FINALIZED'"),
+            where=text("status IN ('FINALIZED', 'PAID')"),
         ),
         Index("ix_driver_settlements_driver", "driver_id", "period_start"),
     )

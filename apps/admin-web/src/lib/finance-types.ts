@@ -20,7 +20,7 @@ export type LedgerEntryType =
   | "PAYMENT"
   | "CASH_COLLECTED"
   | "ADJUSTMENT";
-export type SettlementStatus = "DRAFT" | "FINALIZED" | "VOIDED";
+export type SettlementStatus = "DRAFT" | "REVIEWED" | "FINALIZED" | "PAID" | "VOIDED";
 
 export type Ref = { id: string; name: string };
 export type UserRef = { id: string; full_name: string };
@@ -263,6 +263,10 @@ export type Settlement = {
     days_worked: number;
     eligible_revenue: string;
     computed_at: string;
+    computed_total?: string;
+    adjustments?: { amount: string; reason: string; by: string; at: string }[];
+    account?: { opening_balance: string; by_type: Record<string, string>; period_entries: string };
+    expected_balance?: string;
   };
   opening_balance: string | null;
   closing_balance: string | null;
@@ -272,6 +276,14 @@ export type Settlement = {
   finalized_by: UserRef | null;
   voided_at: string | null;
   void_reason: string | null;
+  reviewed_at?: string | null;
+  reviewed_by?: UserRef | null;
+  paid_at?: string | null;
+  paid_by?: UserRef | null;
+  paid_on?: string | null;
+  paid_amount?: string | null;
+  payment_method?: PaymentMethod | null;
+  payment_reference?: string | null;
 };
 
 export type PnlWarning = { code: string; message: string; count: number | null };

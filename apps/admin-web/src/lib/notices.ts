@@ -39,6 +39,11 @@ export const NOTICES = {
   settlement_finalize: "تم اعتماد التسوية وترحيل المستحقات إلى حساب السائق.",
   settlement_recalculate: "تمت إعادة حساب التسوية.",
   settlement_void: "تم إلغاء التسوية وعكس قيد المستحقات.",
+  settlement_review: "تمت مراجعة التسوية وتثبيت مدخلاتها؛ بانتظار الاعتماد.",
+  settlement_reopen: "أُعيدت التسوية إلى مسودة.",
+  settlement_adjust: "تم تسجيل التعديل اليدوي وسببه.",
+  settlement_pay: "تم تسجيل الدفع في حساب السائق. لم يتم تحويل أي مبلغ من النظام.",
+  settlements_generated: "تم إنشاء مسودات التسوية.",
   attachment_added: "تم رفع المرفق.",
   attachment_duplicate:
     "تم رفع المرفق. تنبيه: نفس الملف مرفوع من قبل على سجل آخر — مراجعة مطلوبة لاحتمال التكرار.",

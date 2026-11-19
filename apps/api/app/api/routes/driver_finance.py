@@ -23,8 +23,13 @@ from app.schemas.finance import (
     LedgerEntryIn,
     LedgerEntryOut,
     Ref,
+    SettlementAdjustIn,
     SettlementCreate,
+    SettlementGenerateIn,
+    SettlementGenerateOut,
     SettlementOut,
+    SettlementPayIn,
+    SettlementReopenIn,
     VoidAction,
 )
 from app.services import driver_ledger, reauth
@@ -143,6 +148,67 @@ def finalize_settlement(
         amounts = [abs(current.earnings_amount), abs(current.closing_balance or Decimal(0))]
         reauth.require_for_amount(session, max(amounts))
     settlement = settlements_service.finalize(db, actor=actor, settlement_id=settlement_id)
+    return settlement_outs(db, [settlement])[0]
+
+
+@router.post("/settlements/generate", response_model=SettlementGenerateOut)
+def generate_settlements(
+    body: SettlementGenerateIn, actor: Writer, db: DbSession
+) -> SettlementGenerateOut:
+    """U20: drafts for every active driver with a plan; nothing is posted or paid."""
+    result = settlements_service.generate_drafts(
+        db, actor=actor, start=body.period_start, end=body.period_end
+    )
+    return SettlementGenerateOut(
+        created=settlement_outs(db, result.created), skipped=result.skipped
+    )
+
+
+@router.post("/settlements/{settlement_id}/adjust", response_model=SettlementOut)
+def adjust_settlement(
+    settlement_id: uuid.UUID, body: SettlementAdjustIn, actor: Writer, db: DbSession
+) -> SettlementOut:
+    settlement = settlements_service.adjust(
+        db, actor=actor, settlement_id=settlement_id, amount=body.amount, reason=body.reason
+    )
+    return settlement_outs(db, [settlement])[0]
+
+
+@router.post("/settlements/{settlement_id}/review", response_model=SettlementOut)
+def review_settlement(settlement_id: uuid.UUID, actor: Writer, db: DbSession) -> SettlementOut:
+    settlement = settlements_service.review(db, actor=actor, settlement_id=settlement_id)
+    return settlement_outs(db, [settlement])[0]
+
+
+@router.post("/settlements/{settlement_id}/reopen", response_model=SettlementOut)
+def reopen_settlement(
+    settlement_id: uuid.UUID, body: SettlementReopenIn, actor: Writer, db: DbSession
+) -> SettlementOut:
+    settlement = settlements_service.reopen(
+        db, actor=actor, settlement_id=settlement_id, reason=body.reason
+    )
+    return settlement_outs(db, [settlement])[0]
+
+
+@router.post("/settlements/{settlement_id}/pay", response_model=SettlementOut)
+def pay_settlement(
+    settlement_id: uuid.UUID,
+    body: SettlementPayIn,
+    actor: Finalizer,
+    db: DbSession,
+    session: CurrentSession,
+) -> SettlementOut:
+    """Record a payment made outside the system (U20). Large amounts need re-auth."""
+    reauth.require_for_amount(session, body.amount)
+    settlement = settlements_service.pay(
+        db,
+        actor=actor,
+        settlement_id=settlement_id,
+        amount=body.amount,
+        paid_on=body.paid_on,
+        method=body.method,
+        reference=body.reference,
+    )
     return settlement_outs(db, [settlement])[0]
 
 

@@ -4,7 +4,7 @@ import { settlementAction } from "@/app/(app)/finance/actions";
 import { DetailRow } from "@/components/finance/filters";
 import { SettlementStatusBadge } from "@/components/finance/review";
 import { ActionForm } from "@/components/forms/action-form";
-import { TextareaField } from "@/components/forms/fields";
+import { SelectField, TextareaField, TextField } from "@/components/forms/fields";
 import { Notice } from "@/components/notice";
 import { Alert } from "@/components/ui/alert";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -12,7 +12,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { can, requirePermission } from "@/lib/auth";
-import type { Settlement } from "@/lib/finance-types";
+import { LEDGER_TYPE_LABELS, options, PAYMENT_METHOD_LABELS } from "@/lib/finance-labels";
+import type { LedgerEntryType, Settlement } from "@/lib/finance-types";
 import { formatDate, formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 
 export const metadata: Metadata = { title: "تسوية سائق" };
@@ -28,6 +29,8 @@ export default async function SettlementPage({
   const canFinalize = can(me, "settlements:finalize");
   const canWrite = can(me, "settlements:write");
   const draft = s.status === "DRAFT";
+  const reviewed = s.status === "REVIEWED";
+  const owed = Number(s.closing_balance ?? 0);
 
   return (
     <>
@@ -107,9 +110,25 @@ export default async function SettlementPage({
                   <span className="ltr-nums">{formatMoney(s.closing_balance)}</span>
                 </DetailRow>
               ) : null}
+              {s.reviewed_at ? (
+                <DetailRow label="روجعت">
+                  {formatDateTime(s.reviewed_at)} · {s.reviewed_by?.full_name}
+                </DetailRow>
+              ) : null}
               {s.finalized_at ? (
                 <DetailRow label="اعتُمدت">
                   {formatDateTime(s.finalized_at)} · {s.finalized_by?.full_name}
+                </DetailRow>
+              ) : null}
+              {s.paid_at ? (
+                <DetailRow label="الدفع">
+                  <span className="ltr-nums">{formatMoney(s.paid_amount)}</span> ·{" "}
+                  {s.payment_method ? PAYMENT_METHOD_LABELS[s.payment_method] : ""} ·{" "}
+                  {formatDate(s.paid_on)}
+                  {s.payment_reference ? ` · ${s.payment_reference}` : ""}
+                  <span className="block text-xs text-ink-muted">
+                    سجّله {s.paid_by?.full_name} — الدفع تم خارج النظام
+                  </span>
                 </DetailRow>
               ) : null}
               {s.void_reason ? <DetailRow label="سبب الإلغاء">{s.void_reason}</DetailRow> : null}
@@ -123,6 +142,63 @@ export default async function SettlementPage({
           </CardBody>
         </Card>
       </div>
+      {s.details.account || s.details.adjustments?.length ? (
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          {s.details.account ? (
+            <Card>
+              <CardHeader
+                title="حساب السائق في الفترة"
+                description="قيود مسجلة بالفعل على الحساب؛ تظهر هنا للمراجعة ولا تُحسب مرتين"
+              />
+              <CardBody>
+                <dl className="divide-y divide-line">
+                  <DetailRow label="الرصيد قبل الفترة">
+                    <span className="ltr-nums">
+                      {formatMoney(s.details.account.opening_balance)}
+                    </span>
+                  </DetailRow>
+                  {Object.entries(s.details.account.by_type).map(([type, amount]) => (
+                    <DetailRow
+                      key={type}
+                      label={LEDGER_TYPE_LABELS[type as LedgerEntryType] ?? type}
+                    >
+                      <span className="ltr-nums">{formatMoney(amount)}</span>
+                    </DetailRow>
+                  ))}
+                  <DetailRow label="+ مستحقات هذه التسوية">
+                    <span className="ltr-nums">{formatMoney(s.earnings_amount)}</span>
+                  </DetailRow>
+                  {s.details.expected_balance ? (
+                    <DetailRow label="المستحق للسائق بعد الاعتماد">
+                      <span className="ltr-nums text-base font-bold">
+                        {formatMoney(s.details.expected_balance)}
+                      </span>
+                    </DetailRow>
+                  ) : null}
+                </dl>
+              </CardBody>
+            </Card>
+          ) : null}
+          {s.details.adjustments?.length ? (
+            <Card>
+              <CardHeader
+                title="تعديلات يدوية"
+                description={`المحسوب قبل التعديل ${formatMoney(s.details.computed_total)}`}
+              />
+              <CardBody>
+                <dl className="divide-y divide-line">
+                  {s.details.adjustments.map((a) => (
+                    <DetailRow key={a.at} label={`${a.by} · ${formatDateTime(a.at)}`}>
+                      <span className="ltr-nums font-medium">{formatMoney(a.amount)}</span> —{" "}
+                      {a.reason}
+                    </DetailRow>
+                  ))}
+                </dl>
+              </CardBody>
+            </Card>
+          ) : null}
+        </div>
+      ) : null}
       {s.status !== "VOIDED" && (canWrite || canFinalize) ? (
         <Card className="mt-6">
           <CardHeader title="الإجراءات" />
@@ -134,13 +210,74 @@ export default async function SettlementPage({
                 variant="secondary"
               />
             ) : null}
-            {draft && canFinalize ? (
+            {draft && canWrite ? (
+              <ActionForm
+                action={settlementAction.bind(null, s.id, "adjust")}
+                submitLabel="تعديل يدوي"
+                variant="secondary"
+              >
+                <TextField
+                  name="amount"
+                  label="المبلغ (+ إضافة / - خصم)"
+                  inputMode="decimal"
+                  required
+                />
+                <TextareaField name="reason" label="السبب" rows={2} required />
+              </ActionForm>
+            ) : null}
+            {draft && canWrite ? (
+              <ActionForm
+                action={settlementAction.bind(null, s.id, "review")}
+                submitLabel="تمت المراجعة"
+                variant="accent"
+                confirm="تُثبّت مدخلات التسوية ولا يُعاد حسابها إلا بإرجاعها لمسودة. متابعة؟"
+              />
+            ) : null}
+            {reviewed && canWrite ? (
+              <ActionForm
+                action={settlementAction.bind(null, s.id, "reopen")}
+                submitLabel="إرجاع إلى مسودة"
+                variant="secondary"
+              >
+                <TextareaField name="reason" label="السبب" rows={2} required />
+              </ActionForm>
+            ) : null}
+            {reviewed && canFinalize ? (
               <ActionForm
                 action={settlementAction.bind(null, s.id, "finalize")}
-                submitLabel="اعتماد نهائي وترحيل المستحقات"
+                submitLabel="اعتماد وترحيل المستحقات"
                 variant="accent"
                 confirm="بعد الاعتماد لا تتغير التسوية إلا بإلغائها. متابعة؟"
               />
+            ) : null}
+            {s.status === "FINALIZED" && canFinalize ? (
+              <ActionForm
+                action={settlementAction.bind(null, s.id, "pay")}
+                submitLabel="تسجيل الدفع"
+                variant="accent"
+                confirm="يُسجل الدفع في حساب السائق. النظام لا يحوّل أي مبلغ. متابعة؟"
+              >
+                <TextField
+                  name="amount"
+                  label="المبلغ المدفوع"
+                  inputMode="decimal"
+                  defaultValue={owed > 0 ? (s.closing_balance ?? undefined) : undefined}
+                  hint={
+                    owed > 0
+                      ? "المقترح: رصيد السائق بنهاية الفترة"
+                      : "رصيد السائق ليس لصالحه بنهاية الفترة؛ لا يوجد مبلغ مقترح"
+                  }
+                  required
+                />
+                <TextField name="paid_on" label="تاريخ الدفع" type="date" required />
+                <SelectField
+                  name="method"
+                  label="طريقة الدفع"
+                  options={options(PAYMENT_METHOD_LABELS, ["PLATFORM"])}
+                  defaultValue="CASH"
+                />
+                <TextField name="reference" label="رقم العملية (اختياري)" />
+              </ActionForm>
             ) : null}
             {canFinalize ? (
               <ActionForm

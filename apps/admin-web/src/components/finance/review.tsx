@@ -131,7 +131,9 @@ export function ReviewPanel({
 
 const SETTLEMENT_TONES: Record<SettlementStatus, Tone> = {
   DRAFT: "warning",
-  FINALIZED: "success",
+  REVIEWED: "info",
+  FINALIZED: "active",
+  PAID: "success",
   VOIDED: "neutral",
 };
 

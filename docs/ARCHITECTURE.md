@@ -212,7 +212,7 @@ ExpenseCategory(pnl_group)          1─* Expense         ├─ vehicle, driver
 RevenueEntry (kind) 1─* RevenueReceipt (cash|electronic, held by DRIVER|COMPANY)
 RideHailingPlatform 1─* RideHailingStatement ──approve──▶ RevenueEntry (SYSTEM)
 Driver 1─* DriverLedgerEntry (signed; balance = company owes driver)
-Driver 1─* DriverSettlement (DRAFT → FINALIZED → VOIDED, frozen details)
+Driver 1─* DriverSettlement (DRAFT → REVIEWED → FINALIZED (approved) → PAID; VOIDED; frozen details)
 ```
 
 - **One lifecycle for financial records.** Fuel, expenses, revenue and statements are SUBMITTED, then APPROVED or REJECTED. A rejected record can be edited and resubmitted. Approved records are never edited: a correction voids the original and creates a replacement linked by `corrects_id`, both kept and audited. Nothing financial is deleted. Totals count APPROVED records only, and pending records are reported as such.
@@ -220,6 +220,14 @@ Driver 1─* DriverSettlement (DRAFT → FINALIZED → VOIDED, frozen details)
 - **No double counting.** `RevenueEntry` is the only revenue source for reports. Ride-hailing revenue can only be generated from an approved platform statement (at most one live entry per statement, enforced by a partial unique index). Platform commission is recorded as `fees_withheld` on that entry. Money received is a receipt, never a second revenue row.
 - **Driver custody.** Receipts held by the driver post a `CASH_COLLECTED` debit to the driver account. A cash handover is a credit. Costs paid by the driver become a `REIMBURSEMENT` credit once approved. Voiding the source voids its ledger entry; a source posts at most one live entry (partial unique index).
 - **Settlements** compute compensation from the versioned plans in force, freeze the calculation (plan terms, inputs, lines) when finalised, and post a single `EARNING` entry. Finalised settlements of one driver cannot overlap (exclusion constraint). A plan change never touches a finalised settlement; redoing one means voiding it with a reason.
+- **Settlement workflow (U20).** Draft → reviewed → approved (`FINALIZED`) → paid:
+  - **Drafts for everyone:** `POST /settlements/generate` makes a draft for each active driver with a plan in the period. Drivers who already have a settlement touching the period are listed as skipped.
+  - **Manual adjustments:** on a draft only, a signed amount with a reason; stored with who and when, audited, and never below zero. They survive recalculation.
+  - **Account view:** the settlement shows the opening balance and the period's account entries (bonuses, reimbursements, advances, deductions, cash, payments), plus the expected balance after approval. They are already on the account and are not counted twice.
+  - **Review freezes the inputs:** a reviewed settlement cannot be recalculated or adjusted, only returned to draft with a reason. Approval posts exactly what was reviewed and refuses (`inputs_changed`) if the records changed since.
+  - **Paid** records a payment made outside the system (amount, date, method, reference; large amounts need re-authentication) as a `PAYMENT` entry linked to the settlement. The system never transfers money.
+  - Voiding a paid settlement voids its earnings and its payment. Paid settlements stay in the no-overlap rule.
+- **Validation messages** from the API are in Arabic for Pydantic's built-in checks (required, ranges, dates, decimals); messages written in the code are kept as they are.
 - **Vehicle P&L** uses approved records only. Amounts with a service period (contracts, statements, settlement earnings) are spread over it by days. Driver earnings are split across vehicles by driving minutes, and costs across operation types by session minutes. Missing inputs produce warnings, never estimates.
 - **Platforms are not scraped or integrated.** Statements are entered manually from what the platform provides.
 
@@ -594,7 +602,7 @@ Services validate and return clear errors. Row locks serialise competing writes 
 | Duplicate GPS batches/points/events | Batch replay answers from the stored result | Unique (driver, client batch id), (shift, client point id), (driver, client event id) | `test_tracking.py` |
 | Duplicate financial submissions | Driver-app writes take an `Idempotency-Key`. Admin forms disable submit while pending; near-identical records are also flagged by the exception engine | Unique (user, idempotency key); one live revenue entry per statement; one live ledger entry per source | `test_finance_costs.py`, `test_integrity.py` |
 | Review actions (approve, reject, void, correct) | `finance_common.fetch(lock=True)` takes `SELECT … FOR UPDATE` on every write path; the second reviewer sees the first decision and gets 409 | Lifecycle columns and the unique indexes above | `test_integrity.py::test_review_actions_lock_the_record` |
-| Settlement finalisation | Locks the settlement; finalising freezes the calculation (plan terms, inputs, lines) | Exclusion constraint: finalised settlements of one driver never overlap; one live `EARNING` entry per settlement | `test_finance_settlements.py` |
+| Settlement finalisation | Locks the settlement; the review freezes the calculation (plan terms, inputs, lines) and approval refuses if inputs changed (U20) | Exclusion constraint: approved or paid settlements of one driver never overlap; one live `EARNING` entry per settlement | `test_finance_settlements.py`, `test_settlement_workflow.py` |
 | Loop detection duplication | Recomputing voids its own previous automatic events | Unique `dedupe_key` per route event; one school run per session | `test_route_events_api.py`, `test_integrity.py` |
 | Exception and notification runs | One detection run at a time (advisory lock); upserts by key | Unique `dedupe_key`; unique (user, dedupe key) | `test_exceptions.py`, `test_notifications.py` |
 | Audit records | Written in the same transaction as the change they describe (commit both or neither) | Triggers block `UPDATE`, `DELETE` and `TRUNCATE` on `audit_logs` | `test_auth.py`, `test_integrity.py` |

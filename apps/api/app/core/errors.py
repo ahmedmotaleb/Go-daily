@@ -102,7 +102,7 @@ def register_error_handlers(app: FastAPI) -> None:
         fields = [
             {
                 "loc": [str(p) for p in err.get("loc", ())],
-                "msg": err.get("msg"),
+                "msg": arabic_message(err),
                 "type": err.get("type"),
             }
             for err in exc.errors()
@@ -141,6 +141,44 @@ def register_error_handlers(app: FastAPI) -> None:
             response.headers["X-Request-ID"] = rid
         security_headers(response)
         return response
+
+
+# Pydantic's built-in messages are English; the admin shows them next to fields.
+_ARABIC: dict[str, str] = {
+    "missing": "هذا الحقل مطلوب",
+    "greater_than": "يجب أن تكون القيمة أكبر من {gt}",
+    "greater_than_equal": "يجب ألا تقل القيمة عن {ge}",
+    "less_than": "يجب أن تكون القيمة أقل من {lt}",
+    "less_than_equal": "يجب ألا تزيد القيمة عن {le}",
+    "decimal_max_places": "عدد الخانات العشرية أكثر من {decimal_places}",
+    "decimal_max_digits": "الرقم أطول من المسموح",
+    "decimal_parsing": "أدخل رقمًا صحيحًا",
+    "int_parsing": "أدخل رقمًا صحيحًا",
+    "int_from_float": "أدخل رقمًا صحيحًا بدون كسور",
+    "float_parsing": "أدخل رقمًا",
+    "string_too_short": "النص أقصر من المطلوب",
+    "string_too_long": "النص أطول من {max_length} حرف",
+    "string_pattern_mismatch": "الصيغة غير صحيحة",
+    "date_parsing": "تاريخ غير صحيح",
+    "date_from_datetime_parsing": "تاريخ غير صحيح",
+    "datetime_parsing": "تاريخ ووقت غير صحيحين",
+    "timezone_aware": "الوقت يجب أن يتضمن المنطقة الزمنية",
+    "uuid_parsing": "معرّف غير صحيح",
+    "enum": "اختر قيمة من القائمة",
+    "literal_error": "اختر قيمة من القائمة",
+    "bool_parsing": "قيمة غير صحيحة",
+}
+
+
+def arabic_message(err: Any) -> str:
+    """The Arabic message for a Pydantic error; our own messages are kept as written."""
+    template = _ARABIC.get(str(err.get("type")))
+    if template is None:
+        return str(err.get("msg", ""))
+    try:
+        return template.format(**(err.get("ctx") or {}))
+    except (KeyError, IndexError, ValueError):
+        return template.split("{")[0].strip()
 
 
 def field_error(field: str, message: str, *, code: str = "validation_error") -> ValidationFailed:

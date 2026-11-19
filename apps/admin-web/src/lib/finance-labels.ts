@@ -85,7 +85,9 @@ export const LEDGER_TYPE_LABELS: Record<LedgerEntryType, string> = {
 
 export const SETTLEMENT_STATUS_LABELS: Record<SettlementStatus, string> = {
   DRAFT: "مسودة",
-  FINALIZED: "نهائية",
+  REVIEWED: "تمت المراجعة",
+  FINALIZED: "معتمدة",
+  PAID: "مدفوعة",
   VOIDED: "ملغاة",
 };
 

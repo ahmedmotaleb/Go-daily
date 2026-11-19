@@ -359,23 +359,63 @@ export async function createSettlementAction(_: FormState, formData: FormData): 
 
 export async function settlementAction(
   id: string,
-  op: "finalize" | "recalculate" | "void",
+  op: "finalize" | "recalculate" | "void" | "review" | "reopen" | "adjust" | "pay",
   _: FormState,
   formData: FormData,
 ): Promise<FormState> {
   id = boundId(id);
-  op = boundOneOf(op, ["finalize", "recalculate", "void"] as const);
+  op = boundOneOf(op, [
+    "finalize",
+    "recalculate",
+    "void",
+    "review",
+    "reopen",
+    "adjust",
+    "pay",
+  ] as const);
+  const reason = { reason: text(formData, "reason") ?? "" };
+  const bodies: Partial<Record<typeof op, unknown>> = {
+    void: reason,
+    reopen: reason,
+    adjust: { amount: decimal(formData, "amount"), ...reason },
+    pay: compact({
+      amount: decimal(formData, "amount"),
+      paid_on: text(formData, "paid_on"),
+      method: text(formData, "method"),
+      reference: text(formData, "reference"),
+    }),
+  };
   try {
-    await api.post(
-      `/settlements/${id}/${op}`,
-      op === "void" ? { reason: text(formData, "reason") ?? "" } : undefined,
-    );
+    await api.post(`/settlements/${id}/${op}`, bodies[op]);
   } catch (error) {
     return errorToFormState(error, formValues(formData));
   }
   revalidatePath("/finance/settlements");
   revalidatePath(`/finance/settlements/${id}`);
   redirect(`/finance/settlements/${id}?notice=settlement_${op}`);
+}
+
+export async function generateSettlementsAction(
+  _: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  let created = 0;
+  let skipped = 0;
+  try {
+    const res = await api.post<{ created: unknown[]; skipped: unknown[] }>(
+      "/settlements/generate",
+      { period_start: text(formData, "period_start"), period_end: text(formData, "period_end") },
+    );
+    created = res.created.length;
+    skipped = res.skipped.length;
+  } catch (error) {
+    return errorToFormState(error, formValues(formData));
+  }
+  revalidatePath("/finance/settlements");
+  return {
+    ok: true,
+    message: `أُنشئت ${created} مسودة${skipped ? `، وتُرك ${skipped} سائق لديه تسوية في الفترة` : ""}.`,
+  };
 }
 
 // --- Finance settings ---------------------------------------------------------------------

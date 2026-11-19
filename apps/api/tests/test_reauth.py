@@ -124,9 +124,11 @@ def test_only_large_settlements_need_confirmation(
     _age(db, h)
 
     monkeypatch.setattr(get_settings(), "reauth_settlement_amount", Decimal("400"))
+    client.post(f"/api/v1/settlements/{draft['id']}/review", headers=h)
     blocked = client.post(f"/api/v1/settlements/{draft['id']}/finalize", headers=h)
     assert blocked.json()["error"]["code"] == "reauth_required"
 
     monkeypatch.setattr(get_settings(), "reauth_settlement_amount", Decimal("10000"))
+    client.post(f"/api/v1/settlements/{draft['id']}/review", headers=h)
     small = client.post(f"/api/v1/settlements/{draft['id']}/finalize", headers=h)
     assert small.status_code == 200, small.text

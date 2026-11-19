@@ -135,6 +135,20 @@ def void_source(
         _void(db, entry, actor, reason)
 
 
+def void_settlement_payments(
+    db: Session, settlement_id: uuid.UUID, actor: User | None, reason: str
+) -> None:
+    """Void the live payments recorded against a settlement (U20; caller commits)."""
+    for entry in db.scalars(
+        select(DriverLedgerEntry).where(
+            DriverLedgerEntry.settlement_id == settlement_id,
+            DriverLedgerEntry.entry_type == LedgerEntryType.PAYMENT,
+            DriverLedgerEntry.voided_at.is_(None),
+        )
+    ).all():
+        _void(db, entry, actor, reason)
+
+
 def create_manual(
     db: Session, *, actor: User, driver_id: uuid.UUID, data: LedgerEntryIn
 ) -> DriverLedgerEntry:

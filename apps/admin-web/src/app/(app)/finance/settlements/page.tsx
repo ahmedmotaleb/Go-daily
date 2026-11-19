@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { createSettlementAction } from "@/app/(app)/finance/actions";
+import { createSettlementAction, generateSettlementsAction } from "@/app/(app)/finance/actions";
 import { FilterBar } from "@/components/finance/filters";
 import { ActionForm } from "@/components/forms/action-form";
 import { SelectField, TextField } from "@/components/forms/fields";
@@ -21,7 +21,7 @@ import type { Page } from "@/lib/types";
 
 export const metadata: Metadata = { title: "تسويات السائقين" };
 
-const STATUSES = ["DRAFT", "FINALIZED", "VOIDED"] as const;
+const STATUSES = ["DRAFT", "REVIEWED", "FINALIZED", "PAID", "VOIDED"] as const;
 
 export default async function SettlementsPage({ searchParams }: PageProps<"/finance/settlements">) {
   const me = await requirePermission("settlements:read");
@@ -39,8 +39,28 @@ export default async function SettlementsPage({ searchParams }: PageProps<"/fina
     <>
       <PageHeader
         title="تسويات السائقين"
-        description="حساب المستحقات حسب خطة التعويض السارية؛ التسوية النهائية لا تتغير بتغيير الخطة لاحقًا"
+        description="مسودة ← مراجعة ← اعتماد ← تسجيل الدفع. الدفع يتم خارج النظام ويُسجل هنا فقط؛ التسوية المعتمدة لا تتغير بتغيير الخطة لاحقًا"
       />
+      {can(me, "settlements:write") ? (
+        <Card className="mb-6">
+          <CardHeader
+            title="مسودات لكل السائقين"
+            description="مسودة لكل سائق نشط له خطة تعويض في الفترة؛ من لديه تسوية في الفترة يُترك"
+          />
+          <CardBody>
+            <ActionForm
+              action={generateSettlementsAction}
+              submitLabel="إنشاء المسودات"
+              variant="secondary"
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <TextField name="period_start" label="من" type="date" required />
+                <TextField name="period_end" label="إلى" type="date" required />
+              </div>
+            </ActionForm>
+          </CardBody>
+        </Card>
+      ) : null}
       {can(me, "settlements:write") ? (
         <Card className="mb-6">
           <CardHeader
