@@ -22,6 +22,7 @@ from app.api.routes import (
     maintenance,
     notifications,
     operations,
+    passenger_counts,
     pilot,
     policies,
     profitability,
@@ -56,6 +57,7 @@ api_router.include_router(fuel.router)
 api_router.include_router(fuel_stations.router)
 api_router.include_router(statement_imports.router)
 api_router.include_router(trackers.router)
+api_router.include_router(passenger_counts.router)
 api_router.include_router(expenses.router)
 api_router.include_router(revenue.router)
 api_router.include_router(expected_revenue.router)

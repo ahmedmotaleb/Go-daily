@@ -453,6 +453,22 @@ Behaviour:
 
 Tests: `test_routing.py` (fake routing server; nothing goes over the network).
 
+### Passenger counts (U11)
+
+`app/models/passengers.py`, `app/services/passenger_counts.py`, the «عدد الركاب» card on the shift page. Counts are optional and only ever recorded, never inferred from GPS or revenue.
+
+- **What a count holds:** passengers (0–200), time, and optionally the operation session (and so its route) and the direction.
+- **Source:**
+  - `DRIVER`: the driver's report, entered by staff.
+  - `SUPERVISOR`: a count on site.
+  - `TICKETING` and `HARDWARE`: reserved for approved integrations (U55). They cannot be typed in by hand.
+- **Confidence:** `COUNTED` or `ESTIMATED`.
+- **Rules:** the count must be inside its shift (±15 minutes). Counts are never edited, only voided with a reason, and both steps are audited.
+- **Permissions:** recording and voiding need `shifts:write`.
+- **Use:** counts do not feed expected revenue yet. The passengers × fare model keeps using the planned passengers (U10) until management decides how recorded counts should be used.
+
+Tests: `test_passenger_counts.py`.
+
 ### Route versioning (U08)
 
 - **Immutable versions.** Each route definition is stored as immutable versions in `route_versions` (migration 0024).

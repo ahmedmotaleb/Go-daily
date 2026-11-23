@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { api } from "@/lib/api";
+import { boundId } from "@/lib/bound";
 import { errorToFormState, formValues } from "@/lib/form-state";
 import type { FormState } from "@/lib/forms";
 import { compact, datetime, int, text } from "@/lib/parse";
@@ -212,4 +213,51 @@ export async function recomputeRouteEventsAction(
   }
   refresh(shiftId);
   redirect(`/shifts/${shiftId}?notice=route_events_recomputed`);
+}
+
+// --- Passenger counts (U11) ----------------------------------------------------------
+
+export async function recordPassengerCountAction(
+  shiftId: string,
+  _: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  shiftId = boundId(shiftId);
+  try {
+    await api.post(
+      `/shifts/${shiftId}/passenger-counts`,
+      compact({
+        passengers: int(formData, "passengers"),
+        source: text(formData, "source"),
+        confidence: text(formData, "confidence"),
+        counted_at: datetime(formData, "counted_at"),
+        session_id: text(formData, "session_id"),
+        direction: text(formData, "direction"),
+        note: text(formData, "note"),
+      }),
+    );
+  } catch (error) {
+    return errorToFormState(error, formValues(formData));
+  }
+  refresh(shiftId);
+  return { ok: true, message: "تم تسجيل العد." };
+}
+
+export async function voidPassengerCountAction(
+  shiftId: string,
+  countId: string,
+  _: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  shiftId = boundId(shiftId);
+  countId = boundId(countId);
+  try {
+    await api.post(`/passenger-counts/${countId}/void`, {
+      reason: text(formData, "reason") ?? "",
+    });
+  } catch (error) {
+    return errorToFormState(error, formValues(formData));
+  }
+  refresh(shiftId);
+  return { ok: true, message: "تم إلغاء العد وتسجيل السبب." };
 }

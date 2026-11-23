@@ -53,6 +53,7 @@ from app.models.operations import (
     StopKind,
     TripPattern,
 )
+from app.models.passengers import CountConfidence, CountSource, PassengerCount
 from app.models.policy import PolicyVersion
 from app.models.route_events import (
     EventSource,
@@ -93,6 +94,8 @@ __all__ = [
     "CashCollection",
     "ClientType",
     "CompensationMethod",
+    "CountConfidence",
+    "CountSource",
     "Driver",
     "DriverCompensationPlan",
     "DriverDayOff",
@@ -131,6 +134,7 @@ __all__ = [
     "OperationalException",
     "OwnershipStatus",
     "PaidBy",
+    "PassengerCount",
     "PaymentMethod",
     "PointQuality",
     "PointSource",

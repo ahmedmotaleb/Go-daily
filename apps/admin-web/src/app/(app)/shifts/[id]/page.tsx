@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AuditTrail } from "@/components/audit-trail";
 import { OperationSelect } from "@/components/domain/operation-select";
+import { PassengerCounts } from "@/components/domain/passenger-counts";
 import { RouteEventsPanel } from "@/components/domain/route-events-panel";
 import { ShiftTrackView } from "@/components/map/shift-track-view";
 import {
@@ -258,6 +259,7 @@ export default async function ShiftDetailPage({ params, searchParams }: PageProp
               </CardBody>
             </Card>
           ) : null}
+          {shift.started_at ? <PassengerCounts shift={shift} canWrite={canWrite} /> : null}
           {can(me, "exceptions:read") ? <ShiftExceptions shiftId={shift.id} /> : null}
           {shift.notes ? (
             <Card>
