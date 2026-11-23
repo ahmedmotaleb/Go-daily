@@ -52,6 +52,9 @@ Defaults live in `apps/api/app/core/config.py` and `.env.example`. **Empty value
 | `FORWARDED_ALLOW_IPS` | The proxy's address (e.g. `10.0.0.5`) | Uvicorn trusts `X-Forwarded-For` only from here. **Never `*`** if the API port can be reached directly |
 | `LOG_LEVEL` / `LOG_JSON` | `INFO` / `true` | JSON lines on stdout |
 | `METRICS_TOKEN` | Random 32+ chars (secret) | Enables `GET /metrics`. Leave empty to disable |
+| `ROUTING_PROVIDER` | `straight_line` (default) or `osrm` | Road-aware route lines (U07). `osrm` needs `ROUTING_URL` of a routing server you run or license |
+| `ROUTING_URL` | `https://routing.internal` | OSRM-compatible routing API; reachable from the API only |
+| `ROUTING_TIMEOUT_SECONDS` | `5` | On timeout the straight lines are used and the case says so |
 | `TRACKER_WEBHOOK_SECRET` | Random 32+ chars (secret) | Enables the hardware GPS tracker webhook (U05). Leave empty: no tracker is in use. See HARDWARE_GPS_INTEGRATION.md |
 | `TRACKER_MAX_EVENT_AGE_DAYS` | `30` | Older tracker events are quarantined |
 | `STORAGE_BACKEND` | `s3` (or `local` on a single server) | |

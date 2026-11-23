@@ -51,7 +51,7 @@ from app.models.tracking import (
     TrackingEvent,
     TrackingEventType,
 )
-from app.services import cash, expected_revenue, fuel_baselines, ride_hailing, route_events
+from app.services import cash, expected_revenue, fuel_baselines, ride_hailing, route_events, routing
 from app.services import finance_common as fc
 from app.services import fuel_plausibility as fuel_checks
 from app.services.odometer_reconciliation import ReconciliationStatus, reconcile
@@ -839,14 +839,22 @@ def long_stops(ctx: Context) -> RuleResult:
 def route_deviation(ctx: Context) -> RuleResult:
     s = ctx.settings
     result = RuleResult()
+    # U07: the expected line comes from the routing provider (straight lines by default).
+    lines: dict[uuid.UUID, routing.Geometry | None] = {}
     for shift in ctx.completed():
         for session in shift.sessions:
             stops = _route_stops(session.route)
             if session.status is SessionStatus.CANCELLED or len(stops) < 2:
                 continue
+            assert session.route is not None  # noqa: S101 - stops come from it
             key = f"ROUTE_DEVIATION:{session.id}"
             result.scopes.add(key)
-            line = [(lat, lng) for lat, lng, _ in stops]
+            if session.route.id not in lines:
+                lines[session.route.id] = routing.geometry(ctx.db, session.route)
+            geo = lines[session.route.id]
+            if geo is None:  # cannot happen: two located stops were checked above
+                continue
+            line = geo.points
             until = session.ended_at or shift.ended_at
             if until is None:
                 continue
@@ -888,7 +896,9 @@ def route_deviation(ctx: Context) -> RuleResult:
                         ],
                         "corridor_m": s.exception_route_corridor_m,
                         "min_minutes": s.exception_route_min_minutes,
-                        "method": "خطوط مستقيمة بين نقاط المسار وليست شبكة الطرق",
+                        "method": geo.method_ar,
+                        "routing_provider": geo.provider,
+                        "routing_fallback": geo.fallback_reason,
                     },
                     occurred_at=runs[0].start,
                     occurred_until=runs[-1].end,

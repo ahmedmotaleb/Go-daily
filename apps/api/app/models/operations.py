@@ -151,3 +151,31 @@ class RouteVersion(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     __table_args__ = (Index("uq_route_versions_route_version", "route_id", "version", unique=True),)
+
+
+class RouteGeometry(UUIDPrimaryKeyMixin, Base):
+    """Road geometry of a route version from a routing provider (U07), cached.
+
+    Only successful provider answers are stored; straight lines are never
+    cached as if they were roads. A new route version gets its own geometry.
+    """
+
+    __tablename__ = "route_geometries"
+
+    route_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("route_definitions.id"))
+    route_version: Mapped[int] = mapped_column(Integer)
+    provider: Mapped[str] = mapped_column(String(40))
+    # [[lat, lon], ...] along the road.
+    points: Mapped[list[list[float]]] = mapped_column(JSONB)
+    distance_m: Mapped[float]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    __table_args__ = (
+        Index(
+            "uq_route_geometries_route_version_provider",
+            "route_id",
+            "route_version",
+            "provider",
+            unique=True,
+        ),
+    )

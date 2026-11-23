@@ -428,11 +428,30 @@ ExceptionRun (window, per-rule counts, per-rule errors)
 ```
 
 - **Signals, not verdicts.** Every case carries one of two neutral labels, "مراجعة مطلوبة" or "حالة غير معتادة", plus the facts and thresholds the rule used. The UI says so on every case page. No rule infers intent.
-- **Rules:** GPS switched off or permission withdrawn during a shift; GPS gaps (with how far the vehicle moved); mock location; GPS integrity (U02: tracking stopped or restarted with the time lost and likely reboots, impossible jumps, late uploads, points sent from outside the shift, phone clock offset and batches going back in time; see [`GPS_INTEGRITY.md`](GPS_INTEGRITY.md)); long stops away from the route's own stops; route deviation (corridor around straight lines between stops, not road geometry); outside the configured operating areas (disabled until `EXCEPTION_OPERATING_AREAS` is set); odometer increase between shifts (no tracking outside shifts, so this comes from readings); implausible or backwards odometer; GPS vs odometer distance (only with ≥ 80% GPS coverage); fuel cost per km against the vehicle's own weekly history; fuel recorded far from the vehicle (only when both locations exist); driver-paid fuel outside any shift; the same file on different records; same amount/type/vehicle records close in time; platform statements with no recorded ride-hailing activity or far-off income per hour.
+- **Rules:** GPS switched off or permission withdrawn during a shift; GPS gaps (with how far the vehicle moved); mock location; GPS integrity (U02: tracking stopped or restarted with the time lost and likely reboots, impossible jumps, late uploads, points sent from outside the shift, phone clock offset and batches going back in time; see [`GPS_INTEGRITY.md`](GPS_INTEGRITY.md)); long stops away from the route's own stops; route deviation (corridor around the route's expected line: straight lines between stops unless a routing provider is configured, U07); outside the configured operating areas (disabled until `EXCEPTION_OPERATING_AREAS` is set); odometer increase between shifts (no tracking outside shifts, so this comes from readings); implausible or backwards odometer; GPS vs odometer distance (only with ≥ 80% GPS coverage); fuel cost per km against the vehicle's own weekly history; fuel recorded far from the vehicle (only when both locations exist); driver-paid fuel outside any shift; the same file on different records; same amount/type/vehicle records close in time; platform statements with no recorded ride-hailing activity or far-off income per hour.
 - **Thresholds** are environment settings (`EXCEPTION_*`), returned with the rule list by `GET /api/v1/exceptions/rules`.
 - **Dedupe.** Each case has a stable key (per shift, session, record or week). A later run updates an active case's evidence; a closed case is never reopened or rewritten. If a later run re-checks a case's scope and no longer finds it (e.g. a duplicate was voided), the case is marked "no longer detected" but stays for the reviewer.
 - **Failure isolation.** Each rule runs in a savepoint; a failing rule is logged and recorded on the run, and the others still run.
 - **Audit.** Every review step is an audit entry with the status change, the note and the resolution.
+
+### Road-aware route geometry (U07)
+
+`app/services/routing.py`. The line a route is expected to follow comes from a replaceable provider:
+
+- `straight_line` (default) is the earlier behaviour: straight lines between located stops.
+- `osrm` asks a routing server speaking the open OSRM route API (`ROUTING_URL`, `ROUTING_PROFILE`, `ROUTING_TIMEOUT_SECONDS`). It can be self-hosted OSRM or a licensed provider compatible with that API; no provider is hardcoded or called by default. Another provider is another class with `route(stops) -> Geometry`.
+
+Behaviour:
+
+- **Cache.** Answers are cached in `route_geometries` per route version (U08), so an edit gets a new geometry. Straight lines are never cached as roads.
+- **Failure.** Not configured, a bad URL, a timeout, an error or a malformed answer all fall back to straight lines for that call. The result carries the reason.
+- **Evidence.** The route-deviation rule uses this line. Each case records the method, the provider and any fallback reason, so a reviewer knows whether "off route" was measured against roads.
+- **Endpoint.** `GET /routes/{id}/geometry` returns the line, its length, the provider and the method.
+- **Not done:**
+  - Snapping GPS points to roads (map matching): raw points stay as recorded.
+  - School-run deviation still uses straight lines between required stops.
+
+Tests: `test_routing.py` (fake routing server; nothing goes over the network).
 
 ### Route versioning (U08)
 

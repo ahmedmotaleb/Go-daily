@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     # Bearer token for GET /metrics (Prometheus). Unset = endpoint disabled.
     metrics_token: SecretStr | None = None
+    # Road-aware routing (U07). "straight_line" (default) draws routes as
+    # straight lines between stops. "osrm" asks a routing server speaking the
+    # OSRM route API at ROUTING_URL (self-hosted or a licensed provider); on
+    # any failure or timeout the straight lines are used and the case says so.
+    routing_provider: Literal["straight_line", "osrm"] = "straight_line"
+    routing_url: str | None = None
+    routing_timeout_seconds: float = 5.0
+    routing_profile: str = "driving"
     # Hardware GPS trackers (U05): HMAC secret for the provider webhook.
     # Unset: tracker ingestion is off (no tracker is in use yet).
     tracker_webhook_secret: SecretStr | None = None

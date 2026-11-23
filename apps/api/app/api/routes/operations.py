@@ -24,7 +24,7 @@ from app.schemas.operations import (
     RouteUpdate,
 )
 from app.services import operations as ops_service
-from app.services import route_versions
+from app.services import route_versions, routing
 
 router = APIRouter(tags=["operations"])
 
@@ -126,3 +126,30 @@ def route_version_history(route_id: uuid.UUID, _: Reader, db: DbSession) -> list
         )
         for v in versions
     ]
+
+
+class RouteGeometryOut(BaseModel):
+    points: list[tuple[float, float]]
+    distance_m: float
+    provider: str
+    road_aware: bool
+    fallback_reason: str | None
+    method: str
+
+
+@router.get("/routes/{route_id}/geometry", response_model=RouteGeometryOut | None)
+def route_geometry(route_id: uuid.UUID, _: Reader, db: DbSession) -> RouteGeometryOut | None:
+    """U07: the line the route is expected to follow (straight lines unless a provider is set)."""
+    route = ops_service.get_route(db, route_id)
+    geo = routing.geometry(db, route)
+    db.commit()  # keeps a newly cached provider answer
+    if geo is None:
+        return None
+    return RouteGeometryOut(
+        points=geo.points,
+        distance_m=round(geo.distance_m, 1),
+        provider=geo.provider,
+        road_aware=geo.road_aware,
+        fallback_reason=geo.fallback_reason,
+        method=geo.method_ar,
+    )
