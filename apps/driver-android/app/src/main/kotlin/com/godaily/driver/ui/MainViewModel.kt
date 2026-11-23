@@ -23,6 +23,8 @@ import com.godaily.driver.core.cash.checkCloseout
 import com.godaily.driver.core.sync.EntryState
 import com.godaily.driver.core.sync.PendingShiftEnd
 import com.godaily.driver.core.sync.QueuedEntry
+import com.godaily.driver.core.sync.ReceiptStatus
+import com.godaily.driver.core.sync.receiptStatus
 import com.godaily.driver.core.text.DecimalInput
 import com.godaily.driver.core.text.OdometerInput
 import com.godaily.driver.core.text.normalizeDigits
@@ -147,7 +149,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun dismissEntry(clientId: String) {
         viewModelScope.launch {
             val entry = c.entryQueue.all().firstOrNull { it.clientId == clientId }
-            if (entry?.state == EntryState.FAILED) c.entryQueue.remove(clientId)
+            // A refused entry, or an accepted one whose receipt photo was refused
+            // (the office already holds the entry): the driver has seen the reason.
+            if (entry?.state == EntryState.FAILED || entry?.receiptStatus() == ReceiptStatus.REFUSED) {
+                c.entryQueue.remove(clientId)
+            }
             loadEntries()
         }
     }

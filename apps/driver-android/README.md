@@ -137,6 +137,17 @@ switch / no fixes / offline / backlog       ▼
   re-encoded as JPEG before upload, which also drops EXIF metadata such as a
   location the camera embedded. Cached photos are deleted when the dialog
   closes. If the upload fails the entry is kept and the driver can retry.
+- **Receipt reliability (U30).**
+  - **Sources.** The close-out fuel receipt can also come from the photo picker (camera or gallery). The odometer photo at shift start stays camera-only: it is evidence of the moment.
+  - **Each receipt has a visible state** in «محفوظ على الهاتف» (`ReceiptStatus` in `core`):
+    - waiting: kept on the phone, uploaded after its entry is accepted, retried automatically after network failures;
+    - uploaded;
+    - refused: the server refused it or the file is gone. It stays on the list with the reason and «سلّم الإيصال الورقي للمكتب» until the driver hides it. A missing receipt is never silent.
+  - **Progress.** Uploads are small (about 1600 px JPEG, usually under 500 KB), so the app shows the state per entry rather than a byte progress bar.
+  - **Originals policy.** Only the prepared copy is kept and uploaded. The full-resolution original stays in the driver's own camera or gallery (for picked photos), or in the app cache until the dialog closes (for camera photos).
+    - Why: a smaller upload on mobile data, and no camera location metadata.
+    - Keeping originals on the server would need a management decision on storage cost and retention.
+  - **No OCR** is done (not approved).
 - A fuel entry carries the phone's position only if the tracking service
   recorded a fix in the last two minutes (so only during a shift); otherwise
   none is sent. The dialog tells the driver this.

@@ -159,6 +159,7 @@ fun CloseoutScreen(state: UiState, vm: MainViewModel) {
                     takenLabel = "تم إرفاق صورة الإيصال",
                     onCameraMissing = {},
                     compact = true,
+                    allowGallery = true,
                 )
             }
 

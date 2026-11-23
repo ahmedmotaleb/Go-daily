@@ -58,6 +58,9 @@ import com.godaily.driver.core.cash.egp
 import com.godaily.driver.core.sync.EntryKind
 import com.godaily.driver.core.sync.EntryState
 import com.godaily.driver.core.sync.QueuedEntry
+import com.godaily.driver.core.sync.ReceiptStatus
+import com.godaily.driver.core.sync.needsAttention
+import com.godaily.driver.core.sync.receiptStatus
 import com.godaily.driver.core.text.ArabicText
 import com.godaily.driver.ui.Dialog
 import com.godaily.driver.ui.MainViewModel
@@ -130,7 +133,7 @@ fun HomeScreen(state: UiState, vm: MainViewModel) {
                     Notice("يتوفر إصدار أحدث من التطبيق؛ حدّثه في أقرب وقت.", Brand.WarningSoft, Brand.Warning)
                 }
                 if (state.pendingEnd) PendingEndCard(onRetry = vm::retrySync)
-                val kept = state.entries.filter { it.state != EntryState.SYNCED || !it.receiptDone }
+                val kept = state.entries.filter { it.needsAttention() }
                 if (kept.isNotEmpty()) SavedEntriesCard(kept, state.busy, vm)
                 if (active != null) {
                     ActiveShift(active, state, vm, now)
@@ -301,9 +304,13 @@ private fun SavedEntriesCard(entries: List<QueuedEntry>, busy: Boolean, vm: Main
             }
         }
         entries.forEach { entry ->
+            val receipt = entry.receiptStatus()
             val (label, tone) = when {
                 entry.state == EntryState.FAILED -> "لم يُقبل" to Brand.Danger
+                receipt == ReceiptStatus.REFUSED ->
+                    "أُرسل — صورة الإيصال لم تُقبل؛ سلّم الإيصال الورقي للمكتب" to Brand.Danger
                 entry.state == EntryState.SYNCED -> "أُرسل — صورة الإيصال بانتظار الرفع" to Brand.Success
+                receipt == ReceiptStatus.WAITING -> "بانتظار الإرسال مع صورة الإيصال" to Brand.Warning
                 else -> "بانتظار الإرسال" to Brand.Warning
             }
             Column(
@@ -319,13 +326,13 @@ private fun SavedEntriesCard(entries: List<QueuedEntry>, busy: Boolean, vm: Main
                     Text(formatTime(entry.createdAt), fontSize = 12.sp, color = Brand.InkMuted)
                 }
                 Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = tone)
-                if (entry.state == EntryState.FAILED) {
+                if (entry.state == EntryState.FAILED || receipt == ReceiptStatus.REFUSED) {
                     entry.lastError?.let { Text(it, fontSize = 13.sp, color = Brand.InkSoft) }
                     SecondaryButton("إخفاء", { vm.dismissEntry(entry.clientId) }, modifier = Modifier.fillMaxWidth())
                 }
             }
         }
-        if (entries.any { it.state != EntryState.FAILED }) {
+        if (entries.any { it.state == EntryState.PENDING || it.receiptStatus() == ReceiptStatus.WAITING }) {
             SecondaryButton("إعادة المحاولة الآن", vm::retrySync, modifier = Modifier.fillMaxWidth(), enabled = !busy)
         }
     }

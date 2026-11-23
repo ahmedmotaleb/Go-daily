@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -84,8 +85,19 @@ fun PhotoCapture(
     takenLabel: String,
     onCameraMissing: () -> Unit,
     compact: Boolean = false,
+    /**
+     * Receipts only (U30): also allow an existing photo from the gallery.
+     * Never for the odometer photo, which must be taken at the moment.
+     */
+    allowGallery: Boolean = false,
 ) {
     val context = LocalContext.current
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) onPhoto(uri)
+    }
+    val pickFromGallery = {
+        gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
     // Saveable: the activity can be recreated while the camera app is open.
     var pending by rememberSaveable { mutableStateOf<Uri?>(null) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
@@ -133,6 +145,14 @@ fun PhotoCapture(
             }
             if (!compact) Text(hint, color = Brand.InkSoft, fontSize = 12.sp)
         }
+        if (allowGallery) {
+            SecondaryButton(
+                "اختيار صورة من المعرض",
+                { pickFromGallery() },
+                modifier = Modifier.fillMaxWidth(),
+                height = 40.dp,
+            )
+        }
         return
     }
     val thumbnail = rememberThumbnail(photo)
@@ -166,6 +186,7 @@ fun PhotoCapture(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(takenLabel, color = Brand.Success, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             SecondaryButton("إعادة التصوير", { launch() }, height = 40.dp)
+            if (allowGallery) SecondaryButton("من المعرض", { pickFromGallery() }, height = 40.dp)
         }
     }
 }
