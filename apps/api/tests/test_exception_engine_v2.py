@@ -90,11 +90,13 @@ def test_cash_not_handed_over_after_the_allowed_days(client: TestClient, db: Ses
 
 def test_cases_carry_the_explanation(client: TestClient, db: Session) -> None:
     driver, vehicle = pair(db)
-    shift = make_completed_shift(db, driver, vehicle, day=local_today(), minutes=60)
+    # Yesterday at noon, so the shift is in the past whatever the time of day.
+    day = local_today() - timedelta(days=1)
+    shift = make_completed_shift(db, driver, vehicle, day=day, minutes=60)
     shift.assignment_override_reason = "تجربة"
     db.commit()
     _, admin = login_as(client, db, UserRole.ADMIN)
-    res = client.post("/api/v1/exceptions/run", json={"days": 1}, headers=admin)
+    res = client.post("/api/v1/exceptions/run", json={"days": 2}, headers=admin)
     assert res.status_code in (200, 201), res.text
     cases = client.get(
         "/api/v1/exceptions", params={"rule_code": "ASSIGNMENT_OVERRIDE"}, headers=admin

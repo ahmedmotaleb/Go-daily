@@ -52,6 +52,8 @@ Defaults live in `apps/api/app/core/config.py` and `.env.example`. **Empty value
 | `FORWARDED_ALLOW_IPS` | The proxy's address (e.g. `10.0.0.5`) | Uvicorn trusts `X-Forwarded-For` only from here. **Never `*`** if the API port can be reached directly |
 | `LOG_LEVEL` / `LOG_JSON` | `INFO` / `true` | JSON lines on stdout |
 | `METRICS_TOKEN` | Random 32+ chars (secret) | Enables `GET /metrics`. Leave empty to disable |
+| `TRACKER_WEBHOOK_SECRET` | Random 32+ chars (secret) | Enables the hardware GPS tracker webhook (U05). Leave empty: no tracker is in use. See HARDWARE_GPS_INTEGRATION.md |
+| `TRACKER_MAX_EVENT_AGE_DAYS` | `30` | Older tracker events are quarantined |
 | `STORAGE_BACKEND` | `s3` (or `local` on a single server) | |
 | `STORAGE_S3_BUCKET`, `STORAGE_S3_REGION`, `STORAGE_S3_PREFIX` | Your bucket | The prefix keeps environments apart in one bucket (e.g. `prod/`) |
 | `STORAGE_S3_ENDPOINT_URL` | Only for non-AWS providers | e.g. the R2 or MinIO endpoint |
@@ -87,7 +89,7 @@ Defaults live in `apps/api/app/core/config.py` and `.env.example`. **Empty value
 
 ## 4. Secrets
 
-- Keep every secret in the platform's secret store or environment settings, or in a password manager plus a root-only `.env` file on a single server: `DATABASE_URL` password, `DATA_ENCRYPTION_KEY`, `METRICS_TOKEN`, S3 keys, Android signing material. Never put them in the repository, in images, or in CI logs.
+- Keep every secret in the platform's secret store or environment settings, or in a password manager plus a root-only `.env` file on a single server: `DATABASE_URL` password, `DATA_ENCRYPTION_KEY`, `METRICS_TOKEN`, `TRACKER_WEBHOOK_SECRET` (when used), S3 keys, Android signing material. Never put them in the repository, in images, or in CI logs.
 - `.env`, `keystore.properties` and backups are git-ignored. Images receive secrets only at runtime (the Dockerfiles take an optional BuildKit secret `extra_ca` for build-time CAs, which never lands in a layer).
 - Give each secret one owner and write down where it lives. Rotate S3 keys and the metrics token yearly or when staff leave. `DATA_ENCRYPTION_KEY` cannot be rotated without re-encrypting national IDs.
 - Least privilege for infrastructure: an S3 key limited to the bucket (and prefix), and a database role that is not a superuser.

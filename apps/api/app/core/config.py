@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     # Bearer token for GET /metrics (Prometheus). Unset = endpoint disabled.
     metrics_token: SecretStr | None = None
+    # Hardware GPS trackers (U05): HMAC secret for the provider webhook.
+    # Unset: tracker ingestion is off (no tracker is in use yet).
+    tracker_webhook_secret: SecretStr | None = None
+    # Tracker events older than this (by their own time) are quarantined.
+    tracker_max_event_age_days: int = 30
     log_json: bool = True
 
     # Opaque session tokens (see docs/ARCHITECTURE.md -> Authentication).

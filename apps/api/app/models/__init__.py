@@ -63,6 +63,13 @@ from app.models.route_events import (
     SchoolRunStatus,
 )
 from app.models.shift import OperationSession, SessionStatus, Shift, ShiftSource, ShiftStatus
+from app.models.trackers import (
+    RawEventStatus,
+    TrackerBinding,
+    TrackerDevice,
+    TrackerLocation,
+    TrackerRawEvent,
+)
 from app.models.tracking import (
     GpsPoint,
     GpsUploadBatch,
@@ -128,6 +135,7 @@ __all__ = [
     "PointSource",
     "PolicyVersion",
     "QuantityUnit",
+    "RawEventStatus",
     "ReceivedBy",
     "RecordSource",
     "RecordStatus",
@@ -152,6 +160,10 @@ __all__ = [
     "ShiftSource",
     "ShiftStatus",
     "StopKind",
+    "TrackerBinding",
+    "TrackerDevice",
+    "TrackerLocation",
+    "TrackerRawEvent",
     "TrackingEvent",
     "TrackingEventType",
     "TripPattern",

@@ -21,6 +21,7 @@ from app.core.errors import DomainError
 from app.services.exceptions import redact_old_evidence, run_detection
 from app.services.idempotency import prune
 from app.services.notifications import generate as generate_notifications
+from app.services.trackers import ingest as tracker_ingest
 from app.services.tracking import prune_old_points
 from app.services.users import bootstrap_super_admin
 
@@ -79,7 +80,9 @@ def cmd_prune_gps(args: argparse.Namespace) -> int:
     with SessionLocal() as db:
         deleted = prune_old_points(db, older_than_days=days)
         redacted = redact_old_evidence(db, older_than_days=days)
+        trackers = tracker_ingest.prune(db, older_than_days=days)
     print(f"Deleted {deleted} GPS points older than {days} days.")
+    print(f"Deleted {trackers} tracker positions and events older than {days} days.")
     print(f"Removed coordinates from {redacted} closed review cases older than {days} days.")
     return 0
 

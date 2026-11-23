@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import UserRole
-from app.core.time import utcnow
+from app.core.time import local_today, utcnow
 from app.models.attachment import Attachment, AttachmentOwner
 from app.models.finance import (
     DriverLedgerEntry,
@@ -419,7 +419,7 @@ def test_receipt_photo_and_staff_day_offs(client: TestClient, db: Session) -> No
     assert detail["receipt_attachment_ids"] == [mine.json()["attachment_id"]]
 
     _, ops = login_as(client, db, UserRole.OPERATIONS)
-    tomorrow = (utcnow() + timedelta(days=1)).date().isoformat()
+    tomorrow = (local_today() + timedelta(days=1)).isoformat()  # Cairo, not UTC
     off = client.post(
         f"{API}/day-offs",
         headers=ops,
