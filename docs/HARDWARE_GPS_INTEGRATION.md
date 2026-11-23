@@ -77,6 +77,22 @@ An event is accepted only when every check passes. Otherwise it is kept with its
 
 Every device change is audited.
 
+## Phone vs vehicle tracker (U06)
+
+`app/services/trackers/reconcile.py`. Ready for when a tracker is fitted; until then every answer is `NO_TRACKER_DATA`, said plainly. Nothing is inferred when either side is missing.
+
+| Check | Endpoint (`tracking:read`) | How |
+|---|---|---|
+| Phone path vs vehicle path, per shift | `GET /trackers/shifts/{id}/comparison` | Each VALID phone point is paired with the tracker position nearest in time (within 60 s). Reports: pairs, median and maximum distance, pairs farther than 250 m, and both path lengths (gaps not bridged). |
+| Phone still while the vehicle moves | same | 5-minute windows where the tracker covered ≥ 500 m and the phone, still reporting, moved < 50 m. |
+| Movement without an active shift | `GET /trackers/vehicles/{id}/outside-shifts?day=` | Runs of tracker positions outside every shift on that vehicle (gaps over `GPS_GAP_SECONDS` split runs), listed when they cover ≥ 200 m. |
+
+The thresholds are constants in the service for now. They move to the versioned policies (U47) once real data shows what is normal.
+
+All results are facts to check («مراجعة مطلوبة»): a phone in a pocket, a tracker's own error or a wrong binding can explain them. No review rule raises cases from these yet. That waits for validation with real hardware (U05 "Before a real provider goes live").
+
+Tests (synthetic tracker data, clearly test-only): `test_tracker_reconciliation.py`.
+
 ## Privacy and retention
 
 - Tracker positions describe the vehicle at all times, including outside shifts. Fitting trackers needs:

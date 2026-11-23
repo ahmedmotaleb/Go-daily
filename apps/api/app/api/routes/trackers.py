@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
+from dataclasses import asdict
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, status
@@ -18,11 +19,14 @@ from pydantic import AwareDatetime, BaseModel, Field
 
 from app.api.deps import DbSession, require_permissions
 from app.core.config import get_settings
-from app.core.errors import ValidationFailed
+from app.core.errors import NotFoundError, ValidationFailed
 from app.core.permissions import Permission
+from app.core.time import local_today
+from app.models.shift import Shift
 from app.models.trackers import RawEventStatus, TrackerBinding, TrackerDevice
 from app.models.user import User
 from app.services.trackers import ingest as service
+from app.services.trackers import reconcile
 
 router = APIRouter(prefix="/trackers", tags=["trackers"])
 
@@ -168,3 +172,59 @@ def list_events(
 @router.post("/events/reprocess")
 def reprocess_events(actor: Manager, db: DbSession) -> dict[str, int]:
     return service.reprocess(db, actor=actor)
+
+
+# --- U06: phone vs vehicle tracker -----------------------------------------------------
+
+
+class WindowOut(BaseModel):
+    start: datetime
+    end: datetime
+    vehicle_m: float
+    phone_m: float
+
+
+class ShiftComparisonOut(BaseModel):
+    shift_id: uuid.UUID
+    status: str
+    message: str
+    phone_points: int
+    tracker_points: int
+    pairs: int
+    median_distance_m: float | None
+    max_distance_m: float | None
+    discrepancies: int
+    phone_distance_km: float | None
+    tracker_distance_km: float | None
+    phone_still_vehicle_moving: list[WindowOut]
+
+
+class MovementOut(BaseModel):
+    start: datetime
+    end: datetime
+    distance_km: float
+    positions: int
+
+
+class VehicleDayOut(BaseModel):
+    vehicle_id: uuid.UUID
+    day: date
+    status: str
+    tracker_points: int
+    outside_shift: list[MovementOut]
+
+
+@router.get("/shifts/{shift_id}/comparison", response_model=ShiftComparisonOut)
+def compare_shift(shift_id: uuid.UUID, _: Reader, db: DbSession) -> ShiftComparisonOut:
+    shift = db.get(Shift, shift_id)
+    if shift is None:
+        raise NotFoundError("الوردية غير موجودة")
+    return ShiftComparisonOut.model_validate(asdict(reconcile.compare_shift(db, shift)))
+
+
+@router.get("/vehicles/{vehicle_id}/outside-shifts", response_model=VehicleDayOut)
+def outside_shifts(
+    vehicle_id: uuid.UUID, _: Reader, db: DbSession, day: date | None = None
+) -> VehicleDayOut:
+    result = reconcile.movement_outside_shifts(db, vehicle_id, day or local_today())
+    return VehicleDayOut.model_validate(asdict(result))
