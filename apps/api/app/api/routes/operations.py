@@ -141,8 +141,7 @@ class RouteGeometryOut(BaseModel):
 def route_geometry(route_id: uuid.UUID, _: Reader, db: DbSession) -> RouteGeometryOut | None:
     """U07: the line the route is expected to follow (straight lines unless a provider is set)."""
     route = ops_service.get_route(db, route_id)
-    geo = routing.geometry(db, route)
-    db.commit()  # keeps a newly cached provider answer
+    geo = routing.route_geometry(db, route)
     if geo is None:
         return None
     return RouteGeometryOut(

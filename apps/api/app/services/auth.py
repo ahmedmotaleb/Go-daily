@@ -320,6 +320,25 @@ def logout(db: Session, session: AuthSession) -> None:
     db.commit()
 
 
+def record_permission_denied(
+    db: Session, *, user: User, route: str | None, method: str, missing: list[str]
+) -> None:
+    """U36: staff never see actions they cannot use, so a denial is worth recording.
+
+    Only the route template is kept, never the query or body. Committed here
+    because the request is about to fail and its transaction is discarded.
+    """
+    audit.record(
+        db,
+        action="auth.permission_denied",
+        actor=user,
+        entity_type="user",
+        entity_id=user.id,
+        details={"route": route, "method": method, "missing": missing},
+    )
+    db.commit()
+
+
 def revoke_user_sessions(
     db: Session, user_id: uuid.UUID, *, reason: str, except_session_id: uuid.UUID | None = None
 ) -> int:

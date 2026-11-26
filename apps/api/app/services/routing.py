@@ -200,4 +200,23 @@ def geometry(
     return found
 
 
-__all__ = ["Geometry", "OsrmRoute", "RoutingError", "StraightLine", "geometry", "provider"]
+def route_geometry(db: Session, route: RouteDefinition) -> Geometry | None:
+    """Use case behind the route map: the geometry, keeping a newly cached answer.
+
+    `geometry()` itself never commits: the exception rules call it inside
+    their own savepoint and transaction.
+    """
+    geo = geometry(db, route)
+    db.commit()
+    return geo
+
+
+__all__ = [
+    "Geometry",
+    "OsrmRoute",
+    "RoutingError",
+    "StraightLine",
+    "geometry",
+    "provider",
+    "route_geometry",
+]

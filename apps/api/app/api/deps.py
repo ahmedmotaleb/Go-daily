@@ -67,24 +67,13 @@ def require_permissions(*permissions: Permission) -> Callable[..., User]:
             )
         missing = [p for p in permissions if not has_permission(user.role, p)]
         if missing:
-            # U36: staff never see actions they cannot use, so a denial is
-            # worth recording (route template only, no query or body).
-            from app.services import audit  # noqa: PLC0415 - avoids an import cycle
-
-            route = request.scope.get("route")
-            audit.record(
+            auth_service.record_permission_denied(
                 db,
-                action="auth.permission_denied",
-                actor=user,
-                entity_type="user",
-                entity_id=user.id,
-                details={
-                    "route": getattr(route, "path", None),
-                    "method": request.method,
-                    "missing": [p.value for p in missing],
-                },
+                user=user,
+                route=getattr(request.scope.get("route"), "path", None),
+                method=request.method,
+                missing=[p.value for p in missing],
             )
-            db.commit()
             raise PermissionDenied(details={"missing": [p.value for p in missing]})
         return user
 
