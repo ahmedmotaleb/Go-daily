@@ -83,8 +83,15 @@ class RouteDefinition(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
     operation_type: Mapped[OperationType] = relationship(lazy="joined")
+    # Current stops only. Removed stops stay in the table (route events and
+    # route versions point at them) and are never deleted.
     stops: Mapped[list[RouteStop]] = relationship(
-        back_populates="route", order_by="RouteStop.sequence", lazy="selectin"
+        primaryjoin=(
+            "and_(RouteStop.route_id == RouteDefinition.id, RouteStop.removed_at.is_(None))"
+        ),
+        order_by="RouteStop.sequence",
+        lazy="selectin",
+        viewonly=True,
     )
 
     __table_args__ = (
@@ -106,7 +113,13 @@ class StopKind(StrEnum):
 
 
 class RouteStop(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    """Ordered stop of a route. Coordinates + radius become geofences (Task 12)."""
+    """Ordered stop of a route. Coordinates + radius become geofences (Task 12).
+
+    Editing a route never deletes a stop: one taken off the route gets
+    `removed_at` and stays, because route events and route versions point at
+    it. Stops are edited in place by position (stable IDs); the route
+    version keeps their earlier name, place and radius.
+    """
 
     __tablename__ = "route_stops"
 
@@ -117,8 +130,9 @@ class RouteStop(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     radius_m: Mapped[int] = mapped_column(Integer, default=150, server_default=text("150"))
+    removed_at: Mapped[datetime | None]
 
-    route: Mapped[RouteDefinition] = relationship(back_populates="stops")
+    route: Mapped[RouteDefinition] = relationship()
 
     __table_args__ = (
         CheckConstraint("latitude IS NULL OR latitude BETWEEN -90 AND 90", name="latitude_range"),
@@ -127,7 +141,14 @@ class RouteStop(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         CheckConstraint("(latitude IS NULL) = (longitude IS NULL)", name="coordinates_paired"),
         CheckConstraint("radius_m BETWEEN 20 AND 5000", name="radius_range"),
-        Index("uq_route_stops_route_sequence", "route_id", "sequence", unique=True),
+        # Order is unique among the current stops only.
+        Index(
+            "uq_route_stops_route_sequence",
+            "route_id",
+            "sequence",
+            unique=True,
+            postgresql_where=text("removed_at IS NULL"),
+        ),
     )
 
 

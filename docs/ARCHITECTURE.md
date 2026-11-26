@@ -476,7 +476,8 @@ Tests: `test_passenger_counts.py`.
   - **When a version is made:** creating a route stores version 1, and every edit that changes it stores the next one, effective from that moment, with who made it. A save without changes stores nothing.
   - **Existing routes:** they were given version 1 from their current definition.
 - **Events are pinned.** Route events record `route_version`, the version in force when they happened (`route_versions.version_at`). Editing a route therefore never changes what past loops, legs and review cases were measured against.
-- **Stable stop ids.** Stop ids stay stable across versions, as before, and each version keeps the coordinates and radius the stop had then.
+- **Stable stop ids.** Stop ids stay stable across versions, as before, and each version keeps the coordinates and radius the stop had then. An edit matches stops within their kind (origin to origin, destination to destination, intermediates in order), so removing a middle stop never turns its row into another stop.
+- **Stops are never deleted.** A stop taken off the route gets `route_stops.removed_at` (migration 0032) and stays, because route events and school-run evidence point at it. `RouteDefinition.stops` lists current stops only; the order `(route_id, sequence)` is unique among current stops (partial index). Tests: `test_route_versions.py`.
 - **Where to see them:** `GET /routes/{id}/versions`, and «إصدارات المسار» on the route page.
 - **Thresholds:** detection thresholds are company policies (U47), which are versioned separately.
 - **Tests:** `test_route_versions.py`.

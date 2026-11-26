@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import timedelta
 
 from fastapi.testclient import TestClient
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.permissions import UserRole
-from app.core.time import utcnow
-from app.models.operations import RouteVersion
+from app.core.time import local_today, utcnow
+from app.models.operations import RouteStop, RouteVersion
+from app.models.route_events import EventSource, RouteEvent, RouteEventType
 from app.services import route_versions
-from tests.factories import login_as
+from tests.factories import login_as, make_completed_shift, make_driver, make_vehicle
 from tests.test_operations import R, _route_body
 
 
@@ -69,3 +71,50 @@ def test_events_get_the_version_in_force_when_they_happened(
     assert route_versions.version_at(db, rid, utcnow()) == 2
     # Before the route existed: its first definition.
     assert route_versions.version_at(db, rid, utcnow() - timedelta(days=30)) == 1
+
+
+def test_a_stop_taken_off_a_route_is_kept_not_deleted(client: TestClient, db: Session) -> None:
+    _, h = login_as(client, db, UserRole.OPERATIONS)
+    route = client.post(R, headers=h, json=_route_body(db)).json()
+    middle = next(s for s in route["stops"] if s["kind"] == "INTERMEDIATE")
+    # A route event recorded at the intermediate stop.
+    driver, vehicle = make_driver(db), make_vehicle(db)
+    shift = make_completed_shift(db, driver, vehicle, day=local_today() - timedelta(days=1))
+    db.add(
+        RouteEvent(
+            session_id=shift.sessions[0].id,
+            shift_id=shift.id,
+            route_id=route["id"],
+            vehicle_id=vehicle.id,
+            stop_id=middle["id"],
+            event_type=RouteEventType.ENTERED,
+            occurred_at=utcnow() - timedelta(days=1),
+            source=EventSource.AUTO,
+            dedupe_key=f"{shift.sessions[0].id}:ENTERED:{middle['id']}",
+        )
+    )
+    db.commit()
+
+    # Taking the stop off the route used to delete it (and fail on the event's FK).
+    res = client.patch(f"{R}/{route['id']}", headers=h, json={"intermediate_stops": []})
+    assert res.status_code == 200, res.text
+    assert [s["kind"] for s in res.json()["stops"]] == ["ORIGIN", "DESTINATION"]
+    # Matched within their kind: origin and destination keep their ids.
+    assert [s["id"] for s in res.json()["stops"]] == [
+        route["stops"][0]["id"],
+        route["stops"][-1]["id"],
+    ]
+    kept = db.get(RouteStop, uuid.UUID(middle["id"]))
+    assert kept is not None and kept.removed_at is not None
+    assert kept.name == middle["name"]  # the event still names the stop it was at
+
+    # A stop added later at the same position is a new row (the order is
+    # unique among current stops only).
+    res = client.patch(
+        f"{R}/{route['id']}", headers=h, json={"intermediate_stops": [{"name": "محطة جديدة"}]}
+    )
+    assert res.status_code == 200, res.text
+    new_middle = res.json()["stops"][1]
+    assert new_middle["name"] == "محطة جديدة" and new_middle["id"] != middle["id"]
+    rows = db.scalars(select(RouteStop).where(RouteStop.route_id == uuid.UUID(route["id"]))).all()
+    assert len(rows) == 4 and sum(r.removed_at is not None for r in rows) == 1
