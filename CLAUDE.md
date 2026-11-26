@@ -14,6 +14,10 @@ Monorepo:
 
 `docs/ARCHITECTURE.md` is the authoritative design doc. Each feature section names its service module and its tests. Read the relevant section before changing a domain area, and update it when a structural decision changes. Task and upgrade IDs (Task 20, U26, …) used in code and commits refer to `docs/GO_DAILY_CLAUDE_MASTER_TASKS.md` and `docs/GO_DAILY_UPGRADES_MASTER.md`. Progress is tracked in `docs/UPGRADE_STATUS.md`.
 
+## Reports and summaries
+
+Write all reports, summaries and status updates in English. This covers your messages and documents, not the product: UI text stays Arabic-first, and error `message` values stay Arabic.
+
 ## Commands
 
 The Makefile wraps everything (`make help`). It needs bash, so on Windows run the underlying commands directly.
