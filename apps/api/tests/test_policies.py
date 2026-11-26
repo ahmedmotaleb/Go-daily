@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from decimal import Decimal
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.permissions import UserRole
-from app.core.time import local_today
+from app.core.time import local_today, utcnow
 from app.models.audit import AuditLog
 from app.models.cash import ShiftCloseout
+from app.models.exceptions import ExceptionSeverity as Sev
 from app.models.exceptions import OperationalException
-from app.services import policies
+from app.models.policy import PolicyVersion
+from app.services import policies, severity
 from tests.factories import login_as, make_driver_account
 from tests.test_driver_cash import _close, _start
 
@@ -105,3 +108,83 @@ def test_review_rules_use_the_current_policy(client: TestClient, db: Session) ->
     )
     case = cash_case()
     assert case is not None and case.evidence["threshold_days"] == 1
+
+
+def test_money_keys_are_exactly_the_decimal_settings() -> None:
+    fields = Settings.model_fields
+    for key in policies.CATALOG:
+        is_decimal = fields[key.key].annotation is Decimal
+        assert key.money is is_decimal, key.key
+
+
+def test_severity_amounts_are_stored_and_applied_as_decimal(
+    client: TestClient, db: Session
+) -> None:
+    _, admin = login_as(client, db, UserRole.SUPER_ADMIN)
+    res = client.post(
+        URL,
+        headers=admin,
+        json={
+            "changes": {"severity_high_amount": "1500.10", "exception_long_stop_minutes": 60},
+            "reason": "حدود جديدة",
+        },
+    )
+    assert res.status_code == 200, res.text
+
+    latest = policies.current(db)
+    assert latest is not None
+    # Stored as a decimal string in JSONB, never a binary float.
+    assert latest.values["severity_high_amount"] == "1500.10"
+    effective = policies.effective_settings(db)
+    assert isinstance(effective.severity_high_amount, Decimal)
+    assert effective.severity_high_amount == Decimal("1500.10")
+    assert type(effective.exception_long_stop_minutes) is int
+
+    # Applied with exact decimal comparison: 1500.10 is HIGH, 1500.09 is not.
+    at, _ = severity.assess(Sev.LOW, {"amount": "1500.10"}, utcnow(), None, effective)
+    below, _ = severity.assess(Sev.LOW, {"amount": "1500.09"}, utcnow(), None, effective)
+    assert at is Sev.HIGH
+    assert below is Sev.MEDIUM
+
+    # Audited as decimal strings too.
+    log = db.scalar(
+        select(AuditLog)
+        .where(AuditLog.action == "policy.updated")
+        .order_by(AuditLog.occurred_at.desc())
+        .limit(1)
+    )
+    assert log is not None and log.changes is not None
+    assert log.changes["severity_high_amount"] == [
+        str(get_settings().severity_high_amount),
+        "1500.10",
+    ]
+
+    # More than two decimal places is not an amount of money.
+    bad = {"changes": {"severity_high_amount": 1500.105}, "reason": "كسور"}
+    assert client.post(URL, headers=admin, json=bad).status_code == 422
+
+
+def test_float_amounts_in_older_versions_are_read_as_decimal(
+    client: TestClient, db: Session
+) -> None:
+    user, admin = login_as(client, db, UserRole.SUPER_ADMIN)
+    previous = policies.current(db)
+    # A version written before amounts were Decimal stored a JSON float.
+    db.add(
+        PolicyVersion(
+            version=(previous.version if previous else 0) + 1,
+            values={"severity_medium_amount": 750.5},
+            reason="نسخة قديمة",
+            created_by_id=user.id,
+        )
+    )
+    db.commit()
+    effective = policies.effective_settings(db)
+    assert effective.severity_medium_amount == Decimal("750.5")
+    assert isinstance(effective.severity_medium_amount, Decimal)
+
+    # The next version rewrites it as a decimal string.
+    client.post(URL, headers=admin, json={"changes": {"cash_handover_days": 3}, "reason": "تحديث"})
+    latest = policies.current(db)
+    assert latest is not None
+    assert latest.values["severity_medium_amount"] == "750.50"
