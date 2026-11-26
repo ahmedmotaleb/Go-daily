@@ -157,7 +157,7 @@ export function FleetNow({
             flush
           />
           {selected ? (
-            <div className="absolute bottom-4 left-4 z-[500] flex w-[280px] max-w-[calc(100%-32px)] flex-col gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-4 shadow-[var(--shadow-dialog)]">
+            <div className="absolute end-4 bottom-4 z-[500] flex w-[280px] max-w-[calc(100%-32px)] flex-col gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-4 shadow-[var(--shadow-dialog)]">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex flex-col gap-0.5">
                   <span className="text-base font-bold">{selected.plate}</span>
@@ -213,7 +213,7 @@ export function FleetNow({
           {error ? (
             <p
               role="status"
-              className="absolute top-3 right-3 z-[500] rounded-[10px] bg-danger-soft px-3 py-1.5 text-xs font-semibold text-danger"
+              className="absolute start-3 top-3 z-[500] rounded-[10px] bg-danger-soft px-3 py-1.5 text-xs font-semibold text-danger"
             >
               تعذر تحديث المواقع، سيتم إعادة المحاولة
             </p>
