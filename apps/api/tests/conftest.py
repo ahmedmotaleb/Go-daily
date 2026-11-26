@@ -24,6 +24,24 @@ TEST_DATABASE_URL = (
     or _dotenv.get("TEST_DATABASE_URL")
     or "postgresql+psycopg://godaily:godaily@localhost:5432/godaily_test"
 )
+
+
+def _require_test_database(url: str) -> None:
+    """The session fixture DROPS the public schema: refuse anything not named *_test."""
+    import pytest
+    from sqlalchemy.engine import make_url
+
+    name = make_url(url).database or ""
+    if not name.endswith("_test"):
+        pytest.exit(
+            f"Refusing to run the tests: the test database is {name!r}. The test run "
+            "drops and recreates its public schema, so TEST_DATABASE_URL must name a "
+            "database ending with '_test' (for example godaily_test).",
+            returncode=4,
+        )
+
+
+_require_test_database(TEST_DATABASE_URL)
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["APP_ENV"] = "test"
 os.environ.setdefault("LOG_JSON", "false")
@@ -53,6 +71,8 @@ def _alembic_config() -> Config:
 
 @pytest.fixture(scope="session", autouse=True)
 def _migrated_database() -> Iterator[None]:
+    # Check the URL the engine really uses, right before the destructive step.
+    _require_test_database(engine.url.render_as_string(hide_password=True))
     with engine.begin() as conn:
         conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
         conn.execute(text("CREATE SCHEMA public"))
