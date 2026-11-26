@@ -645,6 +645,8 @@ Services validate and return clear errors. Row locks serialise competing writes 
 | Exception and notification runs | One detection run at a time (advisory lock); upserts by key | Unique `dedupe_key`; unique (user, dedupe key) | `test_exceptions.py`, `test_notifications.py` |
 | Audit records | Written in the same transaction as the change they describe (commit both or neither) | Triggers block `UPDATE`, `DELETE` and `TRUNCATE` on `audit_logs` | `test_auth.py`, `test_integrity.py` |
 
+Every driver-app write accepts an `Idempotency-Key`, including ending a session, cancelling a day-off and the photo uploads (odometer, fuel receipt, close-out receipt). For an upload the request is identified by the file's SHA-256 and name, so the same key with a different photo is a conflict, not a replay. Tests: `test_driver_idempotency.py`.
+
 Admin web create forms do not send idempotency keys: the browser cannot resubmit while a request is pending, and the Next.js server does not retry API calls. Mobile writes need keys because they are retried on bad networks.
 
 ## 8. Observability

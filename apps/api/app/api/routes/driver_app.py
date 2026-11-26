@@ -20,7 +20,7 @@ from app.core.config import get_settings
 from app.core.errors import NotFoundError, PermissionDenied
 from app.core.time import local_today, utcnow
 from app.models.assignment import DriverVehicleAssignment
-from app.models.attachment import AttachmentOwner
+from app.models.attachment import Attachment, AttachmentOwner
 from app.models.driver import Driver
 from app.models.finance import FuelTransaction
 from app.models.shift import OperationSession, Shift, ShiftSource, ShiftStatus
@@ -283,18 +283,37 @@ def start_session(
 @router.post("/sessions/{session_id}/end", response_model=SessionOut)
 def end_session(
     session_id: uuid.UUID,
+    request: Request,
     driver: CurrentDriver,
     user: CurrentDriverUser,
     db: DbSession,
-) -> SessionOut:
-    session = db.get(OperationSession, session_id)
-    if session is None or session.shift.driver_id != driver.id:
-        raise NotFoundError("التشغيل غير موجود")
-    return session_out(
-        shifts_service.end_session(
-            db, actor=user, session_id=session_id, data=SessionEnd(), source=ShiftSource.DRIVER_APP
+    idempotency_key: IdempotencyKey = None,
+) -> Any:
+    def action() -> SessionOut:
+        session = db.get(OperationSession, session_id)
+        if session is None or session.shift.driver_id != driver.id:
+            raise NotFoundError("التشغيل غير موجود")
+        return session_out(
+            shifts_service.end_session(
+                db,
+                actor=user,
+                session_id=session_id,
+                data=SessionEnd(),
+                source=ShiftSource.DRIVER_APP,
+            )
         )
+
+    result, _ = idempotency.run_idempotent(
+        db,
+        user=user,
+        key=idempotency_key,
+        method="POST",
+        path=request.url.path,
+        body={},
+        status_code=200,
+        action=action,
     )
+    return result
 
 
 def _fuel_out(tx: FuelTransaction) -> DriverFuelOut:
@@ -355,23 +374,44 @@ def my_fuel(driver: CurrentDriver, db: DbSession) -> list[DriverFuelOut]:
 async def upload_fuel_receipt(
     tx_id: uuid.UUID,
     file: UploadFile,
+    request: Request,
     driver: CurrentDriver,
     user: CurrentDriverUser,
     db: DbSession,
-) -> UploadResult:
+    idempotency_key: IdempotencyKey = None,
+) -> Any:
     """Photo of the receipt for the driver's own entry, before office review."""
-    tx = db.get(FuelTransaction, tx_id)
-    if tx is None or tx.driver_id != driver.id:
-        raise NotFoundError("سجل الوقود غير موجود")
     data = await read_limited(file)
-    attachment, duplicates = attachments_service.upload(
+
+    def action() -> UploadResult:
+        tx = db.get(FuelTransaction, tx_id)
+        if tx is None or tx.driver_id != driver.id:
+            raise NotFoundError("سجل الوقود غير موجود")
+        return _fuel_receipt_out(
+            *attachments_service.upload(
+                db,
+                actor=user,
+                owner_type=AttachmentOwner.FUEL_TRANSACTION,
+                owner_id=tx.id,
+                data=data,
+                filename=file.filename,
+            )
+        )
+
+    result, _ = idempotency.run_idempotent(
         db,
-        actor=user,
-        owner_type=AttachmentOwner.FUEL_TRANSACTION,
-        owner_id=tx.id,
-        data=data,
-        filename=file.filename,
+        user=user,
+        key=idempotency_key,
+        method="POST",
+        path=request.url.path,
+        body=idempotency.upload_fingerprint(data, file.filename),
+        status_code=201,
+        action=action,
     )
+    return result
+
+
+def _fuel_receipt_out(attachment: Attachment, duplicates: list[Attachment]) -> UploadResult:
     return UploadResult(
         attachment=AttachmentOut(
             id=attachment.id,
