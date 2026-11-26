@@ -173,20 +173,29 @@ class FakeDriverApi : DriverApi {
     override suspend fun startShift(request: StartShiftRequest, idempotencyKey: String): Shift = error("unused")
     override suspend fun startSession(shiftId: String, request: StartSessionRequest, idempotencyKey: String): Session =
         error("unused")
-    override suspend fun endSession(sessionId: String): Session = error("unused")
+    override suspend fun endSession(sessionId: String, idempotencyKey: String): Session = error("unused")
     override suspend fun trackingStatus(): ServerTrackingStatus = error("unused")
     override suspend fun recordFuel(request: FuelEntryRequest, idempotencyKey: String): FuelEntry = error("unused")
     override suspend fun myFuel(): List<FuelEntry> = error("unused")
-    override suspend fun uploadFuelReceipt(entryId: String, image: ByteArray, contentType: String): ReceiptUploadResult =
-        error("unused")
+    override suspend fun uploadFuelReceipt(
+        entryId: String,
+        image: ByteArray,
+        idempotencyKey: String,
+        contentType: String,
+    ): ReceiptUploadResult = error("unused")
     override suspend fun todayDayOff(): DayOff? = error("unused")
     override suspend fun registerDayOff(request: DayOffRequest, idempotencyKey: String): DayOff = error("unused")
-    override suspend fun cancelDayOff(): DayOff = error("unused")
-    override suspend fun uploadOdometerPhoto(image: ByteArray, contentType: String): PhotoUpload = error("unused")
+    override suspend fun cancelDayOff(idempotencyKey: String): DayOff = error("unused")
+    override suspend fun uploadOdometerPhoto(image: ByteArray, idempotencyKey: String, contentType: String): PhotoUpload =
+        error("unused")
     override suspend fun submitCloseout(shiftId: String, request: CloseoutRequest, idempotencyKey: String): Closeout =
         error("unused")
-    override suspend fun uploadCloseoutReceipt(closeoutId: String, image: ByteArray, contentType: String): PhotoUpload =
-        error("unused")
+    override suspend fun uploadCloseoutReceipt(
+        closeoutId: String,
+        image: ByteArray,
+        idempotencyKey: String,
+        contentType: String,
+    ): PhotoUpload = error("unused")
     override suspend fun account(): CashAccount = error("unused")
 }
 

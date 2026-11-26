@@ -216,7 +216,7 @@ class OkHttpDriverApiTest {
 
     @Test
     fun `ids are not allowed to alter the request path`() = runTest {
-        assertThrows<IllegalArgumentException> { api.endSession("../auth/logout") }
+        assertThrows<IllegalArgumentException> { api.endSession("../auth/logout", "end-1") }
     }
 
     @Test
@@ -266,7 +266,7 @@ class OkHttpDriverApiTest {
             """{"attachment":{"id":"a1","kind":"FUEL_RECEIPT","content_type":"image/jpeg","size_bytes":4},
                "duplicates":[{"id":"a0","owner_type":"fuel_transaction"}]}""",
         )
-        val result = api.uploadFuelReceipt("f1", byteArrayOf(1, 2, 3, 4))
+        val result = api.uploadFuelReceipt("f1", byteArrayOf(1, 2, 3, 4), "receipt-1")
         assertEquals("a1", result.attachment.id)
         assertTrue(result.possibleDuplicate)
         val req = server.takeRequest()
@@ -276,8 +276,43 @@ class OkHttpDriverApiTest {
         val body = req.body!!.utf8()
         assertTrue("name=\"file\"; filename=\"receipt.jpg\"" in body)
         assertTrue("Content-Type: image/jpeg" in body)
-        assertThrows<IllegalArgumentException> { api.uploadFuelReceipt("../../users", byteArrayOf(1)) }
+        assertThrows<IllegalArgumentException> { api.uploadFuelReceipt("../../users", byteArrayOf(1), "receipt-2") }
     }
+
+    @Test
+    fun `ending a session, cancelling a day-off and photo uploads send the caller's idempotency key`() =
+        runTest {
+            val session = """{"id":"se1","shift_id":"s1",
+                "operation_type":{"id":"o1","code":"FIXED_ROUTE","kind":"FIXED_ROUTE","name_ar":"خط ثابت"},
+                "status":"COMPLETED","started_at":"2026-03-01T06:30:00Z","ended_at":"2026-03-01T08:00:00Z"}"""
+            val photo = """{"attachment_id":"a1","created_at":"2026-03-01T06:30:00Z"}"""
+            val dayOff = """{"id":"d1","day":"2026-03-01","source":"DRIVER_APP","created_at":"2026-03-01T06:30:00Z"}"""
+
+            respond(200, session)
+            api.endSession("se1", "end-session-1")
+            respond(200, dayOff)
+            api.cancelDayOff("cancel-1")
+            respond(201, photo)
+            api.uploadOdometerPhoto(byteArrayOf(1, 2), "odometer-1")
+            respond(201, photo)
+            api.uploadCloseoutReceipt("c1", byteArrayOf(3, 4), "closeout-receipt-1")
+            respond(201, """{"attachment":{"id":"a2","kind":"FUEL_RECEIPT","content_type":"image/jpeg","size_bytes":2},
+                "duplicates":[]}""")
+            api.uploadFuelReceipt("f1", byteArrayOf(5, 6), "fuel-receipt-1")
+
+            val sent = List(5) { server.takeRequest() }.map { it.url.encodedPath to it.headers["Idempotency-Key"] }
+            assertEquals(
+                listOf(
+                    "/api/v1/driver/sessions/se1/end" to "end-session-1",
+                    "/api/v1/driver/day-off/cancel" to "cancel-1",
+                    "/api/v1/driver/odometer-photo" to "odometer-1",
+                    "/api/v1/driver/closeouts/c1/receipt" to "closeout-receipt-1",
+                    "/api/v1/driver/fuel/f1/receipt" to "fuel-receipt-1",
+                ),
+                sent,
+            )
+            assertThrows<IllegalArgumentException> { api.cancelDayOff(" ") } // a key is required
+        }
 
     @Test
     fun `catalog includes fuel types and tolerates older servers without them`() = runTest {
