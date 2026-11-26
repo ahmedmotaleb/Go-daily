@@ -502,6 +502,7 @@ Tests: `test_passenger_counts.py`.
   - **Fuel:** consumption and quantity ratios, repeat window, distance from vehicle, outside-shift grace, duplicate window.
   - **Revenue and cash:** revenue ratio, cash handover days.
 - **Versions:** each change creates an immutable `policy_versions` row (migration 0021) with the full set of overrides, the reason and who made it, and an audit entry (`policy.updated`) with old → new values. Emptying a value returns it to the environment default. The newest version applies.
+- **Value types:** the severity amounts (`severity_*_amount`, `money=True` in the catalog) are EGP: parsed as `Decimal` with at most two decimal places and stored in JSONB as decimal strings, never floats. Counts are stored as integers. `effective_settings` validates every stored value against the setting's declared type before overlaying it (`model_copy` alone does not validate), so a float left by an older version is still applied as `Decimal`.
 - **Where it applies:** `policies.effective_settings(db)` overlays the current version on the environment settings. Exception detection runs, refuelling plausibility checks, fuel baselines, the shift's odometer comparison and the report notes use it.
 - **Older cases:** each review case stores the thresholds it was judged with (U26), so older cases stay explainable after a change.
 - **Not yet configurable:** receipt rules and settlement approval thresholds. They do not exist as rules yet; adding them is a business decision.
