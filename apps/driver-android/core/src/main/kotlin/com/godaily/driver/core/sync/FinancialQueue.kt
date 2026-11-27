@@ -6,6 +6,7 @@ import com.godaily.driver.core.api.DriverApi
 import com.godaily.driver.core.api.FuelEntryRequest
 import com.godaily.driver.core.api.GoDailyJson
 import java.time.Instant
+import java.util.UUID
 
 enum class EntryKind { FUEL, CLOSEOUT }
 
@@ -44,6 +45,16 @@ data class QueuedEntry(
     val receiptPath: String? = null,
     val receiptDone: Boolean = receiptPath == null,
 ) {
+    /**
+     * Idempotency-Key for this entry's receipt upload: a UUID derived from
+     * [clientId], so it is the same on every retry and after an app restart
+     * without being stored, and differs from the entry's own key (the server
+     * refuses a key reused on another path). An entry has one receipt photo,
+     * fixed when it is saved.
+     */
+    val receiptKey: String
+        get() = UUID.nameUUIDFromBytes("receipt:$clientId".toByteArray(Charsets.UTF_8)).toString()
+
     companion object {
         fun fuel(request: FuelEntryRequest, title: String, receiptPath: String?, now: Instant): QueuedEntry {
             val id = requireNotNull(request.clientEntryId) { "clientEntryId is required" }
@@ -110,7 +121,7 @@ interface FinancialSender {
 
     suspend fun sendCloseout(shiftId: String, request: CloseoutRequest, idempotencyKey: String): String
 
-    suspend fun uploadReceipt(kind: EntryKind, serverId: String, image: ByteArray)
+    suspend fun uploadReceipt(kind: EntryKind, serverId: String, image: ByteArray, idempotencyKey: String)
 }
 
 class ApiFinancialSender(private val api: DriverApi) : FinancialSender {
@@ -120,10 +131,10 @@ class ApiFinancialSender(private val api: DriverApi) : FinancialSender {
     override suspend fun sendCloseout(shiftId: String, request: CloseoutRequest, idempotencyKey: String): String =
         api.submitCloseout(shiftId, request, idempotencyKey).id
 
-    override suspend fun uploadReceipt(kind: EntryKind, serverId: String, image: ByteArray) {
+    override suspend fun uploadReceipt(kind: EntryKind, serverId: String, image: ByteArray, idempotencyKey: String) {
         when (kind) {
-            EntryKind.FUEL -> api.uploadFuelReceipt(serverId, image)
-            EntryKind.CLOSEOUT -> api.uploadCloseoutReceipt(serverId, image)
+            EntryKind.FUEL -> api.uploadFuelReceipt(serverId, image, idempotencyKey)
+            EntryKind.CLOSEOUT -> api.uploadCloseoutReceipt(serverId, image, idempotencyKey)
         }
     }
 }
@@ -189,7 +200,7 @@ class FinancialSync(
             return false
         }
         return try {
-            sender.uploadReceipt(entry.kind, serverId, image)
+            sender.uploadReceipt(entry.kind, serverId, image, entry.receiptKey)
             queue.markReceiptDone(entry.clientId)
             true
         } catch (e: ApiError.Rejected) {

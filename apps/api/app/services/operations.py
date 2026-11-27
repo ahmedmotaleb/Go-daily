@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ConflictError, NotFoundError, ValidationFailed
+from app.core.time import utcnow
 from app.models.operations import (
     OperationType,
     RouteDefinition,
@@ -143,23 +144,39 @@ def _stops_snapshot(route: RouteDefinition) -> list[dict[str, Any]]:
 def _sync_stops(
     db: Session, route: RouteDefinition, ordered: list[tuple[StopKind, StopIn]]
 ) -> None:
-    """Update stops in place by position so stop IDs stay stable for later references."""
+    """Update stops in place so stop IDs stay stable; never delete one.
+
+    Stops are matched within their kind: the origin row stays the origin, the
+    destination row stays the destination, and intermediate stops are matched
+    in order among themselves. (Matching across kinds by plain position would
+    turn the old middle stop's row into the destination when a stop is
+    removed.) The route version (U08) keeps every stop's earlier name, place
+    and radius, and route events record the version in force. A stop taken
+    off the route gets `removed_at` and stays, so the events and school-run
+    evidence that point at it remain valid.
+    """
     existing = sorted(route.stops, key=lambda s: s.sequence)
+    pools: dict[StopKind, list[RouteStop]] = {kind: [] for kind in StopKind}
+    for stop in existing:
+        pools[stop.kind].append(stop)
     # Free the sequence numbers first to avoid unique-index clashes while reordering.
     for stop in existing:
         stop.sequence = stop.sequence + 1000
     db.flush()
     for index, (kind, data) in enumerate(ordered):
         values = {"sequence": index + 1, "kind": kind, **data.model_dump()}
-        if index < len(existing):
+        if pools[kind]:
+            stop = pools[kind].pop(0)
             for key, value in values.items():
-                setattr(existing[index], key, value)
+                setattr(stop, key, value)
         else:
-            route.stops.append(RouteStop(**values))
-    for surplus in existing[len(ordered) :]:
-        route.stops.remove(surplus)
-        db.delete(surplus)
+            db.add(RouteStop(route_id=route.id, **values))
+    removed_at = utcnow()
+    for leftover in pools.values():
+        for stop in leftover:
+            stop.removed_at = removed_at
     db.flush()
+    db.expire(route, ["stops"])
 
 
 def _ordered_stops(

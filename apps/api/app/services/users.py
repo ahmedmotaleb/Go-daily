@@ -15,7 +15,7 @@ from app.core.time import utcnow
 from app.models.user import User
 from app.schemas.common import PageParams
 from app.schemas.user import UserCreate, UserUpdate
-from app.services import audit
+from app.services import audit, two_factor
 from app.services.auth import revoke_user_sessions, validate_new_password
 
 AUDITED_FIELDS = ("full_name", "phone", "email", "role", "is_active")
@@ -202,6 +202,16 @@ def update_user(db: Session, *, actor: User, user_id: uuid.UUID, data: UserUpdat
 def ensure_can_manage(actor: User, role: UserRole) -> None:
     """Same rule as for passwords: who may act on accounts of this role."""
     _ensure_can_manage(actor, role)
+
+
+def reset_two_factor(db: Session, *, actor: User, user_id: uuid.UUID, reason: str) -> User:
+    """U31: for a user who lost their phone and recovery codes; ends their sessions."""
+    user = get_user(db, user_id)
+    _ensure_can_manage(actor, user.role)
+    two_factor.admin_reset(db, actor=actor, user=user, reason=reason)
+    revoke_user_sessions(db, user.id, reason="twofa_reset")
+    db.commit()
+    return user
 
 
 def reset_password(db: Session, *, actor: User, user_id: uuid.UUID, new_password: str) -> User:

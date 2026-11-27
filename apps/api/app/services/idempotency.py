@@ -28,6 +28,14 @@ def _hash(body: Any) -> str:
     ).hexdigest()
 
 
+def upload_fingerprint(data: bytes, filename: str | None) -> dict[str, Any]:
+    """What identifies a file upload for Idempotency-Key: its content and name.
+
+    The same key with a different file is a conflict, not a replay.
+    """
+    return {"sha256": hashlib.sha256(data).hexdigest(), "filename": filename}
+
+
 def run_idempotent[T](
     db: Session,
     *,

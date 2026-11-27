@@ -332,7 +332,7 @@ export function TrackingCenter({
           {selected ? (
             <ul
               aria-label="دلالة الخطوط"
-              className="absolute top-4 right-4 z-[500] flex flex-col gap-2 rounded-[14px] border border-line bg-surface px-3.5 py-3 text-xs shadow-[0_6px_18px_rgb(8_43_36/0.10)]"
+              className="absolute start-4 top-4 z-[500] flex flex-col gap-2 rounded-[14px] border border-line bg-surface px-3.5 py-3 text-xs shadow-[0_6px_18px_rgb(8_43_36/0.10)]"
             >
               <li className="flex items-center gap-2">
                 <span aria-hidden="true" className="h-[5px] w-[26px] rounded-full bg-forest-800" />
@@ -394,7 +394,7 @@ export function TrackingCenter({
                   aria-hidden="true"
                 >
                   <div
-                    className="absolute inset-y-0 right-0 rounded-full bg-forest-800"
+                    className="absolute inset-y-0 start-0 rounded-full bg-forest-800"
                     style={{ width: current ? `${pctOf(current.t, windowStart, windowEnd)}%` : 0 }}
                   />
                   {selected.track.gaps.map((g) => (
@@ -402,7 +402,7 @@ export function TrackingCenter({
                       key={g.start}
                       className="absolute -inset-y-0.5 rounded-[3px] bg-red-400"
                       style={{
-                        right: `${pctOf(g.start, windowStart, windowEnd)}%`,
+                        insetInlineStart: `${pctOf(g.start, windowStart, windowEnd)}%`,
                         width: `${Math.max(0.8, pctOf(g.end, windowStart, windowEnd) - pctOf(g.start, windowStart, windowEnd))}%`,
                       }}
                     />
@@ -411,7 +411,7 @@ export function TrackingCenter({
                     <div
                       key={s.start}
                       className="absolute -top-1 h-[18px] w-1 rounded-sm bg-ink"
-                      style={{ right: `${pctOf(s.start, windowStart, windowEnd)}%` }}
+                      style={{ insetInlineStart: `${pctOf(s.start, windowStart, windowEnd)}%` }}
                     />
                   ))}
                 </div>

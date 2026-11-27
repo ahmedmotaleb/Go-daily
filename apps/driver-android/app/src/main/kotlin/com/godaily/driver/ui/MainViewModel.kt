@@ -101,9 +101,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var dayOffKey: String? = null
     private var closeoutKey: String? = null
     private var closeoutKeyShiftId: String? = null
+    private var cancelDayOffKey: String? = null
+    // Ending a session: the key belongs to that session (another session gets a new one).
+    private var endSessionKey: Pair<String, String>? = null
 
     // The start photo is uploaded once per capture, so a retried start sends the same id.
     private var startPhoto: Pair<Uri, String>? = null
+
+    // Until the server confirms the start photo: its key and the exact bytes sent, so a
+    // retry after a lost response is a replay (the server refuses a key with other bytes).
+    private var startPhotoUpload: PhotoAttempt? = null
+
+    private class PhotoAttempt(val uri: Uri, val key: String, val bytes: ByteArray)
 
     init {
         if (c.tokenStore.isLoggedIn()) {
@@ -300,9 +309,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun cancelDayOff() {
+        val key = cancelDayOffKey ?: UUID.randomUUID().toString().also { cancelDayOffKey = it }
         busy {
             try {
-                c.api.cancelDayOff()
+                c.api.cancelDayOff(key)
+                cancelDayOffKey = null
                 _state.update { it.copy(message = "تم إلغاء الإجازة") }
                 refresh()
             } catch (e: ApiError) {
@@ -528,14 +539,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         busy {
             try {
                 val photoId = startPhoto?.takeIf { it.first == photo }?.second
-                    ?: c.api.uploadOdometerPhoto(ReceiptPhotos.prepare(app, photo)).attachmentId
-                        .also { startPhoto = photo to it }
+                    ?: uploadStartPhoto(app, photo).also { startPhoto = photo to it }
                 val shift = c.api.startShift(
                     StartShiftRequest(vehicle.id, km, planned?.id, operationTypeId, routeId, photoId),
                     key,
                 )
                 startShiftKey = null
                 startPhoto = null
+                startPhotoUpload = null
                 ReceiptPhotos.clearCache(app)
                 c.shiftState.setActive(shift)
                 TrackingController.start(app)
@@ -547,10 +558,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(dialogError = e.message ?: "تعذر قراءة صورة العداد") }
             } catch (e: ApiError) {
                 // A stale or refused photo is taken again on the next attempt.
-                if (e is ApiError.Rejected) startPhoto = null
+                if (e is ApiError.Rejected) {
+                    startPhoto = null
+                    startPhotoUpload = null
+                }
                 _state.update { it.copy(dialogError = e.message) }
             }
         }
+    }
+
+    /** Uploads the start photo under one key per capture; a retry resends the same bytes. */
+    private suspend fun uploadStartPhoto(app: Application, photo: Uri): String {
+        val attempt = startPhotoUpload?.takeIf { it.uri == photo }
+            ?: PhotoAttempt(photo, UUID.randomUUID().toString(), ReceiptPhotos.prepare(app, photo))
+                .also { startPhotoUpload = it }
+        return c.api.uploadOdometerPhoto(attempt.bytes, attempt.key).attachmentId
     }
 
     fun endShift(odometer: String, notes: String) {
@@ -616,9 +638,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun endSession() {
         val session = _state.value.active?.activeSession ?: return
+        val key = endSessionKey?.takeIf { it.first == session.id }?.second
+            ?: UUID.randomUUID().toString().also { endSessionKey = session.id to it }
         busy {
             try {
-                c.api.endSession(session.id)
+                c.api.endSession(session.id, key)
+                endSessionKey = null
                 _state.update { it.copy(message = "تم إنهاء التشغيل الحالي") }
                 refresh()
             } catch (e: ApiError) {

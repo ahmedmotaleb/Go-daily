@@ -476,7 +476,8 @@ Tests: `test_passenger_counts.py`.
   - **When a version is made:** creating a route stores version 1, and every edit that changes it stores the next one, effective from that moment, with who made it. A save without changes stores nothing.
   - **Existing routes:** they were given version 1 from their current definition.
 - **Events are pinned.** Route events record `route_version`, the version in force when they happened (`route_versions.version_at`). Editing a route therefore never changes what past loops, legs and review cases were measured against.
-- **Stable stop ids.** Stop ids stay stable across versions, as before, and each version keeps the coordinates and radius the stop had then.
+- **Stable stop ids.** Stop ids stay stable across versions, as before, and each version keeps the coordinates and radius the stop had then. An edit matches stops within their kind (origin to origin, destination to destination, intermediates in order), so removing a middle stop never turns its row into another stop.
+- **Stops are never deleted.** A stop taken off the route gets `route_stops.removed_at` (migration 0032) and stays, because route events and school-run evidence point at it. `RouteDefinition.stops` lists current stops only; the order `(route_id, sequence)` is unique among current stops (partial index). Tests: `test_route_versions.py`.
 - **Where to see them:** `GET /routes/{id}/versions`, and «إصدارات المسار» on the route page.
 - **Thresholds:** detection thresholds are company policies (U47), which are versioned separately.
 - **Tests:** `test_route_versions.py`.
@@ -502,6 +503,7 @@ Tests: `test_passenger_counts.py`.
   - **Fuel:** consumption and quantity ratios, repeat window, distance from vehicle, outside-shift grace, duplicate window.
   - **Revenue and cash:** revenue ratio, cash handover days.
 - **Versions:** each change creates an immutable `policy_versions` row (migration 0021) with the full set of overrides, the reason and who made it, and an audit entry (`policy.updated`) with old → new values. Emptying a value returns it to the environment default. The newest version applies.
+- **Value types:** the severity amounts (`severity_*_amount`, `money=True` in the catalog) are EGP: parsed as `Decimal` with at most two decimal places and stored in JSONB as decimal strings, never floats. Counts are stored as integers. `effective_settings` validates every stored value against the setting's declared type before overlaying it (`model_copy` alone does not validate), so a float left by an older version is still applied as `Decimal`.
 - **Where it applies:** `policies.effective_settings(db)` overlays the current version on the environment settings. Exception detection runs, refuelling plausibility checks, fuel baselines, the shift's odometer comparison and the report notes use it.
 - **Older cases:** each review case stores the thresholds it was judged with (U26), so older cases stay explainable after a change.
 - **Not yet configurable:** receipt rules and settlement approval thresholds. They do not exist as rules yet; adding them is a business decision.
@@ -642,6 +644,8 @@ Services validate and return clear errors. Row locks serialise competing writes 
 | Loop detection duplication | Recomputing voids its own previous automatic events | Unique `dedupe_key` per route event; one school run per session | `test_route_events_api.py`, `test_integrity.py` |
 | Exception and notification runs | One detection run at a time (advisory lock); upserts by key | Unique `dedupe_key`; unique (user, dedupe key) | `test_exceptions.py`, `test_notifications.py` |
 | Audit records | Written in the same transaction as the change they describe (commit both or neither) | Triggers block `UPDATE`, `DELETE` and `TRUNCATE` on `audit_logs` | `test_auth.py`, `test_integrity.py` |
+
+Every driver-app write accepts an `Idempotency-Key`, including ending a session, cancelling a day-off and the photo uploads (odometer, fuel receipt, close-out receipt). For an upload the request is identified by the file's SHA-256 and name, so the same key with a different photo is a conflict, not a replay. The app sends a UUID kept across retries: per action in `MainViewModel` (the start photo also keeps the exact bytes it sent), and for a queued entry's receipt `QueuedEntry.receiptKey`, derived from the entry's client id so it survives app restarts. Tests: `test_driver_idempotency.py`, `OkHttpDriverApiTest`, `FinancialSyncTest`.
 
 Admin web create forms do not send idempotency keys: the browser cannot resubmit while a request is pending, and the Next.js server does not retry API calls. Mobile writes need keys because they are retried on bad networks.
 

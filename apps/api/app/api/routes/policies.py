@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
@@ -51,8 +52,9 @@ class PoliciesOut(BaseModel):
 
 
 class PolicyUpdateIn(BaseModel):
-    # key -> new value, or null to go back to the default.
-    changes: dict[str, float | None] = Field(min_length=1)
+    # key -> new value, or null to go back to the default. Decimal, not float,
+    # so money thresholds never pass through binary floating point.
+    changes: dict[str, Decimal | None] = Field(min_length=1)
     reason: str = Field(min_length=3, max_length=500)
 
 

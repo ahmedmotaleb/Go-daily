@@ -172,6 +172,7 @@ def _routes_without_geofences(db: Session) -> Check:
         .select_from(RouteStop)
         .where(
             RouteStop.route_id == RouteDefinition.id,
+            RouteStop.removed_at.is_(None),
             RouteStop.latitude.is_not(None),
             RouteStop.longitude.is_not(None),
         )

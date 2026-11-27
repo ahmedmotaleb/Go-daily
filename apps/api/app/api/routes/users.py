@@ -13,9 +13,7 @@ from app.models.user import User
 from app.schemas.auth import TwoFactorResetIn
 from app.schemas.common import Message, Page, PageParams, page_params
 from app.schemas.user import PasswordReset, UserCreate, UserOut, UserUpdate
-from app.services import two_factor
 from app.services import users as users_service
-from app.services.auth import revoke_user_sessions
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -71,9 +69,5 @@ def reset_two_factor(
     user_id: uuid.UUID, body: TwoFactorResetIn, actor: Manager, db: DbSession, _: RecentAuth
 ) -> Message:
     """For a user who lost their phone and recovery codes (U31); ends their sessions."""
-    user = users_service.get_user(db, user_id)
-    users_service.ensure_can_manage(actor, user.role)
-    two_factor.admin_reset(db, actor=actor, user=user, reason=body.reason)
-    revoke_user_sessions(db, user.id, reason="twofa_reset")
-    db.commit()
+    users_service.reset_two_factor(db, actor=actor, user_id=user_id, reason=body.reason)
     return Message(message="تمت إعادة ضبط التحقق بخطوتين وإنهاء جلسات المستخدم")

@@ -5,8 +5,10 @@ import com.godaily.driver.core.api.CloseoutRequest
 import com.godaily.driver.core.api.FuelEntryRequest
 import java.io.IOException
 import java.time.Instant
+import java.util.UUID
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -55,6 +57,8 @@ class FakeSender : FinancialSender {
     val records = linkedMapOf<String, String>()
     val keys = mutableListOf<String>()
     val receipts = mutableListOf<Pair<EntryKind, String>>()
+    /** Idempotency-Key of every receipt upload attempt, failed ones included. */
+    val receiptKeys = mutableListOf<String>()
     var receiptFailure: ApiError? = null
 
     private fun record(clientId: String?, key: String): String {
@@ -69,7 +73,8 @@ class FakeSender : FinancialSender {
     override suspend fun sendCloseout(shiftId: String, request: CloseoutRequest, idempotencyKey: String) =
         record(request.clientEntryId, idempotencyKey)
 
-    override suspend fun uploadReceipt(kind: EntryKind, serverId: String, image: ByteArray) {
+    override suspend fun uploadReceipt(kind: EntryKind, serverId: String, image: ByteArray, idempotencyKey: String) {
+        receiptKeys += idempotencyKey
         receiptFailure?.let { throw it }
         receipts += kind to serverId
     }
@@ -168,6 +173,25 @@ class FinancialSyncTest {
         assertEquals(0, report.sent)
         assertEquals(listOf("f-1"), sender.keys) // the entry itself was sent once
         assertTrue(queue.outstanding().isEmpty())
+    }
+
+    @Test
+    fun `a retried receipt upload keeps its idempotency key`() = runTest {
+        val queue = InMemoryFinancialQueue()
+        val sender = FakeSender()
+        queue.add(fuel("f-1", receipt = "/r/1.jpg"))
+        sender.receiptFailure = ApiError.Network(IOException("lost response"))
+        runCatching { FinancialSync(sender, queue) { byteArrayOf(1) }.run() }
+        sender.receiptFailure = null
+        FinancialSync(sender, queue) { byteArrayOf(1) }.run()
+
+        assertEquals(2, sender.receiptKeys.size)
+        assertEquals(sender.receiptKeys[0], sender.receiptKeys[1]) // same key on the retry
+        assertNotEquals("f-1", sender.receiptKeys[0]) // not the entry's own key
+        assertEquals(sender.receiptKeys[0], UUID.fromString(sender.receiptKeys[0]).toString())
+        // Derived, not stored: the same after an app restart reloads the entry.
+        assertEquals(sender.receiptKeys[0], fuel("f-1", receipt = "/r/1.jpg").receiptKey)
+        assertNotEquals(sender.receiptKeys[0], fuel("f-2", receipt = "/r/1.jpg").receiptKey)
     }
 
     @Test

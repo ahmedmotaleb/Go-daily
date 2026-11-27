@@ -15,8 +15,11 @@ remain explainable after a change.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from functools import cache
 from typing import Any
 
+from pydantic import TypeAdapter
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -38,6 +41,8 @@ class PolicyKey:
     integer: bool = True
     # On (1) / off (0) instead of a number.
     toggle: bool = False
+    # An EGP amount: kept as Decimal (stored as a decimal string), never float.
+    money: bool = False
 
 
 GPS = "التتبع"
@@ -90,9 +95,36 @@ CATALOG: tuple[PolicyKey, ...] = (
         "exception_revenue_ratio", REVENUE, "دخل بعيد عن المعتاد (مضاعف)", "×", 1.1, 10, False
     ),
     PolicyKey("cash_handover_days", REVENUE, "مهلة تسليم نقدية التقفيل", "يوم", 1, 30),
-    PolicyKey("severity_info_amount", SEVERITY, "أقل من هذا المبلغ: للعلم", "ج.م", 0, 1000, False),
-    PolicyKey("severity_medium_amount", SEVERITY, "أهمية متوسطة من مبلغ", "ج.م", 1, 100000, False),
-    PolicyKey("severity_high_amount", SEVERITY, "أهمية عالية من مبلغ", "ج.م", 1, 1000000, False),
+    PolicyKey(
+        "severity_info_amount",
+        SEVERITY,
+        "أقل من هذا المبلغ: للعلم",
+        "ج.م",
+        0,
+        1000,
+        False,
+        money=True,
+    ),
+    PolicyKey(
+        "severity_medium_amount",
+        SEVERITY,
+        "أهمية متوسطة من مبلغ",
+        "ج.م",
+        1,
+        100000,
+        False,
+        money=True,
+    ),
+    PolicyKey(
+        "severity_high_amount",
+        SEVERITY,
+        "أهمية عالية من مبلغ",
+        "ج.م",
+        1,
+        1000000,
+        False,
+        money=True,
+    ),
     PolicyKey(
         "severity_long_minutes", SEVERITY, "أهمية متوسطة إذا استمرت الحالة", "دقيقة", 10, 1440
     ),
@@ -122,26 +154,56 @@ def current(db: Session) -> PolicyVersion | None:
     return db.scalar(select(PolicyVersion).order_by(PolicyVersion.version.desc()).limit(1))
 
 
+@cache
+def _adapter(key: str) -> TypeAdapter[Any]:
+    """Validator for one setting's declared type (Decimal, int, float...)."""
+    annotation = Settings.model_fields[key].annotation
+    if annotation is None:  # every catalog key is a typed setting (tested)
+        raise TypeError(f"setting {key} has no type")
+    return TypeAdapter(annotation)
+
+
 def effective_settings(db: Session) -> Settings:
-    """Environment settings with the current policy's values applied."""
+    """Environment settings with the current policy's values applied.
+
+    `model_copy(update=...)` does not validate, so each stored value is first
+    validated against the setting's declared type: money thresholds become
+    Decimal (they are stored as decimal strings), counts become int.
+    """
     base = get_settings()
     latest = current(db)
     if latest is None or not latest.values:
         return base
-    known = {k: v for k, v in latest.values.items() if k in BY_KEY}
+    known = {k: _adapter(k).validate_python(v) for k, v in latest.values.items() if k in BY_KEY}
     return base.model_copy(update=known)
 
 
-def _value(key: PolicyKey, raw: Any) -> float | int:
+def _value(key: PolicyKey, raw: Any) -> Decimal | float | int:
+    """A submitted value, checked against the key's limits, in the setting's own type."""
     try:
-        number = float(raw)
-    except (TypeError, ValueError) as exc:
+        number = raw if isinstance(raw, Decimal) else Decimal(str(raw))
+    except (InvalidOperation, ValueError) as exc:
         raise field_error(key.key, "أدخل رقمًا") from exc
-    if key.integer and number != int(number):
+    if isinstance(raw, bool) or not number.is_finite():
+        raise field_error(key.key, "أدخل رقمًا")
+    if key.integer and number != number.to_integral_value():
         raise field_error(key.key, "أدخل رقمًا صحيحًا")
-    if not key.minimum <= number <= key.maximum:
+    if key.money and number != number.quantize(Decimal("0.01")):
+        raise field_error(key.key, "المبلغ بحد أقصى رقمين بعد العلامة العشرية")
+    if not Decimal(str(key.minimum)) <= number <= Decimal(str(key.maximum)):
         raise field_error(key.key, f"القيمة بين {key.minimum:g} و{key.maximum:g}")
-    return int(number) if key.integer else number
+    if key.integer:
+        return int(number)
+    if key.money:
+        return number.quantize(Decimal("0.01"))
+    return float(number)
+
+
+def _stored(key: PolicyKey, value: Decimal | float | int) -> Any:
+    """JSONB form: money as a decimal string (never a float), the rest as numbers."""
+    if key.money:
+        return str(Decimal(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    return value
 
 
 def update(db: Session, *, actor: User, changes: dict[str, Any], reason: str) -> PolicyVersion:
@@ -155,16 +217,22 @@ def update(db: Session, *, actor: User, changes: dict[str, Any], reason: str) ->
         raise field_error("reason", "اكتب سبب التغيير")
     latest = current(db)
     values: dict[str, Any] = dict(latest.values) if latest else {}
+    # Versions written before amounts were Decimal may hold floats: rewrite them.
+    for key in list(values):
+        if key in BY_KEY and BY_KEY[key].money:
+            values[key] = _stored(BY_KEY[key], _adapter(key).validate_python(values[key]))
     diff: dict[str, list[Any]] = {}
     defaults = get_settings()
     for key, raw in changes.items():
-        before = values.get(key, getattr(defaults, key))
+        before = (
+            _adapter(key).validate_python(values[key]) if key in values else getattr(defaults, key)
+        )
         if raw is None:
             values.pop(key, None)
             after = getattr(defaults, key)
         else:
             after = _value(BY_KEY[key], raw)
-            values[key] = after
+            values[key] = _stored(BY_KEY[key], after)
         if before != after:
             diff[key] = [before, after]
     if not diff:

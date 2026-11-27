@@ -5,7 +5,9 @@ package com.godaily.driver.core.api
  *
  * Writes that create or change server state take an idempotency key: the
  * caller must generate it once per user intent and reuse it on retries so a
- * retried request never starts two shifts or ends one twice.
+ * retried request never starts two shifts or ends one twice. Photo uploads
+ * take one too (a new key for a different photo: the server refuses a key
+ * reused with another file).
  */
 interface DriverApi {
     suspend fun login(request: LoginRequest): LoginResponse
@@ -26,14 +28,19 @@ interface DriverApi {
 
     suspend fun startSession(shiftId: String, request: StartSessionRequest, idempotencyKey: String): Session
 
-    suspend fun endSession(sessionId: String): Session
+    suspend fun endSession(sessionId: String, idempotencyKey: String): Session
 
     suspend fun recordFuel(request: FuelEntryRequest, idempotencyKey: String): FuelEntry
 
     suspend fun myFuel(): List<FuelEntry>
 
     /** Photo of the receipt for one of the driver's own fuel entries (JPEG, PNG or WebP). */
-    suspend fun uploadFuelReceipt(entryId: String, image: ByteArray, contentType: String = "image/jpeg"): ReceiptUploadResult
+    suspend fun uploadFuelReceipt(
+        entryId: String,
+        image: ByteArray,
+        idempotencyKey: String,
+        contentType: String = "image/jpeg",
+    ): ReceiptUploadResult
 
     suspend fun uploadPoints(batch: PointBatch): PointBatchResult
 
@@ -46,10 +53,14 @@ interface DriverApi {
 
     suspend fun registerDayOff(request: DayOffRequest, idempotencyKey: String): DayOff
 
-    suspend fun cancelDayOff(): DayOff
+    suspend fun cancelDayOff(idempotencyKey: String): DayOff
 
     /** Odometer photo for the next shift start; returns the id to send with the start. */
-    suspend fun uploadOdometerPhoto(image: ByteArray, contentType: String = "image/jpeg"): PhotoUpload
+    suspend fun uploadOdometerPhoto(
+        image: ByteArray,
+        idempotencyKey: String,
+        contentType: String = "image/jpeg",
+    ): PhotoUpload
 
     /** Ends the shift (if still running) and records the day's money in one step. */
     suspend fun submitCloseout(shiftId: String, request: CloseoutRequest, idempotencyKey: String): Closeout
@@ -57,6 +68,7 @@ interface DriverApi {
     suspend fun uploadCloseoutReceipt(
         closeoutId: String,
         image: ByteArray,
+        idempotencyKey: String,
         contentType: String = "image/jpeg",
     ): PhotoUpload
 

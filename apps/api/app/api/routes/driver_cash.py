@@ -69,29 +69,67 @@ def register_day_off(
 
 
 @router.post("/day-off/cancel", response_model=DayOffOut)
-def cancel_day_off(driver: CurrentDriver, user: CurrentDriverUser, db: DbSession) -> DayOffOut:
-    off = day_offs.cancel(
-        db, actor=user, driver_id=driver.id, day=local_today(), reason="ألغاها السائق"
+def cancel_day_off(
+    request: Request,
+    driver: CurrentDriver,
+    user: CurrentDriverUser,
+    db: DbSession,
+    idempotency_key: IdempotencyKey = None,
+) -> Any:
+    def action() -> DayOffOut:
+        off = day_offs.cancel(
+            db, actor=user, driver_id=driver.id, day=local_today(), reason="ألغاها السائق"
+        )
+        return cash_views.day_off_out(off)
+
+    result, _ = idempotency.run_idempotent(
+        db,
+        user=user,
+        key=idempotency_key,
+        method="POST",
+        path=request.url.path,
+        body={},
+        status_code=200,
+        action=action,
     )
-    return cash_views.day_off_out(off)
+    return result
 
 
 @router.post("/odometer-photo", response_model=PhotoOut, status_code=status.HTTP_201_CREATED)
 async def upload_odometer_photo(
-    file: UploadFile, driver: CurrentDriver, user: CurrentDriverUser, db: DbSession
-) -> PhotoOut:
+    file: UploadFile,
+    request: Request,
+    driver: CurrentDriver,
+    user: CurrentDriverUser,
+    db: DbSession,
+    idempotency_key: IdempotencyKey = None,
+) -> Any:
     """Odometer photo taken right before starting; its id goes with the start request."""
     data = await read_limited(file)
-    attachment, _ = attachments_service.upload(
+
+    def action() -> PhotoOut:
+        attachment, _ = attachments_service.upload(
+            db,
+            actor=user,
+            owner_type=AttachmentOwner.DRIVER,
+            owner_id=driver.id,
+            data=data,
+            filename=file.filename,
+            kind=AttachmentKind.ODOMETER_PHOTO,
+        )
+        return PhotoOut(attachment_id=attachment.id, created_at=attachment.created_at)
+
+    result, _ = idempotency.run_idempotent(
         db,
-        actor=user,
-        owner_type=AttachmentOwner.DRIVER,
-        owner_id=driver.id,
-        data=data,
-        filename=file.filename,
-        kind=AttachmentKind.ODOMETER_PHOTO,
+        user=user,
+        key=idempotency_key,
+        method="POST",
+        path=request.url.path,
+        body=idempotency.upload_fingerprint(data, file.filename),
+        status_code=201,
+        action=action,
     )
-    return PhotoOut(attachment_id=attachment.id, created_at=attachment.created_at)
+    return result
 
 
 @router.post(
@@ -142,24 +180,40 @@ def submit_closeout(
 async def upload_closeout_receipt(
     closeout_id: uuid.UUID,
     file: UploadFile,
+    request: Request,
     driver: CurrentDriver,
     user: CurrentDriverUser,
     db: DbSession,
-) -> PhotoOut:
+    idempotency_key: IdempotencyKey = None,
+) -> Any:
     """Photo of the fuel receipt(s) for the driver's own close-out."""
-    closeout = db.get(ShiftCloseout, closeout_id)
-    if closeout is None or closeout.driver_id != driver.id or closeout.voided_at is not None:
-        raise NotFoundError("التقفيل غير موجود")
     data = await read_limited(file)
-    attachment, _ = attachments_service.upload(
+
+    def action() -> PhotoOut:
+        closeout = db.get(ShiftCloseout, closeout_id)
+        if closeout is None or closeout.driver_id != driver.id or closeout.voided_at is not None:
+            raise NotFoundError("التقفيل غير موجود")
+        attachment, _ = attachments_service.upload(
+            db,
+            actor=user,
+            owner_type=AttachmentOwner.SHIFT_CLOSEOUT,
+            owner_id=closeout.id,
+            data=data,
+            filename=file.filename,
+        )
+        return PhotoOut(attachment_id=attachment.id, created_at=attachment.created_at)
+
+    result, _ = idempotency.run_idempotent(
         db,
-        actor=user,
-        owner_type=AttachmentOwner.SHIFT_CLOSEOUT,
-        owner_id=closeout.id,
-        data=data,
-        filename=file.filename,
+        user=user,
+        key=idempotency_key,
+        method="POST",
+        path=request.url.path,
+        body=idempotency.upload_fingerprint(data, file.filename),
+        status_code=201,
+        action=action,
     )
-    return PhotoOut(attachment_id=attachment.id, created_at=attachment.created_at)
+    return result
 
 
 @router.get("/account", response_model=CashAccountOut)

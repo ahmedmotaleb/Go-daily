@@ -92,8 +92,8 @@ class OkHttpDriverApi(
             idempotencyKey = idempotencyKey,
         )
 
-    override suspend fun endSession(sessionId: String): Session =
-        execute(build("driver/sessions/${segment(sessionId)}/end").post(EMPTY_BODY)) {
+    override suspend fun endSession(sessionId: String, idempotencyKey: String): Session =
+        execute(build("driver/sessions/${segment(sessionId)}/end").post(EMPTY_BODY).idempotent(idempotencyKey)) {
             decode(it, Session.serializer())
         }
 
@@ -111,13 +111,14 @@ class OkHttpDriverApi(
     override suspend fun uploadFuelReceipt(
         entryId: String,
         image: ByteArray,
+        idempotencyKey: String,
         contentType: String,
     ): ReceiptUploadResult {
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("file", "receipt.${extensionFor(contentType)}", image.toRequestBody(contentType.toMediaType()))
             .build()
-        return execute(build("driver/fuel/${segment(entryId)}/receipt").post(body)) {
+        return execute(build("driver/fuel/${segment(entryId)}/receipt").post(body).idempotent(idempotencyKey)) {
             decode(it, ReceiptUploadResult.serializer())
         }
     }
@@ -153,11 +154,16 @@ class OkHttpDriverApi(
             idempotencyKey = idempotencyKey,
         )
 
-    override suspend fun cancelDayOff(): DayOff =
-        execute(build("driver/day-off/cancel").post(EMPTY_BODY)) { decode(it, DayOff.serializer()) }
+    override suspend fun cancelDayOff(idempotencyKey: String): DayOff =
+        execute(build("driver/day-off/cancel").post(EMPTY_BODY).idempotent(idempotencyKey)) {
+            decode(it, DayOff.serializer())
+        }
 
-    override suspend fun uploadOdometerPhoto(image: ByteArray, contentType: String): PhotoUpload =
-        upload("driver/odometer-photo", "odometer", image, contentType)
+    override suspend fun uploadOdometerPhoto(
+        image: ByteArray,
+        idempotencyKey: String,
+        contentType: String,
+    ): PhotoUpload = upload("driver/odometer-photo", "odometer", image, contentType, idempotencyKey)
 
     override suspend fun submitCloseout(
         shiftId: String,
@@ -175,17 +181,25 @@ class OkHttpDriverApi(
     override suspend fun uploadCloseoutReceipt(
         closeoutId: String,
         image: ByteArray,
+        idempotencyKey: String,
         contentType: String,
-    ): PhotoUpload = upload("driver/closeouts/${segment(closeoutId)}/receipt", "receipt", image, contentType)
+    ): PhotoUpload =
+        upload("driver/closeouts/${segment(closeoutId)}/receipt", "receipt", image, contentType, idempotencyKey)
 
     override suspend fun account(): CashAccount = get("driver/account", CashAccount.serializer())
 
-    private suspend fun upload(path: String, name: String, image: ByteArray, contentType: String): PhotoUpload {
+    private suspend fun upload(
+        path: String,
+        name: String,
+        image: ByteArray,
+        contentType: String,
+        idempotencyKey: String,
+    ): PhotoUpload {
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("file", "$name.${extensionFor(contentType)}", image.toRequestBody(contentType.toMediaType()))
             .build()
-        return execute(build(path).post(body)) { decode(it, PhotoUpload.serializer()) }
+        return execute(build(path).post(body).idempotent(idempotencyKey)) { decode(it, PhotoUpload.serializer()) }
     }
 
     private suspend fun <T> get(path: String, serializer: KSerializer<T>): T =
@@ -201,8 +215,14 @@ class OkHttpDriverApi(
     ): T {
         val json = GoDailyJson.encodeToString(bodySerializer, body).toRequestBody(JSON)
         val builder = build(path, auth).post(json)
-        if (idempotencyKey != null) builder.header("Idempotency-Key", idempotencyKey)
+        if (idempotencyKey != null) builder.idempotent(idempotencyKey)
         return execute(builder) { decode(it, serializer) }
+    }
+
+    /** The caller's key for this write, the same on every retry of it. */
+    private fun Request.Builder.idempotent(key: String): Request.Builder {
+        require(key.isNotBlank()) { "idempotency key is required" }
+        return header("Idempotency-Key", key)
     }
 
     private fun build(path: String, auth: Boolean = true): Request.Builder {
