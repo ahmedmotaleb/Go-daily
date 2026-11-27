@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     # a settlement cannot finalize it; the person who finalized cannot pay it.
     settlement_require_separate_finalizer: bool = False
     settlement_require_separate_payer: bool = False
+    # Opt-in (security audit M7): whoever entered a fuel, expense, maintenance,
+    # revenue or statement record cannot approve it (approve_now included) when
+    # its amount is at least this. Unset = no restriction.
+    finance_block_self_approval_above: Decimal | None = None
     twofa_enforce: bool = False
     twofa_required_roles: str = "SUPER_ADMIN,ADMIN"
     # Minutes allowed between the password step and the code step.

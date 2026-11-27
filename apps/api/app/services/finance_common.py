@@ -17,7 +17,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.errors import ConflictError, NotFoundError, field_error
+from app.core.config import get_settings
+from app.core.errors import ConflictError, NotFoundError, PermissionDenied, field_error
 from app.core.time import utcnow
 from app.models.driver import Driver
 from app.models.finance import (
@@ -84,9 +85,27 @@ def resubmit_if_rejected(record: Reviewable) -> None:
         record.review_note = None
 
 
+def record_amount(record: Reviewable) -> Decimal:
+    """The amount a reviewer is approving (each record type names it differently)."""
+    for name in ("amount", "total_amount", "total_cost", "gross_earnings"):
+        value = getattr(record, name, None)
+        if isinstance(value, Decimal):
+            return value
+    return Decimal(0)
+
+
 def approve(record: Reviewable, actor: User, note: str | None) -> None:
     if record.status is not RecordStatus.SUBMITTED:
         raise ConflictError("يمكن اعتماد السجلات المقدمة فقط", code="invalid_state")
+    limit = get_settings().finance_block_self_approval_above
+    if (
+        limit is not None
+        and getattr(record, "created_by_id", None) == actor.id
+        and record_amount(record) >= limit
+    ):
+        raise PermissionDenied(
+            "لا يعتمد السجل من أدخله؛ يعتمده موظف آخر", code="self_approval_blocked"
+        )
     record.status = RecordStatus.APPROVED
     record.reviewed_by_id = actor.id
     record.reviewed_at = utcnow()
