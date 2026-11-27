@@ -23,7 +23,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal, cast
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -33,6 +33,7 @@ from app.models.attachment import Attachment, AttachmentOwner
 from app.models.cash import CashCollection, MaintenanceKind, ShiftCloseout
 from app.models.driver import Driver
 from app.models.finance import (
+    DriverLedgerEntry,
     Expense,
     ExpenseCategory,
     FuelTransaction,
@@ -46,6 +47,7 @@ from app.models.finance import (
     RecordStatus,
     RevenueEntry,
     RevenueKind,
+    RevenueReceipt,
 )
 from app.models.operations import OperationKind
 from app.models.shift import OperationSession, SessionStatus, Shift, ShiftSource, ShiftStatus
@@ -105,6 +107,8 @@ class Position:
 @dataclass
 class DriverView:
     outstanding: Decimal = ZERO
+    # Cash the driver holds from office-entered receipts (not from a close-out).
+    other_custody: Decimal = ZERO
     figures: dict[uuid.UUID, Figures] = field(default_factory=dict)
     positions: dict[uuid.UUID, Position] = field(default_factory=dict)
     collections: dict[uuid.UUID | None, list[CashCollection]] = field(default_factory=dict)
@@ -225,6 +229,8 @@ def driver_views(db: Session, driver_ids: set[uuid.UUID]) -> dict[uuid.UUID, Dri
         {i for c in closeouts for i in (c.toll_expense_id, c.maintenance_expense_id) if i},
     )
     figures = _figures(closeouts, fuels, costs)
+    for driver_id, custody in _other_custody(db, driver_ids).items():
+        views[driver_id].other_custody = fc.money(custody)
     for col in collections:
         views[col.driver_id].collections.setdefault(col.closeout_id, []).append(col)
     for c in closeouts:
@@ -253,8 +259,33 @@ def driver_views(db: Session, driver_ids: set[uuid.UUID]) -> dict[uuid.UUID, Dri
             carry = remaining
         nets = sum((view.figures[c.id].net for c in by_driver.get(driver_id, [])), ZERO)
         paid = sum((x.amount for xs in view.collections.values() for x in xs), ZERO)
-        view.outstanding = fc.money(nets - paid)
+        view.outstanding = fc.money(nets + view.other_custody - paid)
     return views
+
+
+def _other_custody(db: Session, driver_ids: set[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
+    """Live cash-in-hand entries from receipts that are not a close-out's own revenue.
+
+    Office-entered revenue received by the driver (and ride-hailing cash) puts
+    money in the driver's custody too; it is handed over through a collection
+    like close-out cash, never through a manual ledger entry.
+    """
+    closeout_revenue = select(ShiftCloseout.revenue_entry_id).where(
+        ShiftCloseout.revenue_entry_id.is_not(None)
+    )
+    rows = db.execute(
+        select(DriverLedgerEntry.driver_id, func.sum(-DriverLedgerEntry.amount))
+        .join(RevenueReceipt, RevenueReceipt.id == DriverLedgerEntry.source_id)
+        .where(
+            DriverLedgerEntry.driver_id.in_(driver_ids),
+            DriverLedgerEntry.entry_type == LedgerEntryType.CASH_COLLECTED,
+            DriverLedgerEntry.source_type == LedgerSource.REVENUE_RECEIPT,
+            DriverLedgerEntry.voided_at.is_(None),
+            RevenueReceipt.revenue_entry_id.not_in(closeout_revenue),
+        )
+        .group_by(DriverLedgerEntry.driver_id)
+    ).all()
+    return {d: Decimal(v or 0) for d, v in rows}
 
 
 def outstanding(db: Session, driver_id: uuid.UUID) -> Decimal:

@@ -116,17 +116,13 @@ def test_daily_wage_counts_distinct_worked_days_and_finalize_posts_earning(
     assert statement["earned"] == "750.00"
     assert statement["closing_balance"] == "450.00"
 
+    # Payments go through the settlement (never a manual ledger entry).
     payment = client.post(
-        f"/api/v1/drivers/{driver.id}/ledger",
-        json={
-            "entry_type": "PAYMENT",
-            "amount": "450",
-            "occurred_on": _day(0).isoformat(),
-            "description": "صرف المستحقات",
-        },
+        f"/api/v1/settlements/{draft['id']}/pay",
+        json={"amount": "450", "paid_on": _day(0).isoformat(), "method": "CASH"},
         headers=h,
     )
-    assert payment.status_code == 201
+    assert payment.status_code == 200, payment.text
     statement = client.get(
         f"/api/v1/drivers/{driver.id}/statement",
         params={"date_from": _day(30).isoformat()},
@@ -472,3 +468,57 @@ def test_pnl_range_is_validated(client: TestClient, db: Session) -> None:
         headers=h,
     )
     assert res.status_code == 422
+
+
+# --- Security audit (security H2, runtime M3): manual ledger entries -------------------
+
+
+def test_manual_ledger_refuses_types_that_have_their_own_flow(
+    client: TestClient, db: Session
+) -> None:
+    _, h = login_as(client, db, UserRole.ACCOUNTANT)
+    driver = make_driver(db)
+    for entry_type in ("PAYMENT", "CASH_HANDOVER", "REIMBURSEMENT", "CASH_COLLECTED", "EARNING"):
+        res = client.post(
+            f"/api/v1/drivers/{driver.id}/ledger",
+            json={
+                "entry_type": entry_type,
+                "amount": "100",
+                "occurred_on": _day(0).isoformat(),
+                "description": "قيد يدوي",
+            },
+            headers=h,
+        )
+        assert res.status_code == 422, (entry_type, res.text)
+        assert res.json()["error"]["code"] == "ledger_type_not_manual", entry_type
+
+
+def test_large_manual_ledger_entries_need_reauth(client: TestClient, db: Session) -> None:
+    from tests.factories import DEFAULT_PASSWORD
+    from tests.test_reauth import _age
+
+    _, h = login_as(client, db, UserRole.ACCOUNTANT)
+    driver = make_driver(db)
+    url = f"/api/v1/drivers/{driver.id}/ledger"
+    base = {"occurred_on": _day(0).isoformat(), "description": "قيد يدوي"}
+    _age(db, h)
+    small = client.post(url, json={**base, "entry_type": "BONUS", "amount": "9999.99"}, headers=h)
+    assert small.status_code == 201, small.text
+    for body in (
+        {"entry_type": "BONUS", "amount": "10000"},
+        {"entry_type": "ADVANCE", "amount": "25000"},
+        {"entry_type": "ADJUSTMENT", "direction": "CREDIT", "amount": "9999999", "reason": "خطأ"},
+    ):
+        res = client.post(url, json={**base, **body}, headers=h)
+        assert res.status_code == 403, (body, res.text)
+        assert res.json()["error"]["code"] == "reauth_required"
+    confirm = client.post("/api/v1/auth/reauth", headers=h, json={"password": DEFAULT_PASSWORD})
+    assert confirm.status_code == 200
+    big = client.post(url, json={**base, "entry_type": "BONUS", "amount": "10000"}, headers=h)
+    assert big.status_code == 201, big.text
+    _age(db, h)
+    void = client.post(
+        f"/api/v1/driver-ledger/{big.json()['id']}/void", json={"reason": "خطأ"}, headers=h
+    )
+    assert void.status_code == 403
+    assert void.json()["error"]["code"] == "reauth_required"

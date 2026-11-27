@@ -70,14 +70,10 @@ def test_cash_collected_by_driver_is_custody_until_handover(
     assert D(statement["cash_collected"]) == D("-850")
     assert D(statement["closing_balance"]) == D("-850")  # the driver holds company money
 
+    # The handover goes through the cash collection flow (never a manual entry).
     handover = client.post(
-        f"/api/v1/drivers/{driver.id}/ledger",
-        json={
-            "entry_type": "CASH_HANDOVER",
-            "amount": "850",
-            "occurred_on": _day(0).isoformat(),
-            "description": "تسليم إيراد الخط",
-        },
+        "/api/v1/cash/collections",
+        json={"driver_id": str(driver.id), "amount": "850", "note": "تسليم إيراد الخط"},
         headers=h,
     )
     assert handover.status_code == 201, handover.text

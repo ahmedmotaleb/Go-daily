@@ -92,17 +92,29 @@ def driver_statement(
     status_code=status.HTTP_201_CREATED,
 )
 def add_ledger_entry(
-    driver_id: uuid.UUID, body: LedgerEntryIn, actor: Writer, db: DbSession
+    driver_id: uuid.UUID,
+    body: LedgerEntryIn,
+    actor: Writer,
+    db: DbSession,
+    session: CurrentSession,
 ) -> LedgerEntryOut:
-    entry = driver_ledger.create_manual(db, actor=actor, driver_id=driver_id, data=body)
+    entry = driver_ledger.create_manual(
+        db, actor=actor, driver_id=driver_id, data=body, session=session
+    )
     return ledger_outs(db, [entry])[0]
 
 
 @router.post("/driver-ledger/{entry_id}/void", response_model=LedgerEntryOut)
 def void_ledger_entry(
-    entry_id: uuid.UUID, body: VoidAction, actor: Finalizer, db: DbSession
+    entry_id: uuid.UUID,
+    body: VoidAction,
+    actor: Finalizer,
+    db: DbSession,
+    session: CurrentSession,
 ) -> LedgerEntryOut:
-    entry = driver_ledger.void_manual(db, actor=actor, entry_id=entry_id, reason=body.reason)
+    entry = driver_ledger.void_manual(
+        db, actor=actor, entry_id=entry_id, reason=body.reason, session=session
+    )
     return ledger_outs(db, [entry])[0]
 
 
