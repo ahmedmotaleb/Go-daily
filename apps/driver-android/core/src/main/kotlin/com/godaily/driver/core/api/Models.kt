@@ -214,6 +214,8 @@ data class StartShiftRequest(
 data class EndShiftRequest(
     @SerialName("end_odometer_km") val endOdometerKm: Int,
     val notes: String? = null,
+    /** When the driver ended it on the phone (sent later when offline); ISO-8601. */
+    @SerialName("ended_at") val endedAt: String? = null,
 )
 
 @Serializable

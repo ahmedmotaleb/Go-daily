@@ -122,6 +122,7 @@ class FakeDriverApi : DriverApi {
     var rejectEvent: (TrackingEvent) -> Boolean = { false }
     var outsideWindow: (GpsPoint) -> Boolean = { false }
     val endCalls = mutableListOf<Pair<String, String>>()
+    val endRequests = mutableListOf<EndShiftRequest>()
     var endFailure: ApiError? = null
 
     private fun maybeFail() {
@@ -161,6 +162,7 @@ class FakeDriverApi : DriverApi {
         maybeFail()
         endFailure?.let { throw it }
         endCalls += shiftId to idempotencyKey
+        endRequests += request
         return shift(shiftId)
     }
 

@@ -226,7 +226,9 @@ def end_shift(
             db,
             actor=user,
             shift_id=shift_id,
-            data=ShiftEnd(end_odometer_km=body.end_odometer_km, notes=body.notes),
+            data=ShiftEnd(
+                end_odometer_km=body.end_odometer_km, notes=body.notes, ended_at=body.ended_at
+            ),
             source=ShiftSource.DRIVER_APP,
         )
         return shift_out(shift)

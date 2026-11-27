@@ -687,7 +687,12 @@ def _end_or_check(
             db,
             actor=actor,
             shift_id=shift.id,
-            data=ShiftEnd(end_odometer_km=data.end_odometer_km),
+            # A close-out queued offline ends the shift when the driver closed
+            # out, if plausible (security audit M4).
+            data=ShiftEnd(
+                end_odometer_km=data.end_odometer_km,
+                ended_at=data.recorded_at if source is RecordSource.DRIVER_APP else None,
+            ),
             source=ShiftSource.DRIVER_APP
             if source is RecordSource.DRIVER_APP
             else ShiftSource.ADMIN,
