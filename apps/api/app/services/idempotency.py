@@ -9,7 +9,7 @@ from datetime import timedelta
 from typing import Any
 
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -36,6 +36,10 @@ def upload_fingerprint(data: bytes, filename: str | None) -> dict[str, Any]:
     return {"sha256": hashlib.sha256(data).hexdigest(), "filename": filename}
 
 
+# status_code of a claimed key whose action has not stored its response yet.
+PENDING = 0
+
+
 def run_idempotent[T](
     db: Session,
     *,
@@ -47,26 +51,23 @@ def run_idempotent[T](
     status_code: int,
     action: Callable[[], T],
 ) -> tuple[T | Any, bool]:
-    """Run `action` once per (user, key). Returns (result, replayed)."""
+    """Run `action` once per (user, key). Returns (result, replayed).
+
+    The key is required (every driver-app write sends one) and is claimed
+    before the action, in the same transaction the action commits, so two
+    concurrent retries can never both run it: the second waits on the unique
+    index, then finds the claim (security audit M9). If the action committed
+    but its response was not stored yet, a retry gets request_in_progress
+    instead of running it again.
+    """
     if not key:
-        return action(), False
+        raise ValidationFailed(
+            "مفتاح التكرار (Idempotency-Key) مطلوب", code="idempotency_key_required"
+        )
     if len(key) > MAX_KEY_LENGTH or not key.isprintable():
         raise ValidationFailed("مفتاح التكرار غير صالح", code="invalid_idempotency_key")
     request_hash = _hash(body)
-    existing = db.scalar(
-        select(IdempotencyRecord).where(
-            IdempotencyRecord.user_id == user.id, IdempotencyRecord.key == key
-        )
-    )
-    if existing is not None:
-        if existing.request_hash != request_hash or existing.path != path:
-            raise ConflictError(
-                "تم استخدام مفتاح التكرار لطلب مختلف", code="idempotency_key_reused"
-            )
-        return existing.response_body, True
-
-    result = action()
-    db.execute(
+    claimed = db.scalar(
         insert(IdempotencyRecord)
         .values(
             user_id=user.id,
@@ -74,10 +75,40 @@ def run_idempotent[T](
             method=method,
             path=path,
             request_hash=request_hash,
-            status_code=status_code,
-            response_body=jsonable_encoder(result),
+            status_code=PENDING,
+            response_body={},
         )
         .on_conflict_do_nothing(index_elements=["user_id", "key"])
+        .returning(IdempotencyRecord.id)
+    )
+    if claimed is None:
+        existing = db.scalars(
+            select(IdempotencyRecord)
+            .where(IdempotencyRecord.user_id == user.id, IdempotencyRecord.key == key)
+            .execution_options(populate_existing=True)
+        ).one()
+        if existing.request_hash != request_hash or existing.path != path:
+            raise ConflictError(
+                "تم استخدام مفتاح التكرار لطلب مختلف", code="idempotency_key_reused"
+            )
+        if existing.status_code == PENDING:
+            raise ConflictError(
+                "الطلب نفسه قيد التنفيذ أو نُفذ دون حفظ نتيجته؛ حدّث البيانات من التطبيق",
+                code="request_in_progress",
+            )
+        return existing.response_body, True
+
+    try:
+        result = action()
+    except Exception:
+        # Nothing the action committed? Then the claim goes with the rollback and
+        # a retry may run again; if it did commit, the claim stays (no rerun).
+        db.rollback()
+        raise
+    db.execute(
+        update(IdempotencyRecord)
+        .where(IdempotencyRecord.id == claimed)
+        .values(status_code=status_code, response_body=jsonable_encoder(result))
     )
     db.commit()
     return result, False
