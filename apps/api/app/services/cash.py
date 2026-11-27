@@ -140,7 +140,9 @@ def _figures(
     closeouts: list[ShiftCloseout],
     fuels: dict[uuid.UUID, FuelTransaction],
     costs: dict[uuid.UUID, Expense],
+    booked: dict[uuid.UUID, Decimal] | None = None,
 ) -> dict[uuid.UUID, Figures]:
+    """`booked`: per close-out, the cash its live revenue entry now says (see driver_views)."""
     out: dict[uuid.UUID, Figures] = {}
     for c in closeouts:
         lines: list[Line] = []
@@ -187,7 +189,7 @@ def _figures(
         out[c.id] = Figures(
             lines=lines,
             deductions=fc.money(deductions),
-            net=fc.money(c.collection_amount - deductions),
+            net=fc.money((booked or {}).get(c.id, c.collection_amount) - deductions),
             collection_booked=c.revenue_entry_id is not None or c.collection_amount == 0,
         )
     return out
@@ -228,7 +230,7 @@ def driver_views(db: Session, driver_ids: set[uuid.UUID]) -> dict[uuid.UUID, Dri
         Expense,
         {i for c in closeouts for i in (c.toll_expense_id, c.maintenance_expense_id) if i},
     )
-    figures = _figures(closeouts, fuels, costs)
+    figures = _figures(closeouts, fuels, costs, _collections_now(db, closeouts))
     for driver_id, custody in _other_custody(db, driver_ids).items():
         views[driver_id].other_custody = fc.money(custody)
     for col in collections:
@@ -261,6 +263,42 @@ def driver_views(db: Session, driver_ids: set[uuid.UUID]) -> dict[uuid.UUID, Dri
         paid = sum((x.amount for xs in view.collections.values() for x in xs), ZERO)
         view.outstanding = fc.money(nets + view.other_custody - paid)
     return views
+
+
+def _collections_now(db: Session, closeouts: list[ShiftCloseout]) -> dict[uuid.UUID, Decimal]:
+    """The cash each close-out now asks for, following its revenue (audit M2).
+
+    The office may correct, reject or void the revenue booked from a close-out,
+    or void its receipt; the driver's custody in the ledger follows the live
+    receipts held by the driver, so the cash board follows them too. The part
+    not booked as revenue (ride-hailing) stays as the driver typed it.
+    """
+    ids = {c.revenue_entry_id for c in closeouts if c.revenue_entry_id is not None}
+    if not ids:
+        return {}
+    originals = {
+        r.id: r for r in db.scalars(select(RevenueEntry).where(RevenueEntry.id.in_(ids))).all()
+    }
+    live = _live_versions(db, RevenueEntry, set(ids))
+    out: dict[uuid.UUID, Decimal] = {}
+    for c in closeouts:
+        if c.revenue_entry_id is None or c.revenue_entry_id not in originals:
+            continue
+        now = live.get(c.revenue_entry_id)
+        held = (
+            sum(
+                (
+                    r.amount
+                    for r in now.receipts
+                    if r.voided_at is None and r.received_by is ReceivedBy.DRIVER
+                ),
+                ZERO,
+            )
+            if now is not None and now.status in (RecordStatus.SUBMITTED, RecordStatus.APPROVED)
+            else ZERO
+        )
+        out[c.id] = c.collection_amount - originals[c.revenue_entry_id].amount + held
+    return out
 
 
 def _other_custody(db: Session, driver_ids: set[uuid.UUID]) -> dict[uuid.UUID, Decimal]:

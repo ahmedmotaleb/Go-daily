@@ -629,3 +629,65 @@ def test_operations_sees_cash_states_but_not_amounts(client: TestClient, db: Ses
     detail = client.get(f"{API}/cash/closeouts/{closeout['id']}", headers=op).json()
     assert detail["status"] == "WAITING" and detail["net_amount"] is None
     assert detail["lines"][0]["quantity"] == "24.000"  # quantities are not money
+
+
+# --- Security audit M2: the cash board follows the close-out's live revenue entry -------
+
+
+def test_board_follows_the_revenue_entry_after_office_corrections(
+    client: TestClient, db: Session
+) -> None:
+    driver, _, h, vehicle = make_driver_account(client, db)
+    closeout = _close(client, h, _start(client, h, vehicle)["id"])
+    entry = db.scalar(select(RevenueEntry).where(RevenueEntry.shift_id == closeout["shift_id"]))
+    assert entry is not None
+    _, acc = login_as(client, db, UserRole.ACCOUNTANT)
+
+    def net() -> str:
+        res = client.get(f"{API}/cash/closeouts/{closeout['id']}", headers=acc).json()
+        return str(res["net_amount"])
+
+    assert net() == "1980.00"
+    assert (
+        client.post(f"/api/v1/revenue/{entry.id}/approve", headers=acc, json={}).status_code == 200
+    )
+    corrected = client.post(
+        f"/api/v1/revenue/{entry.id}/correct",
+        headers=acc,
+        json={
+            "kind": "FIXED_ROUTE_COLLECTION",
+            "vehicle_id": str(vehicle.id),
+            "driver_id": str(driver.id),
+            "shift_id": closeout["shift_id"],
+            "occurred_on": closeout["service_date"],
+            "amount": "3000",
+            "reason": "تصحيح مبلغ التحصيل",
+            "approve_now": True,
+        },
+    )
+    assert corrected.status_code in (200, 201), corrected.text
+    # The receipt held by the driver moved to the replacement: custody is still 2,940
+    # (the extra 60 is revenue not yet received), as in the driver's ledger.
+    assert net() == "1980.00"
+    replacement = client.get(f"/api/v1/revenue/{corrected.json()['id']}", headers=acc).json()
+    for receipt in replacement["receipts"]:
+        res = client.post(
+            f"/api/v1/revenue/receipts/{receipt['id']}/void",
+            headers=acc,
+            json={"reason": "لم يتم التحصيل"},
+        )
+        assert res.status_code == 200, res.text
+    assert net() == "-960.00"  # the driver no longer holds that cash
+    voided = client.post(
+        f"/api/v1/revenue/{corrected.json()['id']}/void",
+        headers=acc,
+        json={"reason": "لم يتم التحصيل"},
+    )
+    assert voided.status_code == 200, voided.text
+    assert net() == "-960.00"  # no cash held any more; the costs are still owed to the driver
+    over = client.post(
+        f"{API}/cash/collections",
+        headers=acc,
+        json={"driver_id": str(driver.id), "closeout_id": closeout["id"], "amount": "1"},
+    )
+    assert over.json()["error"]["code"] == "over_collection"
