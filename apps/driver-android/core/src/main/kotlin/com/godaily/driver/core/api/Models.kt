@@ -353,6 +353,8 @@ data class PhotoUpload(
 data class CloseoutRequest(
     @SerialName("end_odometer_km") val endOdometerKm: Int,
     @SerialName("collection_amount") val collectionAmount: String,
+    /** Part of the collection earned on ride-hailing; sent only for mixed shifts. */
+    @SerialName("ride_hailing_amount") val rideHailingAmount: String? = null,
     @SerialName("gas_quantity") val gasQuantity: String? = null,
     @SerialName("gas_amount") val gasAmount: String = "0",
     @SerialName("gasoline_quantity") val gasolineQuantity: String? = null,

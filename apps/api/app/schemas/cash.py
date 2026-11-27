@@ -54,6 +54,9 @@ class CloseoutIn(BaseModel):
 
     end_odometer_km: Odometer
     collection_amount: MoneyOrZero
+    # Part of the collection earned on ride-hailing. Required when the shift
+    # mixed ride-hailing with a fixed route or private trips (security audit H4).
+    ride_hailing_amount: MoneyOrZero | None = None
     gas_quantity: OptionalQty | None = None
     gas_amount: MoneyOrZero = Decimal("0")
     gasoline_quantity: OptionalQty | None = None
@@ -106,6 +109,7 @@ class CloseoutOut(BaseModel):
     end_odometer_km: int
     start_odometer_photo_id: uuid.UUID | None
     collection_amount: Decimal
+    ride_hailing_amount: Decimal | None = None
     # Collection is not booked as revenue here for ride-hailing (statements are the source).
     collection_booked: bool
     lines: list[CloseoutLine]

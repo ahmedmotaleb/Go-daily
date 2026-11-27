@@ -20,6 +20,7 @@ import com.godaily.driver.core.api.StartShiftRequest
 import com.godaily.driver.core.cash.CloseoutCheck
 import com.godaily.driver.core.cash.CloseoutDraft
 import com.godaily.driver.core.cash.checkCloseout
+import com.godaily.driver.core.cash.mixesRideHailing
 import com.godaily.driver.core.sync.EntryState
 import com.godaily.driver.core.sync.PendingShiftEnd
 import com.godaily.driver.core.sync.QueuedEntry
@@ -332,7 +333,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val st = _state.value
         val shift = st.closeoutShift ?: return
         val fixedEnd = if (shift.isActive) null else shift.endOdometerKm
-        val checked = when (val check = checkCloseout(st.closeoutDraft, shift.startOdometerKm, fixedEnd)) {
+        val checked = when (val check = checkCloseout(
+            st.closeoutDraft,
+            shift.startOdometerKm,
+            fixedEnd,
+            mixedRideHailing = mixesRideHailing(shift),
+        )) {
             is CloseoutCheck.Invalid -> {
                 _state.update { it.copy(closeoutErrors = check.errors) }
                 return

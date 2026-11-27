@@ -109,6 +109,9 @@ function CloseoutBody({ c }: { c: Closeout }) {
           value={egp(c.collection_amount)}
           strong={false}
         />
+        {c.collection_booked && c.ride_hailing_amount && Number(c.ride_hailing_amount) > 0 ? (
+          <Cell label="منه نقل ذكي" value={egp(c.ride_hailing_amount)} strong={false} />
+        ) : null}
         {(["gas", "gasoline", "toll", "maintenance"] as const).map((key) => {
           const l = line(key);
           const label =

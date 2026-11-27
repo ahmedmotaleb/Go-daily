@@ -1,6 +1,7 @@
 package com.godaily.driver.core.cash
 
 import com.godaily.driver.core.api.CloseoutRequest
+import com.godaily.driver.core.api.Shift
 import com.godaily.driver.core.text.OdometerInput
 import com.godaily.driver.core.text.normalizeDigits
 import com.godaily.driver.core.text.parseOdometer
@@ -13,6 +14,8 @@ enum class MaintenanceKind { NONE, OIL_CHANGE, MAINTENANCE }
 data class CloseoutDraft(
     val endOdometer: String = "",
     val collection: String = "",
+    /** Part of [collection] earned on ride-hailing (asked only on mixed shifts). */
+    val rideHailing: String = "",
     val gasQuantity: String = "",
     val gasAmount: String = "",
     val gasolineQuantity: String = "",
@@ -59,6 +62,16 @@ fun closeoutTotals(draft: CloseoutDraft): CloseoutTotals {
 }
 
 /**
+ * True when the shift mixed ride-hailing with another kind of work. The
+ * server then needs the ride-hailing part of the cash: only the rest is
+ * booked as revenue (ride-hailing revenue comes from the platform statement).
+ */
+fun mixesRideHailing(shift: Shift): Boolean {
+    val kinds = shift.sessions.filter { it.status != "CANCELLED" }.map { it.operationType.kind }.toSet()
+    return "RIDE_HAILING" in kinds && kinds.any { it != "RIDE_HAILING" }
+}
+
+/**
  * Checks the draft and builds the request. [startOdometerKm] is the shift's
  * start reading; [fixedEndOdometerKm] is set when the shift already ended
  * (the close-out must use that reading).
@@ -67,6 +80,7 @@ fun checkCloseout(
     draft: CloseoutDraft,
     startOdometerKm: Int?,
     fixedEndOdometerKm: Int? = null,
+    mixedRideHailing: Boolean = false,
 ): CloseoutCheck {
     val errors = linkedMapOf<String, String>()
 
@@ -102,6 +116,14 @@ fun checkCloseout(
     }
 
     val collection = money(draft.collection, "collection_amount", "إجمالي التحصيل", required = true)
+    val rideHailing = if (mixedRideHailing) {
+        money(draft.rideHailing, "ride_hailing_amount", "تحصيل النقل الذكي", required = true)
+    } else {
+        null
+    }
+    if (rideHailing != null && collection != null && rideHailing > collection) {
+        errors["ride_hailing_amount"] = "تحصيل النقل الذكي أكبر من إجمالي التحصيل"
+    }
     val gas = money(draft.gasAmount, "gas_amount", "مبلغ الغاز", required = false)
     val gasQty = quantity(draft.gasQuantity, "gas_quantity", "كمية الغاز")
     val gasoline = money(draft.gasolineAmount, "gasoline_amount", "مبلغ البنزين", required = false)
@@ -141,6 +163,7 @@ fun checkCloseout(
         CloseoutRequest(
             endOdometerKm = endKm,
             collectionAmount = collection.toPlainString(),
+            rideHailingAmount = rideHailing?.toPlainString(),
             gasQuantity = if (gas.signum() > 0) gasQty?.toPlainString() else null,
             gasAmount = gas.toPlainString(),
             gasolineQuantity = if (gasoline.signum() > 0) gasolineQty?.toPlainString() else null,

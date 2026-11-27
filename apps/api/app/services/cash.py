@@ -49,7 +49,7 @@ from app.models.finance import (
     RevenueKind,
     RevenueReceipt,
 )
-from app.models.operations import OperationKind
+from app.models.operations import OperationKind, OperationType
 from app.models.shift import OperationSession, SessionStatus, Shift, ShiftSource, ShiftStatus
 from app.models.user import User
 from app.schemas.cash import CloseoutIn, CloseoutStatus
@@ -276,12 +276,16 @@ def _other_custody(db: Session, driver_ids: set[uuid.UUID]) -> dict[uuid.UUID, D
     rows = db.execute(
         select(DriverLedgerEntry.driver_id, func.sum(-DriverLedgerEntry.amount))
         .join(RevenueReceipt, RevenueReceipt.id == DriverLedgerEntry.source_id)
+        .join(RevenueEntry, RevenueEntry.id == RevenueReceipt.revenue_entry_id)
         .where(
             DriverLedgerEntry.driver_id.in_(driver_ids),
             DriverLedgerEntry.entry_type == LedgerEntryType.CASH_COLLECTED,
             DriverLedgerEntry.source_type == LedgerSource.REVENUE_RECEIPT,
             DriverLedgerEntry.voided_at.is_(None),
             RevenueReceipt.revenue_entry_id.not_in(closeout_revenue),
+            # Ride-hailing cash is already asked for by the shift close-outs;
+            # the statement's driver receipt is the same money.
+            RevenueEntry.kind != RevenueKind.RIDE_HAILING,
         )
         .group_by(DriverLedgerEntry.driver_id)
     ).all()
@@ -419,11 +423,79 @@ def _refs(db: Session, data: CloseoutIn) -> _Refs:
     return refs
 
 
-def _book_collection(
-    db: Session, *, actor: User, shift: Shift, amount: Decimal, at: datetime, source: RecordSource
-) -> RevenueEntry | None:
-    session = main_session(shift)
+@dataclass(frozen=True)
+class _Split:
+    """How the close-out cash divides between booked revenue and ride-hailing."""
+
+    booked: Decimal
+    ride_hailing: Decimal | None
+    session: OperationSession | None
+    op_type: OperationType | None
+
+
+def _split_collection(shift: Shift, data: CloseoutIn) -> _Split:
+    """Book each part of the cash by the kind of session that earned it (audit H4).
+
+    Ride-hailing cash is never revenue here: the platform statement is the
+    only source for it. A shift that mixed ride-hailing with another kind
+    must say how much came from ride-hailing; the rest is booked on the
+    longest non-ride-hailing session.
+    """
+    sessions = [s for s in shift.sessions if s.status is not SessionStatus.CANCELLED]
+    kinds = (
+        [s.operation_type.kind for s in sessions]
+        if sessions
+        else ([shift.planned_operation_type.kind] if shift.planned_operation_type else [])
+    )
+    has_rh = OperationKind.RIDE_HAILING in kinds
+    booked_sessions = [
+        s for s in sessions if s.operation_type.kind is not OperationKind.RIDE_HAILING
+    ]
+    has_booked = bool(booked_sessions) or (not sessions and not has_rh)
+    rh = data.ride_hailing_amount
+    if rh is not None and rh > data.collection_amount:
+        raise field_error(
+            "ride_hailing_amount",
+            "تحصيل النقل الذكي أكبر من إجمالي التحصيل",
+            code="ride_hailing_above_collection",
+        )
+    if has_rh and has_booked:
+        if rh is None:
+            raise field_error(
+                "ride_hailing_amount",
+                "الوردية فيها نقل ذكي وتشغيل آخر: أدخل كم من التحصيل كان من النقل الذكي",
+                code="ride_hailing_split_required",
+            )
+    elif has_rh:
+        rh = data.collection_amount  # ride-hailing only: nothing is booked here
+    elif rh:
+        raise field_error(
+            "ride_hailing_amount",
+            "لا يوجد تشغيل نقل ذكي في هذه الوردية",
+            code="ride_hailing_not_in_shift",
+        )
+    now = utcnow()
+    session = (
+        max(booked_sessions, key=lambda s: (s.ended_at or now) - s.started_at)
+        if booked_sessions
+        else None
+    )
     op_type = session.operation_type if session else shift.planned_operation_type
+    if op_type is not None and op_type.kind is OperationKind.RIDE_HAILING:
+        op_type = None
+    booked = fc.money(data.collection_amount - (rh or ZERO)) if has_booked else ZERO
+    return _Split(
+        booked=booked,
+        ride_hailing=fc.money(rh) if has_rh and rh is not None else None,
+        session=session,
+        op_type=op_type,
+    )
+
+
+def _book_collection(
+    db: Session, *, actor: User, shift: Shift, split: _Split, at: datetime, source: RecordSource
+) -> RevenueEntry | None:
+    session, op_type, amount = split.session, split.op_type, split.booked
     kind = REVENUE_KIND.get(op_type.kind, RevenueKind.OTHER) if op_type else RevenueKind.OTHER
     if amount <= 0 or kind is None:
         return None
@@ -620,9 +692,9 @@ def submit(
         device_recorded_at=data.recorded_at,
         created_by_id=actor.id,
     )
-    entry = _book_collection(
-        db, actor=actor, shift=shift, amount=data.collection_amount, at=at, source=source
-    )
+    split = _split_collection(shift, data)
+    closeout.ride_hailing_amount = split.ride_hailing
+    entry = _book_collection(db, actor=actor, shift=shift, split=split, at=at, source=source)
     closeout.revenue_entry_id = entry.id if entry else None
     common: dict[str, Any] = {"actor": actor, "shift": shift, "at": at, "source": source}
     if refs.cng is not None and data.gas_quantity:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import timedelta
 from decimal import Decimal
 from typing import Any, cast
@@ -21,6 +22,7 @@ from app.models.finance import (
     PaidBy,
     RecordStatus,
     RevenueEntry,
+    RevenueKind,
 )
 from app.models.shift import Shift, ShiftStatus
 from tests.factories import (
@@ -436,3 +438,160 @@ def test_receipt_photo_and_staff_day_offs(client: TestClient, db: Session) -> No
     )
     assert cancelled.status_code == 200
     assert client.get(f"{API}/day-offs?day={tomorrow}", headers=ops).json() == []
+
+
+# --- Security audit (security H4): mixed shifts book revenue per session kind ----------
+
+
+def _mixed_shift(
+    client: TestClient, db: Session, staff: dict[str, str], *, fixed_minutes: int, rh_minutes: int
+) -> tuple[Any, str]:
+    """An ended shift: a fixed-route session, then a ride-hailing session."""
+    from tests.factories import assign, make_driver, make_vehicle
+
+    driver, vehicle = make_driver(db), make_vehicle(db, current_odometer_km=50_000)
+    assign(db, driver, vehicle)
+    route = make_route(db)
+    total = fixed_minutes + rh_minutes
+    start = utcnow() - timedelta(minutes=total + 5)
+    shift = client.post(
+        f"{API}/shifts",
+        headers=staff,
+        json={
+            "driver_id": str(driver.id),
+            "vehicle_id": str(vehicle.id),
+            "start_now": True,
+            "start_odometer_km": 50_000,
+            "started_at": start.isoformat(),
+        },
+    )
+    assert shift.status_code == 201, shift.text
+    sid = shift.json()["id"]
+    if fixed_minutes == 0:  # ride-hailing only
+        only = client.post(
+            f"{API}/shifts/{sid}/sessions",
+            headers=staff,
+            json={
+                "operation_type_id": operation_type_id(db, "RIDE_HAILING"),
+                "started_at": start.isoformat(),
+            },
+        )
+        assert only.status_code == 201, only.text
+        return driver, sid
+    fixed = client.post(
+        f"{API}/shifts/{sid}/sessions",
+        headers=staff,
+        json={
+            "operation_type_id": operation_type_id(db, "FIXED_ROUTE"),
+            "route_id": str(route.id),
+            "started_at": start.isoformat(),
+        },
+    )
+    assert fixed.status_code == 201, fixed.text
+    switch = start + timedelta(minutes=fixed_minutes)
+    ended = client.post(
+        f"{API}/operation-sessions/{fixed.json()['id']}/end",
+        headers=staff,
+        json={"ended_at": switch.isoformat()},
+    )
+    assert ended.status_code == 200, ended.text
+    rh = client.post(
+        f"{API}/shifts/{sid}/sessions",
+        headers=staff,
+        json={
+            "operation_type_id": operation_type_id(db, "RIDE_HAILING"),
+            "started_at": switch.isoformat(),
+        },
+    )
+    assert rh.status_code == 201, rh.text
+    return driver, sid
+
+
+def _revenue_for_shift(db: Session, shift_id: str) -> list[RevenueEntry]:
+    return list(
+        db.scalars(
+            select(RevenueEntry).where(
+                RevenueEntry.shift_id == shift_id, RevenueEntry.status != RecordStatus.VOIDED
+            )
+        ).all()
+    )
+
+
+SIMPLE: dict[str, Any] = {
+    "end_odometer_km": 50_050,
+    "collection_amount": "1000",
+    "toll_amount": "0",
+}
+
+
+def test_mixed_shift_needs_the_ride_hailing_part(client: TestClient, db: Session) -> None:
+    _, acc = login_as(client, db, UserRole.ADMIN)
+    _, sid = _mixed_shift(client, db, acc, fixed_minutes=60, rh_minutes=180)
+    res = client.post(f"{API}/cash/shifts/{sid}/closeout", headers=acc, json=SIMPLE)
+    assert res.status_code == 422, res.text
+    assert res.json()["error"]["code"] == "ride_hailing_split_required"
+
+
+def test_mixed_shift_books_only_the_non_ride_hailing_cash(client: TestClient, db: Session) -> None:
+    _, acc = login_as(client, db, UserRole.ADMIN)
+    # Ride-hailing ran longest: the fixed-route cash used to be lost.
+    _, sid = _mixed_shift(client, db, acc, fixed_minutes=60, rh_minutes=180)
+    body = {**SIMPLE, "ride_hailing_amount": "400"}
+    res = client.post(f"{API}/cash/shifts/{sid}/closeout", headers=acc, json=body)
+    assert res.status_code == 201, res.text
+    assert res.json()["ride_hailing_amount"] == "400.00"
+    [entry] = _revenue_for_shift(db, sid)
+    assert entry.kind is RevenueKind.FIXED_ROUTE_COLLECTION and entry.amount == Decimal("600")
+    # Fixed route ran longest: the ride-hailing cash used to be booked as route revenue.
+    _, sid2 = _mixed_shift(client, db, acc, fixed_minutes=180, rh_minutes=60)
+    res = client.post(f"{API}/cash/shifts/{sid2}/closeout", headers=acc, json=body)
+    assert res.status_code == 201, res.text
+    [entry] = _revenue_for_shift(db, sid2)
+    assert entry.amount == Decimal("600")
+
+
+def test_ride_hailing_part_needs_a_ride_hailing_session(client: TestClient, db: Session) -> None:
+    _, h, vehicle = make_driver_account(client, db)[1:]
+    shift = _start(client, h, vehicle)
+    res = client.post(
+        f"{DA}/shifts/{shift['id']}/closeout",
+        headers=h,
+        json={**CLOSE, "ride_hailing_amount": "10"},
+    )
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "ride_hailing_not_in_shift"
+
+
+def test_statement_cash_is_not_counted_twice_on_the_cash_board(
+    client: TestClient, db: Session
+) -> None:
+    from tests.factories import make_platform
+
+    _, acc = login_as(client, db, UserRole.ADMIN)
+    driver, sid = _mixed_shift(client, db, acc, fixed_minutes=0, rh_minutes=120)
+    shift = db.get(Shift, uuid.UUID(sid))
+    assert shift is not None
+    res = client.post(f"{API}/cash/shifts/{sid}/closeout", headers=acc, json=SIMPLE)
+    assert res.status_code == 201, res.text
+    before = client.get(f"{API}/drivers/{driver.id}/cash-account", headers=acc).json()
+    platform = make_platform(db)
+    statement = client.post(
+        f"{API}/ride-hailing/statements",
+        headers=acc,
+        json={
+            "platform_id": str(platform.id),
+            "driver_id": str(driver.id),
+            "vehicle_id": str(shift.vehicle_id),
+            "period_start": local_today().isoformat(),
+            "period_end": local_today().isoformat(),
+            "gross_earnings": "1500",
+            "platform_fees": "300",
+            "cash_collected": "1000",
+            "approve_now": True,
+        },
+    )
+    assert statement.status_code == 201, statement.text
+    after = client.get(f"{API}/drivers/{driver.id}/cash-account", headers=acc).json()
+    # The close-out already asks for this ride-hailing cash; the statement's cash
+    # receipt is the same money and must not be asked for again.
+    assert after["outstanding"] == before["outstanding"] == "1000.00"

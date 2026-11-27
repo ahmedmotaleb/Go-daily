@@ -40,6 +40,8 @@ export type Closeout = {
   end_odometer_km: number;
   start_odometer_photo_id: string | null;
   collection_amount: string;
+  /** Part of the collection earned on ride-hailing (mixed shifts); not booked as revenue. */
+  ride_hailing_amount: string | null;
   collection_booked: boolean;
   lines: CloseoutLine[];
   maintenance_kind: "NONE" | "OIL_CHANGE" | "MAINTENANCE";

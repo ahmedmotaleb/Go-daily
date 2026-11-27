@@ -94,6 +94,7 @@ def closeout_out(
         end_odometer_km=c.end_odometer_km,
         start_odometer_photo_id=shift.start_odometer_photo_id,
         collection_amount=c.collection_amount,
+        ride_hailing_amount=c.ride_hailing_amount,
         collection_booked=figures.collection_booked,
         lines=[
             CloseoutLine(
