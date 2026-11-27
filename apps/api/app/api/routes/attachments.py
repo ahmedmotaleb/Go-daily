@@ -129,6 +129,8 @@ async def upload_attachment(
         duplicates=[
             DuplicateRef(attachment_id=d.id, owner_type=d.owner_type, owner_id=d.owner_id)
             for d in duplicates
+            # Only records the uploader may read are named (security audit M6).
+            if has_permission(user.role, attachments_service.rule_for(d.owner_type).read)
         ],
     )
 

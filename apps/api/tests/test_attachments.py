@@ -293,3 +293,64 @@ def test_attachments_respect_the_two_factor_setup_gate(
     )
     assert res.status_code == 403
     assert res.json()["error"]["code"] == "twofa_setup_required"
+
+
+# --- Security audit M6 (runtime L3): duplicate reports stay within what the caller reads --
+
+
+def test_duplicates_only_name_records_the_caller_can_read(client: TestClient, db: Session) -> None:
+    _, accountant = login_as(client, db, UserRole.ACCOUNTANT)
+    vehicle = make_vehicle(db)
+    revenue = client.post(
+        "/api/v1/revenue",
+        headers=accountant,
+        json={
+            "kind": "PRIVATE_TRIP",
+            "vehicle_id": str(vehicle.id),
+            "occurred_on": utcnow().date().isoformat(),
+            "amount": "500",
+        },
+    ).json()
+    _upload(client, accountant, revenue["id"], PDF, "a.pdf", owner_type="revenue_entry")
+    _, ops = login_as(client, db, UserRole.OPERATIONS)  # no revenue:read
+    seen = _upload(client, ops, str(vehicle.id), PDF, "b.pdf", owner_type="vehicle").json()
+    assert all(d["owner_type"] != "revenue_entry" for d in seen["duplicates"])
+    _, admin = login_as(client, db, UserRole.ADMIN)  # reads revenue and writes vehicles
+    again = _upload(client, admin, str(vehicle.id), PDF, "c.pdf", owner_type="vehicle").json()
+    assert "revenue_entry" in {d["owner_type"] for d in again["duplicates"]}
+
+
+def test_drivers_are_not_told_about_other_records(client: TestClient, db: Session) -> None:
+    import uuid
+
+    _, _, other, _ = make_driver_account(client, db)
+    secret = PNG + b"other-driver-photo"
+    client.post(
+        "/api/v1/driver/odometer-photo",
+        headers=other,
+        files={"file": ("o.png", secret, "image/png")},
+    )
+    _, _, h, vehicle = make_driver_account(client, db)
+    started = client.post(
+        "/api/v1/driver/shifts/start",
+        headers=h,
+        json={
+            "vehicle_id": str(vehicle.id),
+            "start_odometer_km": 50_000,
+            "start_odometer_photo_id": start_photo(client, h),
+        },
+    )
+    assert started.status_code == 201, started.text
+    fuel = client.post(
+        "/api/v1/driver/fuel",
+        headers={**h, "Idempotency-Key": str(uuid.uuid4())},
+        json={"fuel_type_id": fuel_type_id(db, "CNG"), "quantity": "5", "total_amount": "35"},
+    ).json()
+    res = client.post(
+        f"/api/v1/driver/fuel/{fuel['id']}/receipt",
+        headers={**h, "Idempotency-Key": str(uuid.uuid4())},
+        files={"file": ("r.png", secret, "image/png")},
+    )
+    assert res.status_code == 201, res.text
+    # The office still gets the DUPLICATE_FILE review case; the driver learns nothing.
+    assert res.json()["duplicates"] == []
