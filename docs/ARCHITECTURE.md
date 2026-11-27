@@ -120,10 +120,10 @@ Roles: `SUPER_ADMIN`, `ADMIN`, `OPERATIONS`, `ACCOUNTANT`, `DRIVER`.
 - `ACCOUNTANT` handles the financial ledgers, settlements and profitability. Fleet data is read-only.
 - `DRIVER` has **no** staff permissions. Drivers use dedicated `/api/v1/driver/*` endpoints that are always scoped to their own records.
 - National IDs need `drivers:read_sensitive`, which only admins hold.
-- **Data inside allowed endpoints follows the data permissions too (security audit H1, M1):**
+- **Data inside allowed endpoints follows the data permissions too (security audit H1, M1, M10):**
   - Money is shown only to `revenue:read` holders. Operations holds `cash:read` to follow handovers, but the cash board, close-out detail, driver cash account and the CASH items of the vehicle and driver timelines reach it with every amount null (`cash_views.without_amounts`; quantities and states stay).
   - Review cases about money (`FINANCIAL_RULES` in `services/exceptions.py`: `COLLECTION_GAP`, `REVENUE_INCONSISTENT`, `RIDE_HAILING_MISMATCH`, `CASH_NOT_HANDED_OVER`) are visible, reviewable and notified only to `revenue:read` holders: the list, case page, related cases, summary, timelines, control centre, the `exceptions` report and notifications all apply `visible_clause`. Operations cannot dismiss them.
-  - Coordinates (`lat`/`lng`/`latitude`/`longitude` keys) are removed from case evidence for readers without `tracking:read` (`for_reader`).
+  - Coordinates (`lat`/`lng`/`latitude`/`longitude` keys) are removed from case evidence for readers without `tracking:read` (`for_reader`), and fuel records reach them without the phone's position.
 - User management rules:
   - `ADMIN` manages `OPERATIONS`, `ACCOUNTANT` and `DRIVER` accounts. Only `SUPER_ADMIN` manages admin accounts.
   - Users cannot change their own role or deactivate themselves.
