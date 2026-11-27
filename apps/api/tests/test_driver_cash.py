@@ -386,12 +386,18 @@ def test_board_rows_permissions_and_ride_hailing(client: TestClient, db: Session
     assert board.status_code == 200, board.text
     rows = {r["driver"]["id"]: r for r in board.json()["rows"]}
     assert rows[str(worker.id)]["kind"] == "CLOSEOUT"
-    assert Decimal(rows[str(worker.id)]["outstanding"]) == Decimal("1980")
+    # Operations follows the states; the amounts are revenue (security audit M1).
+    assert rows[str(worker.id)]["outstanding"] is None
     assert rows[str(resting.id)]["kind"] == "DAY_OFF"
     assert rows[str(running.id)]["kind"] == "OPEN_SHIFT"
     summary = board.json()
     assert summary["day_offs"] >= 1 and summary["open_shifts"] >= 1
-    assert Decimal(summary["open_balance"]) >= Decimal("1980")
+    assert summary["open_balance"] is None
+    _, acc_board = login_as(client, db, UserRole.ACCOUNTANT)
+    full = client.get(f"{API}/cash/board", headers=acc_board).json()
+    full_rows = {r["driver"]["id"]: r for r in full["rows"]}
+    assert Decimal(full_rows[str(worker.id)]["outstanding"]) == Decimal("1980")
+    assert Decimal(full["open_balance"]) >= Decimal("1980")
 
     denied = client.post(
         f"{API}/cash/collections",
@@ -595,3 +601,31 @@ def test_statement_cash_is_not_counted_twice_on_the_cash_board(
     # The close-out already asks for this ride-hailing cash; the statement's cash
     # receipt is the same money and must not be asked for again.
     assert after["outstanding"] == before["outstanding"] == "1000.00"
+
+
+# --- Security audit M1: Operations follows close-outs without the cash figures ---------
+
+
+def test_operations_sees_cash_states_but_not_amounts(client: TestClient, db: Session) -> None:
+    driver, _, h, vehicle = make_driver_account(client, db)
+    shift = _start(client, h, vehicle)
+    closeout = _close(client, h, shift["id"])
+    _, op = login_as(client, db, UserRole.OPERATIONS)
+    _, acc = login_as(client, db, UserRole.ACCOUNTANT)
+    day = local_today().isoformat()
+    for url, params in (
+        (f"{API}/cash/board", {"day": day}),
+        (f"{API}/cash/closeouts/{closeout['id']}", {}),
+        (f"{API}/drivers/{driver.id}/cash-account", {}),
+        (f"/api/v1/vehicles/{vehicle.id}/timeline", {"day": day}),
+        (f"/api/v1/drivers/{driver.id}/timeline", {"day": day}),
+    ):
+        seen = client.get(url, headers=op, params=params)
+        assert seen.status_code == 200, (url, seen.text)
+        # 450 is the maintenance expense: Operations reads expenses (expenses:read).
+        for figure in ("2940", "1980"):
+            assert figure not in seen.text, (url, figure)
+        assert "2940" in client.get(url, headers=acc, params=params).text, url
+    detail = client.get(f"{API}/cash/closeouts/{closeout['id']}", headers=op).json()
+    assert detail["status"] == "WAITING" and detail["net_amount"] is None
+    assert detail["lines"][0]["quantity"] == "24.000"  # quantities are not money

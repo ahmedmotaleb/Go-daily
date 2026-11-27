@@ -217,6 +217,16 @@ _EXCEPTION_SEVERITY = {ExceptionSeverity.HIGH: N.CRITICAL, ExceptionSeverity.MED
 _LABEL_AR = {"REVIEW_REQUIRED": "مراجعة مطلوبة", "UNUSUAL": "حالة غير معتادة"}
 
 
+def _case_permission(case: OperationalException, default: Permission) -> Permission:
+    """Money cases reach revenue readers only (security audit H1).
+
+    Every revenue reader also holds exceptions:read and exceptions:review.
+    """
+    from app.services.exceptions import FINANCIAL_RULES  # noqa: PLC0415 - import cycle
+
+    return Permission.REVENUE_READ if case.rule_code in FINANCIAL_RULES else default
+
+
 def open_exceptions(db: Session) -> list[Draft]:
     cases = db.scalars(
         select(OperationalException).where(
@@ -230,7 +240,7 @@ def open_exceptions(db: Session) -> list[Draft]:
         info = RULE_INFO.get(c.rule_code)
         drafts.append(
             Draft(
-                permission=Permission.EXCEPTIONS_READ,
+                permission=_case_permission(c, Permission.EXCEPTIONS_READ),
                 severity=_EXCEPTION_SEVERITY[c.severity],
                 title=f"{_LABEL_AR[c.label.value]}: {info.title_ar if info else c.rule_code}",
                 body=c.summary,
@@ -264,7 +274,7 @@ def escalations(db: Session) -> list[Draft]:
         info = RULE_INFO.get(c.rule_code)
         drafts.append(
             Draft(
-                permission=Permission.EXCEPTIONS_REVIEW,
+                permission=_case_permission(c, Permission.EXCEPTIONS_REVIEW),
                 severity=N.CRITICAL,
                 title=f"حالة عالية الأهمية لم تُراجع منذ أكثر من {hours} ساعة: "
                 f"{info.title_ar if info else c.rule_code}",

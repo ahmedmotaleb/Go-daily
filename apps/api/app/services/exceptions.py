@@ -13,13 +13,14 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import Select, func, or_, select, update
+from sqlalchemy import ColumnElement, Select, func, or_, select, true, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core import monitoring
 from app.core.config import Settings
 from app.core.errors import ConflictError, NotFoundError, field_error
+from app.core.permissions import Permission, has_permission
 from app.core.time import local_day_bounds_utc, utcnow
 from app.models.exceptions import (
     ExceptionLabel,
@@ -206,6 +207,45 @@ def last_run(db: Session) -> ExceptionRun | None:
     ).first()
 
 
+# --- Who sees what (security audit H1) ------------------------------------------
+
+# Rules about money: their evidence and summaries carry revenue, collections or
+# cash custody, so only revenue readers see them (Operations is barred from
+# revenue) and only they can close them.
+FINANCIAL_RULES = frozenset(
+    {"COLLECTION_GAP", "REVENUE_INCONSISTENT", "RIDE_HAILING_MISMATCH", "CASH_NOT_HANDED_OVER"}
+)
+
+
+def sees_money(user: User) -> bool:
+    return has_permission(user.role, Permission.REVENUE_READ)
+
+
+def sees_locations(user: User) -> bool:
+    return has_permission(user.role, Permission.TRACKING_READ)
+
+
+def money_cases_clause(allowed: bool) -> ColumnElement[bool]:
+    """SQL filter: every case, or only those that are not about money."""
+    return true() if allowed else OperationalException.rule_code.not_in(FINANCIAL_RULES)
+
+
+def visible_clause(user: User | None) -> ColumnElement[bool]:
+    """SQL filter: the cases this user may see (no filter without a user)."""
+    return money_cases_clause(user is None or sees_money(user))
+
+
+def can_see(user: User | None, exc: OperationalException) -> bool:
+    return user is None or sees_money(user) or exc.rule_code not in FINANCIAL_RULES
+
+
+def for_reader(user: User | None, value: Any) -> Any:
+    """Evidence as this user may read it: no coordinates without tracking:read."""
+    if user is None or sees_locations(user) or value is None:
+        return value
+    return _without_coordinates(value)
+
+
 # --- Queries ----------------------------------------------------------------
 
 
@@ -221,10 +261,12 @@ class ExceptionFilters:
     shift_id: uuid.UUID | None = None
     date_from: date | None = None
     date_to: date | None = None
+    # The reader: cases outside their data permissions are left out.
+    viewer: User | None = None
 
 
 def _filtered(f: ExceptionFilters) -> Select[OperationalException]:
-    stmt = select(OperationalException)
+    stmt = select(OperationalException).where(visible_clause(f.viewer))
     if f.status == "ACTIVE":
         stmt = stmt.where(OperationalException.status.in_(ACTIVE))
     elif f.status:
@@ -257,9 +299,11 @@ def list_exceptions(
     return paginate(db, stmt, params)
 
 
-def get(db: Session, exception_id: uuid.UUID) -> OperationalException:
+def get(
+    db: Session, exception_id: uuid.UUID, *, viewer: User | None = None
+) -> OperationalException:
     exc = db.get(OperationalException, exception_id)
-    if exc is None:
+    if exc is None or not can_see(viewer, exc):
         raise NotFoundError("الحالة غير موجودة")
     return exc
 
@@ -270,6 +314,7 @@ def related(
     *,
     window: timedelta = timedelta(days=1),
     limit: int = 20,
+    viewer: User | None = None,
 ) -> list[OperationalException]:
     """Other cases on the same vehicle or driver within a day of this one (U28).
 
@@ -290,6 +335,7 @@ def related(
             select(OperationalException)
             .where(
                 OperationalException.id != exc.id,
+                visible_clause(viewer),
                 or_(*who),
                 OperationalException.occurred_at >= exc.occurred_at - window,
                 OperationalException.occurred_at <= exc.occurred_at + window,
@@ -300,8 +346,8 @@ def related(
     )
 
 
-def summary(db: Session) -> dict[str, Any]:
-    """Counts of exceptions still needing attention."""
+def summary(db: Session, *, viewer: User | None = None) -> dict[str, Any]:
+    """Counts of exceptions still needing attention (that this user may see)."""
     rows = db.execute(
         select(
             OperationalException.status,
@@ -309,7 +355,7 @@ def summary(db: Session) -> dict[str, Any]:
             OperationalException.rule_code,
             func.count(),
         )
-        .where(OperationalException.status.in_(ACTIVE))
+        .where(OperationalException.status.in_(ACTIVE), visible_clause(viewer))
         .group_by(
             OperationalException.status,
             OperationalException.severity,
@@ -348,7 +394,9 @@ def review(
         .where(OperationalException.id == exception_id)
         .with_for_update(of=OperationalException)
     ).first()
-    if exc is None:
+    # A reviewer closes only the cases they may see: Operations never closes a
+    # money case (security audit H1).
+    if exc is None or not can_see(actor, exc):
         raise NotFoundError("الحالة غير موجودة")
     if status not in TRANSITIONS[exc.status]:
         raise ConflictError("لا يمكن نقل الحالة إلى هذه الخطوة من وضعها الحالي")

@@ -7,10 +7,11 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel
 
 from app.api.deps import DbSession, require_permissions
 from app.core.errors import NotFoundError
-from app.core.permissions import Permission
+from app.core.permissions import Permission, has_permission
 from app.core.time import local_today
 from app.models.driver import Driver
 from app.models.finance import RecordSource
@@ -37,15 +38,24 @@ ShiftReader = Annotated[User, Depends(require_permissions(Permission.SHIFTS_READ
 ShiftWriter = Annotated[User, Depends(require_permissions(Permission.SHIFTS_WRITE))]
 
 
+def _shown[M: BaseModel](user: User, view: M) -> M:
+    """Cash amounts are revenue: readers without revenue:read get states only (audit M1)."""
+    return (
+        view
+        if has_permission(user.role, Permission.REVENUE_READ)
+        else cash_views.without_amounts(view)
+    )
+
+
 @router.get("/cash/board", response_model=CashBoardOut)
-def cash_board(_: CashReader, db: DbSession, day: date | None = None) -> CashBoardOut:
+def cash_board(user: CashReader, db: DbSession, day: date | None = None) -> CashBoardOut:
     """«تحصيل نقدية السائقين» for one day (default today, Cairo)."""
-    return cash_views.board(db, day or local_today())
+    return _shown(user, cash_views.board(db, day or local_today()))
 
 
 @router.get("/cash/closeouts/{closeout_id}", response_model=CloseoutOut)
-def get_closeout(closeout_id: uuid.UUID, _: CashReader, db: DbSession) -> CloseoutOut:
-    return cash_views.closeout_detail(db, closeout_id)
+def get_closeout(closeout_id: uuid.UUID, user: CashReader, db: DbSession) -> CloseoutOut:
+    return _shown(user, cash_views.closeout_detail(db, closeout_id))
 
 
 @router.post("/cash/closeouts/{closeout_id}/void", response_model=CloseoutOut)
@@ -96,13 +106,13 @@ def void_collection(
 @router.get("/drivers/{driver_id}/cash-account", response_model=CashAccountOut)
 def driver_cash_account(
     driver_id: uuid.UUID,
-    _: CashReader,
+    user: CashReader,
     db: DbSession,
     days: Annotated[int, Query(ge=1, le=90)] = 30,
 ) -> CashAccountOut:
     if db.get(Driver, driver_id) is None:
         raise NotFoundError("السائق غير موجود")
-    return cash_views.account(db, driver_id, days)
+    return _shown(user, cash_views.account(db, driver_id, days))
 
 
 @router.get("/day-offs", response_model=list[DayOffOut])

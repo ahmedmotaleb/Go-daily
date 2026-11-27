@@ -72,12 +72,17 @@ class CloseoutIn(BaseModel):
     recorded_at: AwareDatetime | None = None
 
 
+# Money fields are null for readers without revenue:read: Operations holds
+# cash:read to follow handovers (who closed out, what is waiting), but is
+# barred from revenue, and close-out cash is fixed-route revenue (audit M1).
+
+
 class CloseoutLine(BaseModel):
     key: Literal["gas", "gasoline", "toll", "maintenance"]
     label: str
     quantity: Decimal | None
     unit: str | None
-    amount: Decimal
+    amount: Decimal | None
     # Review state of the finance record behind the line (null: nothing recorded).
     record_status: RecordStatus | None
     # False when the office rejected or voided it: the amount is then due from the driver.
@@ -88,7 +93,7 @@ class CollectionOut(BaseModel):
     id: uuid.UUID
     driver_id: uuid.UUID
     closeout_id: uuid.UUID | None
-    amount: Decimal
+    amount: Decimal | None
     collected_at: datetime
     note: str | None
     collected_by: PersonRef | None
@@ -108,7 +113,7 @@ class CloseoutOut(BaseModel):
     start_odometer_km: int | None
     end_odometer_km: int
     start_odometer_photo_id: uuid.UUID | None
-    collection_amount: Decimal
+    collection_amount: Decimal | None
     ride_hailing_amount: Decimal | None = None
     # Collection is not booked as revenue here for ride-hailing (statements are the source).
     collection_booked: bool
@@ -117,14 +122,14 @@ class CloseoutOut(BaseModel):
     maintenance_note: str | None
     notes: str | None
     receipt_attachment_ids: list[uuid.UUID]
-    deductions: Decimal
+    deductions: Decimal | None
     # Collection less the deductions: what this shift hands over (negative: owed to the driver).
-    net_amount: Decimal
+    net_amount: Decimal | None
     # Not yet collected from earlier close-outs when this one was submitted.
-    carried_before: Decimal
-    total_due: Decimal
-    collected: Decimal
-    remaining: Decimal
+    carried_before: Decimal | None
+    total_due: Decimal | None
+    collected: Decimal | None
+    remaining: Decimal | None
     status: CloseoutStatus
     collections: list[CollectionOut]
     voided_at: datetime | None
@@ -162,15 +167,15 @@ class BoardRow(BaseModel):
     shift_id: uuid.UUID | None = None
     started_at: datetime | None = None
     # The driver's whole balance now (all days).
-    outstanding: Decimal
+    outstanding: Decimal | None
 
 
 class CashBoardOut(BaseModel):
     day: date
-    net_due: Decimal
+    net_due: Decimal | None
     closeouts: int
-    collected: Decimal
-    open_balance: Decimal
+    collected: Decimal | None
+    open_balance: Decimal | None
     day_offs: int
     open_shifts: int
     rows: list[BoardRow]
@@ -186,11 +191,11 @@ class AccountDay(BaseModel):
 
 class CashAccountOut(BaseModel):
     driver: PersonRef
-    outstanding: Decimal
+    outstanding: Decimal | None
     date_from: date
     date_to: date
-    due_total: Decimal
-    collected_total: Decimal
+    due_total: Decimal | None
+    collected_total: Decimal | None
     day_off_days: int
     days: list[AccountDay]
     # Today's state for the driver app home: day-off or the submitted close-out.

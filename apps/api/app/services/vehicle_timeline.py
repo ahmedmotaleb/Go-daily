@@ -11,7 +11,7 @@ no time of day (revenue dated by day, maintenance) are listed at the top.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -28,6 +28,7 @@ from app.models.maintenance import MaintenanceRecord
 from app.models.route_events import EventStatus, RouteEvent, RouteEventType, SchoolRun
 from app.models.shift import SessionStatus, Shift, ShiftStatus
 from app.services import tracking
+from app.services.exceptions import money_cases_clause
 from app.services.reports import REVENUE_KIND_AR, SCHOOL_STATUS_AR
 
 STATUS_AR = {
@@ -75,6 +76,17 @@ class Item:
     status: str | None = None
     until: datetime | None = None
     link: str | None = None
+
+
+CASH_KINDS = frozenset({"CLOSEOUT", "CASH"})
+
+
+def without_cash_amounts(item: Item) -> Item:
+    """A close-out or handover item without its figures (see `timeline`)."""
+    if item.kind not in CASH_KINDS:
+        return item
+    detail = None if item.kind == "CLOSEOUT" else item.detail
+    return replace(item, amount=None, detail=detail)
 
 
 def _assignments(db: Session, vid: uuid.UUID, start: datetime, end: datetime) -> list[Item]:
@@ -265,7 +277,19 @@ def _money(
     return out
 
 
-def timeline(db: Session, vehicle_id: uuid.UUID, day: date, sections: set[Section]) -> list[Item]:
+def timeline(
+    db: Session,
+    vehicle_id: uuid.UUID,
+    day: date,
+    sections: set[Section],
+    *,
+    with_money: bool = True,
+) -> list[Item]:
+    """`with_money` (revenue readers only): cash amounts and review cases about money.
+
+    Operations follows the close-outs and handovers but is barred from
+    revenue, so it gets them without amounts (security audit H1, M1).
+    """
     start, end = local_day_bounds_utc(day)
     items: list[Item] = []
     if Section.ASSIGNMENTS in sections:
@@ -307,6 +331,7 @@ def timeline(db: Session, vehicle_id: uuid.UUID, day: date, sections: set[Sectio
                 OperationalException.vehicle_id == vehicle_id,
                 OperationalException.occurred_at >= start,
                 OperationalException.occurred_at < end,
+                money_cases_clause(with_money),
             )
         ).all():
             items.append(
@@ -318,8 +343,10 @@ def timeline(db: Session, vehicle_id: uuid.UUID, day: date, sections: set[Sectio
                     link=f"/exceptions/{c.id}",
                 )
             )
+    if not with_money:
+        items = [without_cash_amounts(i) for i in items]
     # Day-level items first, then by time.
     return sorted(items, key=lambda i: (i.at is not None, i.at or start))
 
 
-__all__ = ["Item", "Section", "timeline"]
+__all__ = ["Item", "Section", "timeline", "without_cash_amounts"]

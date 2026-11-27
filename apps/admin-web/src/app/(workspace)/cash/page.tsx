@@ -238,10 +238,11 @@ function Row({
             action={collectCashAction.bind(null, row.driver.id, c.id)}
             driverName={row.driver.full_name}
             subtitle={`${vehicle} · ${dayLabel}`}
-            net={c.net_amount}
-            carried={c.carried_before}
-            collected={c.collected}
-            totalDue={c.remaining}
+            // Collectors hold revenue:read, so the amounts are always present here.
+            net={c.net_amount ?? "0"}
+            carried={c.carried_before ?? "0"}
+            collected={c.collected ?? "0"}
+            totalDue={c.remaining ?? "0"}
           />
         ) : null}
         {c?.collections.map((x) => (

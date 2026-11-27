@@ -53,6 +53,7 @@ from app.services import (
     route_events,
     tracking,
 )
+from app.services import exceptions as exception_service
 from app.services import finance_common as fc
 from app.services import revenue as revenue_service
 from app.services.exception_rules import RULE_INFO
@@ -111,6 +112,8 @@ class Filters:
     category_id: uuid.UUID | None = None
     # Grouping for period-based reports (fuel efficiency).
     period: fuel_efficiency.Period = "week"
+    # Who runs the report: rows outside their data permissions are left out.
+    viewer: User | None = None
 
     @property
     def start(self) -> datetime:
@@ -1228,7 +1231,9 @@ def maintenance_report(db: Session, f: Filters) -> ReportResult:
 
 def exceptions_report(db: Session, f: Filters) -> ReportResult:
     stmt = select(OperationalException).where(
-        OperationalException.occurred_at >= f.start, OperationalException.occurred_at < f.end
+        OperationalException.occurred_at >= f.start,
+        OperationalException.occurred_at < f.end,
+        exception_service.visible_clause(f.viewer),
     )
     if f.vehicle_id:
         stmt = stmt.where(OperationalException.vehicle_id == f.vehicle_id)
@@ -1448,6 +1453,7 @@ def run(db: Session, user: User, code: str, filters: Filters) -> tuple[ReportDef
         raise field_error("date_to", "تاريخ النهاية قبل تاريخ البداية")
     if (filters.date_to - filters.date_from).days >= MAX_DAYS:
         raise field_error("date_to", "الفترة القصوى سنة واحدة")
+    filters.viewer = user
     return report, report.build(db, filters)
 
 
