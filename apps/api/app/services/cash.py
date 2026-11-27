@@ -27,7 +27,14 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import ConflictError, NotFoundError, ValidationFailed, field_error
+from app.core.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDenied,
+    ValidationFailed,
+    field_error,
+)
+from app.core.permissions import Permission, has_permission
 from app.core.time import local_day_bounds_utc, local_today, to_local_date, utcnow
 from app.models.attachment import Attachment, AttachmentOwner
 from app.models.cash import CashCollection, MaintenanceKind, ShiftCloseout
@@ -299,6 +306,25 @@ def _collections_now(db: Session, closeouts: list[ShiftCloseout]) -> dict[uuid.U
         )
         out[c.id] = c.collection_amount - originals[c.revenue_entry_id].amount + held
     return out
+
+
+def _settled(db: Session, driver_id: uuid.UUID, day: date) -> bool:
+    """Is this day inside a finalized or paid settlement of the driver?"""
+    from app.models.finance import POSTED_SETTLEMENTS, DriverSettlement  # noqa: PLC0415
+
+    return (
+        db.scalar(
+            select(DriverSettlement.id)
+            .where(
+                DriverSettlement.driver_id == driver_id,
+                DriverSettlement.status.in_(POSTED_SETTLEMENTS),
+                DriverSettlement.period_start <= day,
+                DriverSettlement.period_end >= day,
+            )
+            .limit(1)
+        )
+        is not None
+    )
 
 
 def _other_custody(db: Session, driver_ids: set[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
@@ -810,20 +836,56 @@ def void_closeout(
         raise ConflictError(
             "ألغِ التحصيلات المسجلة على هذا التقفيل أولًا", code="closeout_has_collections"
         )
+    if _settled(db, closeout.driver_id, closeout.service_date):
+        raise ConflictError(
+            "هذا اليوم داخل تسوية معتمدة للسائق؛ ألغِ التسوية أولًا ثم ألغِ التقفيل",
+            code="period_settled",
+        )
     note = f"إلغاء تقفيل الوردية: {reason}"
-    # Void the live version of each record (an office correction replaces the original).
-    entries = _live_versions(db, RevenueEntry, {closeout.revenue_entry_id})
-    for entry in entries.values():
-        if entry.status is not RecordStatus.VOIDED:
-            revenue.void_with_receipts(db, entry, actor, note)
-    fuel_ids = {closeout.gas_fuel_id, closeout.gasoline_fuel_id}
-    for tx in _live_versions(db, FuelTransaction, fuel_ids).values():
-        if tx.status is not RecordStatus.VOIDED:
-            fuel._void(db, tx, actor, note)
-    expense_ids = {closeout.toll_expense_id, closeout.maintenance_expense_id}
-    for expense in _live_versions(db, Expense, expense_ids).values():
-        if expense.status is not RecordStatus.VOIDED:
-            expenses._void(db, expense, actor, note)
+    # The live version of each record (an office correction replaces the original).
+    entries = [
+        e
+        for e in _live_versions(db, RevenueEntry, {closeout.revenue_entry_id}).values()
+        if e.status is not RecordStatus.VOIDED
+    ]
+    txs = [
+        t
+        for t in _live_versions(
+            db, FuelTransaction, {closeout.gas_fuel_id, closeout.gasoline_fuel_id}
+        ).values()
+        if t.status is not RecordStatus.VOIDED
+    ]
+    costs = [
+        x
+        for x in _live_versions(
+            db, Expense, {closeout.toll_expense_id, closeout.maintenance_expense_id}
+        ).values()
+        if x.status is not RecordStatus.VOIDED
+    ]
+    # Voiding an approved record is an approver's act (security audit M3): cash:collect
+    # alone must not undo what revenue:approve or expenses:approve decided.
+    missing = sorted(
+        {
+            p.value
+            for p, records in (
+                (Permission.REVENUE_APPROVE, entries),
+                (Permission.EXPENSES_APPROVE, [*txs, *costs]),
+            )
+            if any(r.status is RecordStatus.APPROVED for r in records)
+            and not has_permission(actor.role, p)
+        }
+    )
+    if missing:
+        raise PermissionDenied(
+            "التقفيل فيه سجلات معتمدة؛ إلغاؤها يحتاج صلاحية الاعتماد",
+            details={"missing": missing},
+        )
+    for entry in entries:
+        revenue.void_with_receipts(db, entry, actor, note)
+    for tx in txs:
+        fuel._void(db, tx, actor, note)
+    for expense in costs:
+        expenses._void(db, expense, actor, note)
     closeout.voided_at = utcnow()
     closeout.voided_by_id = actor.id
     closeout.void_reason = reason

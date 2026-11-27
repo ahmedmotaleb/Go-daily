@@ -691,3 +691,62 @@ def test_board_follows_the_revenue_entry_after_office_corrections(
         json={"driver_id": str(driver.id), "closeout_id": closeout["id"], "amount": "1"},
     )
     assert over.json()["error"]["code"] == "over_collection"
+
+
+# --- Security audit M3: voiding a close-out respects the approval permissions ----------
+
+
+def test_voiding_a_closeout_with_approved_records_needs_approve_rights(
+    client: TestClient, db: Session, monkeypatch: Any
+) -> None:
+    from app.core import permissions
+    from app.core.permissions import Permission
+
+    _, _, h, vehicle = make_driver_account(client, db)
+    closeout = _close(client, h, _start(client, h, vehicle)["id"])
+    _, acc = login_as(client, db, UserRole.ACCOUNTANT)
+    entry = db.scalar(select(RevenueEntry).where(RevenueEntry.shift_id == closeout["shift_id"]))
+    assert entry is not None
+    assert (
+        client.post(f"/api/v1/revenue/{entry.id}/approve", headers=acc, json={}).status_code == 200
+    )
+    # A role that may collect cash but not approve revenue (none today; the rule must not
+    # depend on that coincidence).
+    reduced = permissions.ROLE_PERMISSIONS[UserRole.ACCOUNTANT] - {Permission.REVENUE_APPROVE}
+    monkeypatch.setitem(permissions.ROLE_PERMISSIONS, UserRole.ACCOUNTANT, reduced)
+    res = client.post(
+        f"{API}/cash/closeouts/{closeout['id']}/void", headers=acc, json={"reason": "خطأ"}
+    )
+    assert res.status_code == 403, res.text
+    assert res.json()["error"]["details"]["missing"] == ["revenue:approve"]
+    db.refresh(entry)
+    assert entry.status is RecordStatus.APPROVED
+
+
+def test_closeout_in_a_settled_period_cannot_be_voided(client: TestClient, db: Session) -> None:
+    from app.models.driver import CompensationMethod
+    from tests.factories import make_plan
+
+    driver, _, h, vehicle = make_driver_account(client, db)
+    closeout = _close(client, h, _start(client, h, vehicle)["id"])
+    _, acc = login_as(client, db, UserRole.ACCOUNTANT)
+    make_plan(
+        db,
+        driver,
+        CompensationMethod.DAILY_WAGE,
+        effective_from=local_today() - timedelta(days=30),
+        daily_wage_amount="300",
+    )
+    day = local_today().isoformat()
+    sid = client.post(
+        "/api/v1/settlements",
+        headers=acc,
+        json={"driver_id": str(driver.id), "period_start": day, "period_end": day},
+    ).json()["id"]
+    assert client.post(f"/api/v1/settlements/{sid}/review", headers=acc).status_code == 200
+    assert client.post(f"/api/v1/settlements/{sid}/finalize", headers=acc).status_code == 200
+    res = client.post(
+        f"{API}/cash/closeouts/{closeout['id']}/void", headers=acc, json={"reason": "خطأ"}
+    )
+    assert res.status_code == 409, res.text
+    assert res.json()["error"]["code"] == "period_settled"
