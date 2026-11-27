@@ -49,10 +49,10 @@ from app.models.finance import (
     SettlementStatus,
 )
 from app.models.shift import Shift, ShiftStatus
-from app.models.user import User
+from app.models.user import AuthSession, User
 from app.schemas.common import PageParams
 from app.schemas.finance import SettlementCreate
-from app.services import audit, driver_ledger
+from app.services import audit, driver_ledger, reauth
 from app.services import finance_common as fc
 from app.services.common import paginate
 
@@ -399,14 +399,28 @@ def finalize(db: Session, *, actor: User, settlement_id: uuid.UUID) -> DriverSet
     return settlement
 
 
-def void(db: Session, *, actor: User, settlement_id: uuid.UUID, reason: str) -> DriverSettlement:
+def void(
+    db: Session,
+    *,
+    actor: User,
+    settlement_id: uuid.UUID,
+    reason: str,
+    session: AuthSession | None = None,
+) -> DriverSettlement:
+    """Void a settlement. Its earnings leave the driver account; payments stay.
+
+    A payment recorded against the settlement is money that really left the
+    company, so it is never reversed here: after the void the driver owes it
+    back (or a corrected settlement absorbs it). Voiding posted figures is a
+    sensitive action and needs a recent confirmation (U35).
+    """
     settlement = get(db, settlement_id, lock=True)
     if settlement.status is SettlementStatus.VOIDED:
         raise ConflictError("التسوية ملغاة بالفعل", code="invalid_state")
     if settlement.status in POSTED_SETTLEMENTS:
-        # The earnings and, if recorded, the payment.
+        if session is not None:
+            reauth.require(session)
         driver_ledger.void_source(db, LedgerSource.SETTLEMENT, settlement.id, actor, reason)
-        driver_ledger.void_settlement_payments(db, settlement.id, actor, reason)
     settlement.status = SettlementStatus.VOIDED
     settlement.voided_by_id = actor.id
     settlement.voided_at = utcnow()
@@ -577,14 +591,31 @@ def pay(
     paid_on: date,
     method: PaymentMethod,
     reference: str | None,
+    session: AuthSession | None = None,
 ) -> DriverSettlement:
-    """Record a payment made outside the system. Nothing is transferred here."""
+    """Record a payment made outside the system. Nothing is transferred here.
+
+    Payments may be split, but together never exceed the settlement's earnings.
+    The re-auth threshold applies to the cumulative amount paid, so splitting
+    a large payment does not avoid the confirmation (U35).
+    """
     settlement = get(db, settlement_id, lock=True)
     if settlement.status is not SettlementStatus.FINALIZED:
         raise ConflictError("يُسجل الدفع للتسويات المعتمدة فقط", code="invalid_state")
     fc.check_day(paid_on, "paid_on")
     if paid_on < settlement.period_start:
         raise field_error("paid_on", "تاريخ الدفع قبل بداية الفترة")
+    amount = fc.money(amount)
+    already = fc.money(settlement.paid_amount or Decimal(0))
+    due = fc.money(settlement.earnings_amount - already)
+    if amount > due:
+        raise field_error(
+            "amount",
+            f"المبلغ أكبر من المتبقي المستحق للسائق في هذه التسوية ({due} ج.م)",
+            code="payment_exceeds_due",
+        )
+    if session is not None:
+        reauth.require_for_amount(session, already + amount)
     driver_ledger.post(
         db,
         driver_id=settlement.driver_id,
@@ -598,8 +629,9 @@ def pay(
         # Linked by settlement_id: the settlement's own source is its earnings.
         settlement_id=settlement.id,
     )
-    settlement.status = SettlementStatus.PAID
-    settlement.paid_amount = fc.money(amount)
+    settlement.paid_amount = already + amount
+    if settlement.paid_amount == fc.money(settlement.earnings_amount):
+        settlement.status = SettlementStatus.PAID
     settlement.paid_on = paid_on
     settlement.payment_method = method
     settlement.payment_reference = reference
@@ -613,7 +645,8 @@ def pay(
         entity_id=settlement.driver_id,
         details={
             "settlement_id": settlement.id,
-            "amount": settlement.paid_amount,
+            "amount": amount,
+            "paid_total": settlement.paid_amount,
             "method": method.value,
             "paid_on": paid_on,
         },

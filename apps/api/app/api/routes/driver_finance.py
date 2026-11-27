@@ -198,8 +198,7 @@ def pay_settlement(
     db: DbSession,
     session: CurrentSession,
 ) -> SettlementOut:
-    """Record a payment made outside the system (U20). Large amounts need re-auth."""
-    reauth.require_for_amount(session, body.amount)
+    """Record a payment made outside the system (U20). Large totals need re-auth."""
     settlement = settlements_service.pay(
         db,
         actor=actor,
@@ -208,15 +207,20 @@ def pay_settlement(
         paid_on=body.paid_on,
         method=body.method,
         reference=body.reference,
+        session=session,
     )
     return settlement_outs(db, [settlement])[0]
 
 
 @router.post("/settlements/{settlement_id}/void", response_model=SettlementOut)
 def void_settlement(
-    settlement_id: uuid.UUID, body: VoidAction, actor: Finalizer, db: DbSession
+    settlement_id: uuid.UUID,
+    body: VoidAction,
+    actor: Finalizer,
+    db: DbSession,
+    session: CurrentSession,
 ) -> SettlementOut:
     settlement = settlements_service.void(
-        db, actor=actor, settlement_id=settlement_id, reason=body.reason
+        db, actor=actor, settlement_id=settlement_id, reason=body.reason, session=session
     )
     return settlement_outs(db, [settlement])[0]
