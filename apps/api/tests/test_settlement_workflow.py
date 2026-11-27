@@ -283,3 +283,95 @@ def test_voiding_a_paid_settlement_keeps_the_payment_and_needs_reauth(
     assert Decimal(statement["earned"]) == 0
     assert Decimal(statement["paid"]) == Decimal("-600")
     assert Decimal(statement["closing_balance"]) == Decimal("-600")
+
+
+# --- Security audit H3: segregation of duties (opt-in), adjustments, frozen inputs ------
+
+
+def test_separate_finalizer_and_payer_are_opt_in(
+    client: TestClient, db: Session, monkeypatch: Any
+) -> None:
+    from app.core.config import get_settings
+
+    _, first = login_as(client, db, UserRole.ACCOUNTANT)
+    _, second = login_as(client, db, UserRole.ACCOUNTANT)
+    monkeypatch.setattr(get_settings(), "settlement_require_separate_finalizer", True)
+    monkeypatch.setattr(get_settings(), "settlement_require_separate_payer", True)
+    driver, vehicle = make_driver(db), make_vehicle(db)
+    make_plan(
+        db, driver, CompensationMethod.DAILY_WAGE, effective_from=_day(60), daily_wage_amount="300"
+    )
+    make_completed_shift(db, driver, vehicle, day=_day(5))
+    sid = _settle(client, first, str(driver.id), _day(14), _day(1))["id"]
+    assert client.post(f"{S}/{sid}/review", headers=first).status_code == 200
+    same = client.post(f"{S}/{sid}/finalize", headers=first)
+    assert same.status_code == 403
+    assert same.json()["error"]["code"] == "separate_finalizer_required"
+    assert client.post(f"{S}/{sid}/finalize", headers=second).status_code == 200
+    paid_by_finalizer = _pay(client, second, sid, "300")
+    assert paid_by_finalizer.status_code == 403
+    assert paid_by_finalizer.json()["error"]["code"] == "separate_payer_required"
+    assert _pay(client, first, sid, "300").status_code == 200
+
+
+def test_large_adjustments_need_reauth(client: TestClient, db: Session) -> None:
+    from tests.test_reauth import _age
+
+    _, h = login_as(client, db, UserRole.ACCOUNTANT)
+    driver = make_driver(db)
+    sid = _settle(client, h, str(driver.id), _day(14), _day(1))["id"]
+    _age(db, h)
+    small = client.post(f"{S}/{sid}/adjust", headers=h, json={"amount": "500", "reason": "حافز"})
+    assert small.status_code == 200, small.text
+    big = client.post(f"{S}/{sid}/adjust", headers=h, json={"amount": "50000", "reason": "حافز"})
+    assert big.status_code == 403
+    assert big.json()["error"]["code"] == "reauth_required"
+
+
+def test_finalize_refuses_when_the_frozen_total_is_missing(client: TestClient, db: Session) -> None:
+    from app.models.finance import DriverSettlement
+
+    _, h = login_as(client, db, UserRole.ACCOUNTANT)
+    driver, vehicle = make_driver(db), make_vehicle(db)
+    make_plan(
+        db, driver, CompensationMethod.DAILY_WAGE, effective_from=_day(60), daily_wage_amount="300"
+    )
+    make_completed_shift(db, driver, vehicle, day=_day(5))
+    sid = _settle(client, h, str(driver.id), _day(14), _day(1))["id"]
+    assert client.post(f"{S}/{sid}/review", headers=h).status_code == 200
+    row = db.get(DriverSettlement, sid)
+    assert row is not None
+    row.details = {k: v for k, v in row.details.items() if k != "computed_total"}
+    db.commit()
+    res = client.post(f"{S}/{sid}/finalize", headers=h)
+    assert res.status_code == 409
+    assert res.json()["error"]["code"] == "inputs_changed"
+
+
+def test_finalize_reauth_counts_the_expected_balance(client: TestClient, db: Session) -> None:
+    from tests.test_reauth import _age
+
+    _, h = login_as(client, db, UserRole.ACCOUNTANT)
+    driver, vehicle = make_driver(db), make_vehicle(db)
+    make_plan(
+        db, driver, CompensationMethod.DAILY_WAGE, effective_from=_day(60), daily_wage_amount="300"
+    )
+    make_completed_shift(db, driver, vehicle, day=_day(5))
+    bonus = client.post(
+        f"/api/v1/drivers/{driver.id}/ledger",
+        headers=h,
+        json={
+            "entry_type": "BONUS",
+            "amount": "20000",
+            "occurred_on": _day(4).isoformat(),
+            "description": "مكافأة سنوية",
+        },
+    )
+    assert bonus.status_code == 201, bonus.text
+    sid = _settle(client, h, str(driver.id), _day(14), _day(1))["id"]
+    assert client.post(f"{S}/{sid}/review", headers=h).status_code == 200
+    _age(db, h)
+    # Earnings are 300, but approving makes the driver's balance 20,300.
+    res = client.post(f"{S}/{sid}/finalize", headers=h)
+    assert res.status_code == 403
+    assert res.json()["error"]["code"] == "reauth_required"

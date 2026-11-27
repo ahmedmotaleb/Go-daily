@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     reauth_window_minutes: int = 10
     # Finalizing a settlement of at least this amount (EGP) is sensitive.
     reauth_settlement_amount: Decimal = Decimal("10000")
+    # Segregation of duties (opt-in, security audit H3): the person who reviewed
+    # a settlement cannot finalize it; the person who finalized cannot pay it.
+    settlement_require_separate_finalizer: bool = False
+    settlement_require_separate_payer: bool = False
     twofa_enforce: bool = False
     twofa_required_roles: str = "SUPER_ADMIN,ADMIN"
     # Minutes allowed between the password step and the code step.

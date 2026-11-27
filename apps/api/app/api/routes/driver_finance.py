@@ -157,7 +157,14 @@ def finalize_settlement(
     # U35: large settlements need a recent password (and 2FA) confirmation.
     current = db.get(DriverSettlement, settlement_id)
     if current is not None:
-        amounts = [abs(current.earnings_amount), abs(current.closing_balance or Decimal(0))]
+        # Before approval the closing balance is still empty: the review's
+        # expected balance says what the driver's account will show (audit H3).
+        expected = (current.details or {}).get("expected_balance")
+        amounts = [
+            abs(current.earnings_amount),
+            abs(current.closing_balance or Decimal(0)),
+            abs(Decimal(str(expected))) if expected is not None else Decimal(0),
+        ]
         reauth.require_for_amount(session, max(amounts))
     settlement = settlements_service.finalize(db, actor=actor, settlement_id=settlement_id)
     return settlement_outs(db, [settlement])[0]
@@ -178,10 +185,19 @@ def generate_settlements(
 
 @router.post("/settlements/{settlement_id}/adjust", response_model=SettlementOut)
 def adjust_settlement(
-    settlement_id: uuid.UUID, body: SettlementAdjustIn, actor: Writer, db: DbSession
+    settlement_id: uuid.UUID,
+    body: SettlementAdjustIn,
+    actor: Writer,
+    db: DbSession,
+    session: CurrentSession,
 ) -> SettlementOut:
     settlement = settlements_service.adjust(
-        db, actor=actor, settlement_id=settlement_id, amount=body.amount, reason=body.reason
+        db,
+        actor=actor,
+        settlement_id=settlement_id,
+        amount=body.amount,
+        reason=body.reason,
+        session=session,
     )
     return settlement_outs(db, [settlement])[0]
 

@@ -29,7 +29,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import ConflictError, field_error
+from app.core.config import get_settings
+from app.core.errors import ConflictError, PermissionDenied, field_error
 from app.core.time import local_day_bounds_utc, to_local_date, utcnow
 from app.models.driver import (
     CompensationMethod,
@@ -342,6 +343,12 @@ def finalize(db: Session, *, actor: User, settlement_id: uuid.UUID) -> DriverSet
     settlement = get(db, settlement_id, lock=True)
     if settlement.status is not SettlementStatus.REVIEWED:
         raise ConflictError("راجع التسوية قبل اعتمادها", code="invalid_state")
+    if get_settings().settlement_require_separate_finalizer and (
+        settlement.reviewed_by_id == actor.id
+    ):
+        raise PermissionDenied(
+            "من راجع التسوية لا يعتمدها؛ يعتمدها موظف آخر", code="separate_finalizer_required"
+        )
     if _finalized_overlap(db, settlement.driver_id, settlement.period_start, settlement.period_end):
         raise ConflictError(
             "توجد تسوية نهائية تغطي جزءًا من هذه الفترة", code="overlapping_settlement"
@@ -349,7 +356,9 @@ def finalize(db: Session, *, actor: User, settlement_id: uuid.UUID) -> DriverSet
     # The reviewed inputs are frozen: if the records changed since, the
     # settlement goes back for another review instead of silently changing.
     comp = compute(db, settlement.driver_id, settlement.period_start, settlement.period_end)
-    if fc.money(comp.total) != Decimal(str(settlement.details.get("computed_total", comp.total))):
+    frozen = (settlement.details or {}).get("computed_total")
+    # A review that froze no total cannot vouch for anything: review it again.
+    if frozen is None or fc.money(comp.total) != Decimal(str(frozen)):
         raise ConflictError(
             "تغيرت البيانات منذ المراجعة؛ أعد التسوية إلى مسودة وراجعها مرة أخرى",
             code="inputs_changed",
@@ -498,14 +507,25 @@ def _apply(db: Session, settlement: DriverSettlement, comp: Computation) -> None
 
 
 def adjust(
-    db: Session, *, actor: User, settlement_id: uuid.UUID, amount: Decimal, reason: str
+    db: Session,
+    *,
+    actor: User,
+    settlement_id: uuid.UUID,
+    amount: Decimal,
+    reason: str,
+    session: AuthSession | None = None,
 ) -> DriverSettlement:
-    """A manual change to a draft's earnings, with its reason (audited)."""
+    """A manual change to a draft's earnings, with its reason (audited).
+
+    Large changes need a recent confirmation, like large payments (audit H3).
+    """
     settlement = get(db, settlement_id, lock=True)
     if settlement.status is not SettlementStatus.DRAFT:
         raise ConflictError("التعديل على المسودات فقط", code="invalid_state")
     if amount == 0:
         raise field_error("amount", "أدخل مبلغًا")
+    if session is not None:
+        reauth.require_for_amount(session, amount)
     before = settlement.earnings_amount
     details = dict(settlement.details or {})
     details["adjustments"] = [
@@ -602,6 +622,10 @@ def pay(
     settlement = get(db, settlement_id, lock=True)
     if settlement.status is not SettlementStatus.FINALIZED:
         raise ConflictError("يُسجل الدفع للتسويات المعتمدة فقط", code="invalid_state")
+    if get_settings().settlement_require_separate_payer and settlement.finalized_by_id == actor.id:
+        raise PermissionDenied(
+            "من اعتمد التسوية لا يسجل صرفها؛ يسجله موظف آخر", code="separate_payer_required"
+        )
     fc.check_day(paid_on, "paid_on")
     if paid_on < settlement.period_start:
         raise field_error("paid_on", "تاريخ الدفع قبل بداية الفترة")
