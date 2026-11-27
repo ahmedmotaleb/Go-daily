@@ -315,6 +315,7 @@ def maintenance_outs(db: Session, records: Sequence[MaintenanceRecord]) -> list[
                 downtime_end=r.downtime_end,
                 downtime_hours=hours,
                 fuel_transaction_id=r.fuel_transaction_id,
+                closeout_expense_id=r.closeout_expense_id,
                 consumable_quantity=r.consumable_quantity,
                 consumable_spec=r.consumable_spec,
                 next_due_km=r.next_due_km,

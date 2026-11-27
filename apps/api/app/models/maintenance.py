@@ -99,6 +99,9 @@ class MaintenanceRecord(UUIDPrimaryKeyMixin, TimestampMixin, ReviewMixin, Base):
     fuel_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("fuel_transactions.id")
     )
+    # The close-out maintenance expense this record covers (same job): counted
+    # once in profitability, through this record (security audit M11).
+    closeout_expense_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("expenses.id"))
     # What was put in (U17): quantity in the purchase's unit, and the grade
     # (e.g. 5W-30). The next targets are stored as decided at the service.
     consumable_quantity: Mapped[Decimal | None] = mapped_column(Quantity)

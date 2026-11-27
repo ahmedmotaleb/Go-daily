@@ -97,6 +97,8 @@ class RecordFields(BaseModel):
     downtime_start: AwareDatetime | None = None
     downtime_end: AwareDatetime | None = None
     fuel_transaction_id: uuid.UUID | None = None
+    # The driver's close-out maintenance expense for the same job, if any.
+    closeout_expense_id: uuid.UUID | None = None
     consumable_quantity: Qty | None = None
     consumable_spec: Spec | None = None
     # Blank: computed from the vehicle's schedule or the type's interval.
@@ -138,6 +140,7 @@ class RecordOut(ReviewOut):
     downtime_end: datetime | None
     downtime_hours: float | None
     fuel_transaction_id: uuid.UUID | None
+    closeout_expense_id: uuid.UUID | None = None
     consumable_quantity: Decimal | None = None
     consumable_spec: str | None = None
     next_due_km: int | None = None
