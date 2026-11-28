@@ -19,6 +19,8 @@ import com.godaily.driver.core.api.StartSessionRequest
 import com.godaily.driver.core.api.StartShiftRequest
 import com.godaily.driver.core.cash.CloseoutCheck
 import com.godaily.driver.core.cash.CloseoutDraft
+import com.godaily.driver.core.account.PasswordCheck
+import com.godaily.driver.core.account.checkPasswordChange
 import com.godaily.driver.core.cash.checkCloseout
 import com.godaily.driver.core.cash.mixesRideHailing
 import com.godaily.driver.core.sync.EntryState
@@ -87,6 +89,8 @@ data class UiState(
     val message: String? = null,
     val dialogError: String? = null,
     val loginError: String? = null,
+    /** Error on «غيّر كلمة المرور» (office-set password, security audit L10). */
+    val passwordError: String? = null,
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -174,6 +178,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun consumeMessage() = _state.update { it.copy(message = null) }
+
+    /** Replace the office-set password; recording is blocked until this succeeds. */
+    fun changePassword(current: String, new: String, confirm: String) {
+        val request = when (val check = checkPasswordChange(current, new, confirm)) {
+            is PasswordCheck.Invalid -> {
+                _state.update { it.copy(passwordError = check.errors.values.first()) }
+                return
+            }
+            is PasswordCheck.Valid -> check.request
+        }
+        busy {
+            try {
+                c.api.changePassword(request)
+                _state.update { it.copy(passwordError = null, me = it.me?.copy(mustChangePassword = false)) }
+                refresh()
+            } catch (e: ApiError) {
+                _state.update { it.copy(passwordError = e.message) }
+            }
+        }
+    }
 
     fun login(phone: String, password: String) {
         if (phone.isBlank() || password.isEmpty()) {

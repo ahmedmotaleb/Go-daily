@@ -91,8 +91,16 @@ def get_current_driver_user(user: CurrentUser) -> User:
 CurrentDriverUser = Annotated[User, Depends(get_current_driver_user)]
 
 
-def get_current_driver(user: CurrentDriverUser, db: DbSession) -> Driver:
-    """The Driver profile of the logged-in driver account (must be employed)."""
+def get_current_driver(user: CurrentDriverUser, db: DbSession, request: Request) -> Driver:
+    """The Driver profile of the logged-in driver account (must be employed).
+
+    A password set by staff that must be changed first (opt-in, security audit
+    L10) blocks every driver-app write; reads stay open for the change screen.
+    """
+    if user.must_change_password and request.method not in ("GET", "HEAD"):
+        raise PermissionDenied(
+            "غيّر كلمة المرور التي أعطتها لك الإدارة أولًا", code="password_change_required"
+        )
     driver = db.scalar(select(Driver).where(Driver.user_id == user.id))
     if driver is None:
         raise PermissionDenied("الحساب غير مرتبط بملف سائق", code="no_driver_profile")

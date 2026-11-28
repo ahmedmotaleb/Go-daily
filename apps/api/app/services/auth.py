@@ -376,6 +376,7 @@ def change_password(
     validate_new_password(new_password, phone=user.phone)
     user.password_hash = hash_password(new_password)
     user.password_changed_at = utcnow()
+    user.must_change_password = False
     revoked = revoke_user_sessions(
         db, user.id, reason="password_changed", except_session_id=session.id
     )

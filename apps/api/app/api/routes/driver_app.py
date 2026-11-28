@@ -96,7 +96,9 @@ def _own_shift(db: DbSession, driver: Driver, shift_id: uuid.UUID) -> Shift:
 
 
 @router.get("/me", response_model=DriverMeOut)
-def me(driver: CurrentDriver, db: DbSession, app_version: AppVersion = None) -> DriverMeOut:
+def me(
+    driver: CurrentDriver, user: CurrentDriverUser, db: DbSession, app_version: AppVersion = None
+) -> DriverMeOut:
     active = shifts_service.active_shift_for_driver(db, driver.id)
     version = app_versions.parse(app_version)
     settings = get_settings()
@@ -114,6 +116,7 @@ def me(driver: CurrentDriver, db: DbSession, app_version: AppVersion = None) -> 
             recommended_version=settings.driver_app_recommended_version,
             status=app_versions.status_for(version).value,
         ),
+        must_change_password=user.must_change_password,
     )
 
 

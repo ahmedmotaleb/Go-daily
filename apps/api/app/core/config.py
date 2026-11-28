@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     # Opt-in hard cap: a driver close-out line or fuel entry above this is
     # refused (amount_above_limit). Unset = no cap.
     closeout_max_line_amount: Decimal | None = None
+    # Opt-in (security audit L10): a driver password set by staff must be
+    # changed by the driver before any driver-app write.
+    driver_force_password_change: bool = False
     twofa_enforce: bool = False
     twofa_required_roles: str = "SUPER_ADMIN,ADMIN"
     # Minutes allowed between the password step and the code step.

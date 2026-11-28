@@ -35,6 +35,8 @@ class DriverMeOut(BaseModel):
     vehicles: list[DriverVehicleOut]
     active_shift: ShiftOut | None
     app_update: AppUpdateOut | None = None
+    # The staff-set password must be changed before recording (security audit L10).
+    must_change_password: bool = False
 
 
 class AppUpdateOut(BaseModel):

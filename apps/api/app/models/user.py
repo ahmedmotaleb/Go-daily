@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import BigInteger, ForeignKey, Index, String, Text, func, text
+from sqlalchemy import BigInteger, ForeignKey, Index, String, Text, false, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.permissions import UserRole
@@ -24,6 +24,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     last_login_at: Mapped[datetime | None]
     password_changed_at: Mapped[datetime | None]
+    # Set when staff chose this password and DRIVER_FORCE_PASSWORD_CHANGE is on
+    # (security audit L10): driver-app writes wait until the driver changes it.
+    must_change_password: Mapped[bool] = mapped_column(default=False, server_default=false())
     failed_login_count: Mapped[int] = mapped_column(default=0, server_default=text("0"))
     locked_until: Mapped[datetime | None]
     # Two-factor login (U31). The TOTP secret is stored encrypted; it is set

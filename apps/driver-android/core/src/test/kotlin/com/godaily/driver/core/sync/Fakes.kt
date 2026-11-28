@@ -2,6 +2,7 @@ package com.godaily.driver.core.sync
 
 import com.godaily.driver.core.api.ApiError
 import com.godaily.driver.core.api.CashAccount
+import com.godaily.driver.core.api.ChangePasswordRequest
 import com.godaily.driver.core.api.Closeout
 import com.godaily.driver.core.api.CloseoutRequest
 import com.godaily.driver.core.api.DayOff
@@ -169,6 +170,7 @@ class FakeDriverApi : DriverApi {
     override suspend fun login(request: LoginRequest): LoginResponse = error("unused")
     override suspend fun logout() = error("unused")
     override suspend fun me(): DriverMe = error("unused")
+    override suspend fun changePassword(request: ChangePasswordRequest) = error("unused")
     override suspend fun catalog(): DriverCatalog = error("unused")
     override suspend fun activeShift(): Shift? = error("unused")
     override suspend fun todayShifts(): List<Shift> = error("unused")

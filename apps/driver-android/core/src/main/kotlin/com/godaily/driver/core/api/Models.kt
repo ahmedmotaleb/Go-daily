@@ -54,6 +54,14 @@ data class DriverMe(
     @SerialName("active_shift") val activeShift: Shift? = null,
     /** Version policy for this build (U44); null from servers before it. */
     @SerialName("app_update") val appUpdate: AppUpdate? = null,
+    /** The office set this password: change it before recording (security audit L10). */
+    @SerialName("must_change_password") val mustChangePassword: Boolean = false,
+)
+
+@Serializable
+data class ChangePasswordRequest(
+    @SerialName("current_password") val currentPassword: String,
+    @SerialName("new_password") val newPassword: String,
 )
 
 @Serializable

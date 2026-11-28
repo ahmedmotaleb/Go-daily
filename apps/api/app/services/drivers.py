@@ -12,6 +12,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core import crypto
+from app.core.config import get_settings
 from app.core.errors import ConflictError, NotFoundError, ValidationFailed
 from app.core.permissions import UserRole
 from app.core.security import hash_password
@@ -264,6 +265,7 @@ def create_app_account(db: Session, *, actor: User, driver_id: uuid.UUID, passwo
         ),
         commit=False,
     )
+    user.must_change_password = get_settings().driver_force_password_change
     driver.user_id = user.id
     audit.record(
         db,
@@ -285,6 +287,7 @@ def reset_app_password(db: Session, *, actor: User, driver_id: uuid.UUID, passwo
     auth_service.validate_new_password(password, phone=driver.phone)
     driver.user.password_hash = hash_password(password)
     driver.user.password_changed_at = utcnow()
+    driver.user.must_change_password = get_settings().driver_force_password_change
     driver.user.failed_login_count = 0
     driver.user.locked_until = None
     revoked = auth_service.revoke_user_sessions(db, driver.user.id, reason="password_reset")
