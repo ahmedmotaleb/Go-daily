@@ -17,7 +17,7 @@ from typing import Literal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.errors import ConflictError, NotFoundError
+from app.core.errors import ConflictError, NotFoundError, field_error
 from app.core.time import utcnow
 from app.models.driver import Driver
 from app.models.finance import (
@@ -27,9 +27,9 @@ from app.models.finance import (
     LedgerEntryType,
     LedgerSource,
 )
-from app.models.user import User
+from app.models.user import AuthSession, User
 from app.schemas.finance import LedgerEntryIn
-from app.services import audit
+from app.services import audit, reauth
 
 ZERO = Decimal("0")
 
@@ -135,25 +135,39 @@ def void_source(
         _void(db, entry, actor, reason)
 
 
-def void_settlement_payments(
-    db: Session, settlement_id: uuid.UUID, actor: User | None, reason: str
-) -> None:
-    """Void the live payments recorded against a settlement (U20; caller commits)."""
-    for entry in db.scalars(
-        select(DriverLedgerEntry).where(
-            DriverLedgerEntry.settlement_id == settlement_id,
-            DriverLedgerEntry.entry_type == LedgerEntryType.PAYMENT,
-            DriverLedgerEntry.voided_at.is_(None),
-        )
-    ).all():
-        _void(db, entry, actor, reason)
+# Entry types the office may post by hand. The others come only from their own
+# flow, which carries its controls: EARNING and PAYMENT from settlements (review,
+# finalize, re-auth), CASH_HANDOVER from cash collections (over-collection
+# check, cash board), REIMBURSEMENT from approved fuel and expenses
+# (expenses:approve) and CASH_COLLECTED from revenue receipts and close-outs.
+MANUAL_TYPES = frozenset(
+    {
+        LedgerEntryType.ADVANCE,
+        LedgerEntryType.DEDUCTION,
+        LedgerEntryType.BONUS,
+        LedgerEntryType.ADJUSTMENT,
+    }
+)
 
 
 def create_manual(
-    db: Session, *, actor: User, driver_id: uuid.UUID, data: LedgerEntryIn
+    db: Session,
+    *,
+    actor: User,
+    driver_id: uuid.UUID,
+    data: LedgerEntryIn,
+    session: AuthSession | None = None,
 ) -> DriverLedgerEntry:
+    if data.entry_type not in MANUAL_TYPES:
+        raise field_error(
+            "entry_type",
+            "هذا النوع يُسجل من مساره الخاص فقط (التسويات، التحصيل النقدي، أو اعتماد المصروفات)",
+            code="ledger_type_not_manual",
+        )
     if db.get(Driver, driver_id) is None:
         raise NotFoundError("السائق غير موجود")
+    if session is not None:
+        reauth.require_for_amount(session, data.amount)
     entry = post(
         db,
         driver_id=driver_id,
@@ -170,8 +184,15 @@ def create_manual(
     return entry
 
 
-def void_manual(db: Session, *, actor: User, entry_id: uuid.UUID, reason: str) -> DriverLedgerEntry:
-    entry = db.get(DriverLedgerEntry, entry_id)
+def void_manual(
+    db: Session,
+    *,
+    actor: User,
+    entry_id: uuid.UUID,
+    reason: str,
+    session: AuthSession | None = None,
+) -> DriverLedgerEntry:
+    entry = db.get(DriverLedgerEntry, entry_id, with_for_update=True)
     if entry is None:
         raise NotFoundError("القيد غير موجود")
     if entry.voided_at is not None:
@@ -180,6 +201,8 @@ def void_manual(db: Session, *, actor: User, entry_id: uuid.UUID, reason: str) -
         raise ConflictError(
             "هذا القيد ناتج عن سجل آخر؛ ألغِ السجل الأصلي أو التسوية", code="system_entry"
         )
+    if session is not None:
+        reauth.require_for_amount(session, entry.amount)
     _void(db, entry, actor, reason)
     db.commit()
     return entry

@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.permissions import Permission, has_permission
 from app.models.finance import (
     DriverLedgerEntry,
     DriverSettlement,
@@ -81,7 +82,13 @@ def _review_user_ids(records: Sequence[Any]) -> list[uuid.UUID | None]:
     return [uid for r in records for uid in (r.created_by_id, r.reviewed_by_id, r.voided_by_id)]
 
 
-def fuel_outs(db: Session, records: Sequence[FuelTransaction]) -> list[FuelOut]:
+def fuel_outs(db: Session, records: Sequence[FuelTransaction], *, viewer: User) -> list[FuelOut]:
+    """The phone's position at fuelling is driver location: only for tracking readers.
+
+    Accountants are barred from tracking (driver privacy, security audit M10);
+    they keep the station match and the plausibility result.
+    """
+    located = has_permission(viewer.role, Permission.TRACKING_READ)
     users = load_users(db, _review_user_ids(records))
     corrected = fc.corrected_by_map(db, FuelTransaction, [r.id for r in records])
     return [
@@ -104,9 +111,9 @@ def fuel_outs(db: Session, records: Sequence[FuelTransaction]) -> list[FuelOut]:
             payment_method=r.payment_method,
             paid_by=r.paid_by,
             device_recorded_at=r.device_recorded_at,
-            latitude=r.latitude,
-            longitude=r.longitude,
-            location_accuracy_m=r.location_accuracy_m,
+            latitude=r.latitude if located else None,
+            longitude=r.longitude if located else None,
+            location_accuracy_m=r.location_accuracy_m if located else None,
         )
         for r in records
     ]
@@ -308,6 +315,7 @@ def maintenance_outs(db: Session, records: Sequence[MaintenanceRecord]) -> list[
                 downtime_end=r.downtime_end,
                 downtime_hours=hours,
                 fuel_transaction_id=r.fuel_transaction_id,
+                closeout_expense_id=r.closeout_expense_id,
                 consumable_quantity=r.consumable_quantity,
                 consumable_spec=r.consumable_spec,
                 next_due_km=r.next_due_km,

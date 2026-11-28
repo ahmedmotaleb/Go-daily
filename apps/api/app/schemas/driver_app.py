@@ -7,7 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import AwareDatetime, BaseModel, Field, StringConstraints
 
 from app.schemas.operations import OperationTypeOut
 from app.schemas.shift import ShiftOut
@@ -35,6 +35,8 @@ class DriverMeOut(BaseModel):
     vehicles: list[DriverVehicleOut]
     active_shift: ShiftOut | None
     app_update: AppUpdateOut | None = None
+    # The staff-set password must be changed before recording (security audit L10).
+    must_change_password: bool = False
 
 
 class AppUpdateOut(BaseModel):
@@ -60,6 +62,9 @@ class DriverShiftStart(BaseModel):
 class DriverShiftEnd(BaseModel):
     end_odometer_km: Odometer
     notes: Notes | None = None
+    # When the driver ended it on the phone (sent later when offline). Used
+    # only when plausible; otherwise the server's clock (security audit M4).
+    ended_at: AwareDatetime | None = None
 
 
 class DriverSessionStart(BaseModel):

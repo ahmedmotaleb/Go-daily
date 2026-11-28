@@ -218,3 +218,158 @@ def test_s3_backend_round_trip_with_private_objects() -> None:
         storage.delete("fuel_transaction/2026/03/abc.jpg")
         with pytest.raises(StorageError):
             storage.get("fuel_transaction/2026/03/abc.jpg")
+
+
+# --- Security audit M5 (runtime L2, L4): attachment permissions, 2FA gate, no ID probing --
+
+
+def test_attachment_permissions_are_checked_with_the_owner_permission(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core import permissions
+    from app.core.permissions import Permission
+
+    _, accountant = login_as(client, db, UserRole.ACCOUNTANT)
+    tx = _fuel(client, accountant, db)
+    att = _upload(client, accountant, tx["id"], JPEG).json()["attachment"]
+    _, ops = login_as(client, db, UserRole.OPERATIONS)
+    reduced = permissions.ROLE_PERMISSIONS[UserRole.OPERATIONS] - {Permission.ATTACHMENTS_READ}
+    monkeypatch.setitem(permissions.ROLE_PERMISSIONS, UserRole.OPERATIONS, reduced)
+    # fuel:read alone no longer opens fuel receipts: attachments:read is needed too.
+    content = client.get(f"/api/v1/attachments/{att['id']}/content", headers=ops)
+    assert content.status_code == 404
+    listing = client.get(
+        "/api/v1/attachments",
+        params={"owner_type": "fuel_transaction", "owner_id": tx["id"]},
+        headers=ops,
+    )
+    assert listing.status_code == 403
+    assert listing.json()["error"]["details"]["missing"] == ["attachments:read"]
+    no_write = permissions.ROLE_PERMISSIONS[UserRole.ACCOUNTANT] - {Permission.ATTACHMENTS_WRITE}
+    monkeypatch.setitem(permissions.ROLE_PERMISSIONS, UserRole.ACCOUNTANT, no_write)
+    assert _upload(client, accountant, tx["id"], PNG).status_code == 403
+
+
+def test_unreadable_attachments_look_like_missing_ones(client: TestClient, db: Session) -> None:
+    _, accountant = login_as(client, db, UserRole.ACCOUNTANT)
+    vehicle = make_vehicle(db)
+    revenue = client.post(
+        "/api/v1/revenue",
+        headers=accountant,
+        json={
+            "kind": "PRIVATE_TRIP",
+            "vehicle_id": str(vehicle.id),
+            "occurred_on": utcnow().date().isoformat(),
+            "amount": "500",
+        },
+    )
+    assert revenue.status_code == 201, revenue.text
+    att = _upload(
+        client, accountant, revenue.json()["id"], PDF, "contract.pdf", owner_type="revenue_entry"
+    ).json()["attachment"]
+    _, ops = login_as(client, db, UserRole.OPERATIONS)  # no revenue:read
+    existing = client.get(f"/api/v1/attachments/{att['id']}/content", headers=ops)
+    random = client.get(
+        "/api/v1/attachments/00000000-0000-0000-0000-000000000001/content", headers=ops
+    )
+    assert existing.status_code == random.status_code == 404
+    assert existing.json() == random.json()
+    gone = client.post(
+        f"/api/v1/attachments/{att['id']}/delete", headers=ops, json={"reason": "حذف"}
+    )
+    assert gone.status_code == 404
+
+
+def test_attachments_respect_the_two_factor_setup_gate(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(get_settings(), "twofa_enforce", True)
+    _, admin = login_as(client, db, UserRole.ADMIN)
+    vehicle = make_vehicle(db)
+    res = client.get(
+        "/api/v1/attachments",
+        params={"owner_type": "vehicle", "owner_id": str(vehicle.id)},
+        headers=admin,
+    )
+    assert res.status_code == 403
+    assert res.json()["error"]["code"] == "twofa_setup_required"
+
+
+# --- Security audit M6 (runtime L3): duplicate reports stay within what the caller reads --
+
+
+def test_duplicates_only_name_records_the_caller_can_read(client: TestClient, db: Session) -> None:
+    _, accountant = login_as(client, db, UserRole.ACCOUNTANT)
+    vehicle = make_vehicle(db)
+    revenue = client.post(
+        "/api/v1/revenue",
+        headers=accountant,
+        json={
+            "kind": "PRIVATE_TRIP",
+            "vehicle_id": str(vehicle.id),
+            "occurred_on": utcnow().date().isoformat(),
+            "amount": "500",
+        },
+    ).json()
+    _upload(client, accountant, revenue["id"], PDF, "a.pdf", owner_type="revenue_entry")
+    _, ops = login_as(client, db, UserRole.OPERATIONS)  # no revenue:read
+    seen = _upload(client, ops, str(vehicle.id), PDF, "b.pdf", owner_type="vehicle").json()
+    assert all(d["owner_type"] != "revenue_entry" for d in seen["duplicates"])
+    _, admin = login_as(client, db, UserRole.ADMIN)  # reads revenue and writes vehicles
+    again = _upload(client, admin, str(vehicle.id), PDF, "c.pdf", owner_type="vehicle").json()
+    assert "revenue_entry" in {d["owner_type"] for d in again["duplicates"]}
+
+
+def test_drivers_are_not_told_about_other_records(client: TestClient, db: Session) -> None:
+    import uuid
+
+    _, _, other, _ = make_driver_account(client, db)
+    secret = PNG + b"other-driver-photo"
+    client.post(
+        "/api/v1/driver/odometer-photo",
+        headers=other,
+        files={"file": ("o.png", secret, "image/png")},
+    )
+    _, _, h, vehicle = make_driver_account(client, db)
+    started = client.post(
+        "/api/v1/driver/shifts/start",
+        headers=h,
+        json={
+            "vehicle_id": str(vehicle.id),
+            "start_odometer_km": 50_000,
+            "start_odometer_photo_id": start_photo(client, h),
+        },
+    )
+    assert started.status_code == 201, started.text
+    fuel = client.post(
+        "/api/v1/driver/fuel",
+        headers={**h, "Idempotency-Key": str(uuid.uuid4())},
+        json={"fuel_type_id": fuel_type_id(db, "CNG"), "quantity": "5", "total_amount": "35"},
+    ).json()
+    res = client.post(
+        f"/api/v1/driver/fuel/{fuel['id']}/receipt",
+        headers={**h, "Idempotency-Key": str(uuid.uuid4())},
+        files={"file": ("r.png", secret, "image/png")},
+    )
+    assert res.status_code == 201, res.text
+    # The office still gets the DUPLICATE_FILE review case; the driver learns nothing.
+    assert res.json()["duplicates"] == []
+
+
+# --- Security audit L7: a failed upload leaves no orphaned file in storage --------------
+
+
+def test_a_failed_upload_removes_the_stored_file(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    _, accountant = login_as(client, db, UserRole.ACCOUNTANT)
+    tx = _fuel(client, accountant, db)
+
+    def fail(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("database write failed after the file was stored")
+
+    monkeypatch.setattr("app.services.attachments.audit.record", fail)
+    with pytest.raises(RuntimeError):
+        _upload(client, accountant, tx["id"], JPEG)
+    stored = [p for p in (tmp_path / "attachments").rglob("*") if p.is_file()]
+    assert stored == []

@@ -195,8 +195,15 @@ def _add_costs(db: Session, r: _Range, acc: _Acc) -> None:
         )
     ).all():
         acc[record.vehicle_id].maintenance += record.total_cost
+    # A close-out expense covered by an approved maintenance record is the same
+    # job: it is counted once, through the record (security audit M11).
+    covered = select(MaintenanceRecord.closeout_expense_id).where(
+        MaintenanceRecord.status == RecordStatus.APPROVED,
+        MaintenanceRecord.closeout_expense_id.is_not(None),
+    )
     for ex in db.scalars(
         select(Expense).where(
+            Expense.id.not_in(covered),
             Expense.status == RecordStatus.APPROVED,
             Expense.occurred_at >= r.start_utc,
             Expense.occurred_at < r.end_utc,

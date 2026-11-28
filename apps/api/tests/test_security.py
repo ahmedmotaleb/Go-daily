@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from typing import Any
 
 import pytest
@@ -17,7 +17,17 @@ from app.core.permissions import ROLE_PERMISSIONS, Permission, UserRole
 from app.main import app
 from tests.factories import login_as, make_driver_account, make_user
 
-PUBLIC = {("GET", "/health"), ("GET", "/ready"), ("POST", "/api/v1/auth/login")}
+PUBLIC = {
+    ("GET", "/health"),
+    ("GET", "/ready"),
+    # 404 unless METRICS_TOKEN is set; then a bearer token (compared in constant time).
+    ("GET", "/metrics"),
+    ("POST", "/api/v1/auth/login"),
+    # Second login step: the sealed, time-limited challenge stands in for a session.
+    ("POST", "/api/v1/auth/login/2fa"),
+    # Tracker webhook: off unless TRACKER_WEBHOOK_SECRET is set; then HMAC-signed.
+    ("POST", "/api/v1/trackers/{provider}/events"),
+}
 
 # Routes that need a login but no role permission: the service checks access
 # itself (own session, own inbox, owning-record rules for files).
@@ -29,7 +39,16 @@ AUTHENTICATED_ONLY = {
     ("GET", "/api/v1/attachments"),
     ("GET", "/api/v1/attachments/{attachment_id}/content"),
     ("POST", "/api/v1/attachments/{attachment_id}/delete"),
+    ("POST", "/api/v1/auth/reauth"),
+    ("GET", "/api/v1/auth/2fa"),
+    ("POST", "/api/v1/auth/2fa/setup"),
+    ("POST", "/api/v1/auth/2fa/enable"),
+    ("POST", "/api/v1/auth/2fa/disable"),
+    ("POST", "/api/v1/auth/2fa/recovery-codes"),
 }
+
+# Every endpoint of the API (security audit H2: the walk once found none).
+EXPECTED_ROUTES = 242
 
 
 def _calls(dependant: Any) -> Iterator[Callable[..., Any]]:
@@ -39,13 +58,35 @@ def _calls(dependant: Any) -> Iterator[Callable[..., Any]]:
         yield from _calls(dep)
 
 
+def _walk(routes: Iterable[Any], prefix: str = "") -> Iterator[tuple[str, APIRoute]]:
+    """Every APIRoute, also inside included routers (FastAPI nests them)."""
+    for route in routes:
+        if isinstance(route, APIRoute):
+            yield prefix + route.path, route
+        elif hasattr(route, "original_router"):
+            context = getattr(route, "include_context", None)
+            inner = getattr(context, "prefix", "") or ""
+            yield from _walk(route.original_router.routes, prefix + inner)
+        elif hasattr(route, "routes") and isinstance(getattr(route, "routes", None), list):
+            yield from _walk(route.routes, prefix + (getattr(route, "path", "") or ""))
+
+
 def _routes() -> list[tuple[str, str, APIRoute]]:
     out = []
-    for route in app.routes:
-        if isinstance(route, APIRoute):
-            for method in sorted(route.methods or ()):
-                out.append((method, route.path, route))
+    for path, route in _walk(app.routes):
+        for method in sorted(route.methods or ()):
+            out.append((method, path, route))
     return out
+
+
+def test_the_route_walk_sees_every_endpoint() -> None:
+    """Guard for the tests below: an empty walk would make them pass vacuously."""
+    routes = _routes()
+    assert len(routes) == EXPECTED_ROUTES, len(routes)
+    paths = {(m, p) for m, p, _ in routes}
+    assert ("GET", "/api/v1/vehicles") in paths
+    assert ("POST", "/api/v1/settlements/{settlement_id}/pay") in paths
+    assert ("POST", "/api/v1/driver/shifts/{shift_id}/closeout") in paths
 
 
 def _required(route: APIRoute) -> set[Permission] | None:

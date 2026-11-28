@@ -12,6 +12,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core import crypto
+from app.core.config import get_settings
 from app.core.errors import ConflictError, NotFoundError, ValidationFailed
 from app.core.permissions import UserRole
 from app.core.security import hash_password
@@ -23,6 +24,7 @@ from app.models.driver import (
     DriverCompensationPlan,
     EmploymentStatus,
 )
+from app.models.finance import POSTED_SETTLEMENTS, DriverSettlement
 from app.models.user import User
 from app.schemas.common import PageParams
 from app.schemas.driver import CompensationPlanCreate, DriverCreate, DriverUpdate
@@ -263,6 +265,7 @@ def create_app_account(db: Session, *, actor: User, driver_id: uuid.UUID, passwo
         ),
         commit=False,
     )
+    user.must_change_password = get_settings().driver_force_password_change
     driver.user_id = user.id
     audit.record(
         db,
@@ -284,6 +287,7 @@ def reset_app_password(db: Session, *, actor: User, driver_id: uuid.UUID, passwo
     auth_service.validate_new_password(password, phone=driver.phone)
     driver.user.password_hash = hash_password(password)
     driver.user.password_changed_at = utcnow()
+    driver.user.must_change_password = get_settings().driver_force_password_change
     driver.user.failed_login_count = 0
     driver.user.locked_until = None
     revoked = auth_service.revoke_user_sessions(db, driver.user.id, reason="password_reset")
@@ -364,13 +368,35 @@ def add_compensation_plan(
         .limit(1)
         .with_for_update()
     )
+    # History is never edited (security audit L1): a new plan cannot start inside
+    # a finalized or paid settlement period, and a plan whose end was already set
+    # is not shortened.
+    settled = db.scalar(
+        select(DriverSettlement.id)
+        .where(
+            DriverSettlement.driver_id == driver_id,
+            DriverSettlement.status.in_(POSTED_SETTLEMENTS),
+            DriverSettlement.period_end >= data.effective_from,
+        )
+        .limit(1)
+    )
+    if settled is not None:
+        raise ConflictError(
+            "تاريخ بداية الخطة داخل فترة تسوية معتمدة؛ اختر تاريخًا بعد آخر تسوية",
+            code="plan_in_settled_period",
+        )
     if latest is not None:
         if data.effective_from <= latest.effective_from:
             raise ConflictError(
                 "تاريخ بداية الخطة الجديدة يجب أن يكون بعد بداية الخطة الحالية",
                 code="plan_effective_date_conflict",
             )
-        if latest.effective_to is None or latest.effective_to >= data.effective_from:
+        if latest.effective_to is not None and latest.effective_to >= data.effective_from:
+            raise ConflictError(
+                "الخطة السابقة منتهية بعد هذا التاريخ؛ لا يُعدّل تاريخ انتهائها",
+                code="plan_effective_date_conflict",
+            )
+        if latest.effective_to is None:
             old_to = latest.effective_to
             latest.effective_to = data.effective_from - timedelta(days=1)
             audit.record(

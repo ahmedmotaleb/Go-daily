@@ -181,5 +181,11 @@ def vehicle_day_timeline(
     """Vehicle daily timeline (U24); each kind only with its own read permission."""
     vehicles_service.get_vehicle(db, vehicle_id)
     sections = {s for s, p in SECTION_PERMISSIONS.items() if has_permission(user.role, p)}
-    items = vehicle_timeline.timeline(db, vehicle_id, day or local_today(), sections)
+    items = vehicle_timeline.timeline(
+        db,
+        vehicle_id,
+        day or local_today(),
+        sections,
+        with_money=has_permission(user.role, Permission.REVENUE_READ),
+    )
     return [TimelineItemOut(**i.__dict__) for i in items]

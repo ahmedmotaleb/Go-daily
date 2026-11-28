@@ -84,14 +84,17 @@ def update_fuel_type(
 
 @router.get("/fuel", response_model=Page[FuelOut])
 def list_fuel(
-    _: Reader,
+    viewer: Reader,
     db: DbSession,
     params: Annotated[PageParams, Depends(page_params)],
     filters: Filters,
 ) -> Page[FuelOut]:
     rows, total = fuel_service.list_transactions(db, params, filters)
     return Page(
-        items=fuel_outs(db, rows), total=total, page=params.page, page_size=params.page_size
+        items=fuel_outs(db, rows, viewer=viewer),
+        total=total,
+        page=params.page,
+        page_size=params.page_size,
     )
 
 
@@ -108,7 +111,7 @@ def create_fuel(body: FuelCreate, actor: Writer, db: DbSession) -> FuelOut:
         data=body,
         can_approve=has_permission(actor.role, Permission.EXPENSES_APPROVE),
     )
-    return fuel_outs(db, [tx])[0]
+    return fuel_outs(db, [tx], viewer=actor)[0]
 
 
 @router.get("/fuel/{tx_id}/plausibility", response_model=list[PlausibilityCheckOut])
@@ -119,31 +122,39 @@ def fuel_plausibility(tx_id: uuid.UUID, _: Reader, db: DbSession) -> list[Plausi
 
 
 @router.get("/fuel/{tx_id}", response_model=FuelOut)
-def get_fuel(tx_id: uuid.UUID, _: Reader, db: DbSession) -> FuelOut:
-    return fuel_outs(db, [fuel_service.get(db, tx_id)])[0]
+def get_fuel(tx_id: uuid.UUID, viewer: Reader, db: DbSession) -> FuelOut:
+    return fuel_outs(db, [fuel_service.get(db, tx_id)], viewer=viewer)[0]
 
 
 @router.patch("/fuel/{tx_id}", response_model=FuelOut)
 def update_fuel(tx_id: uuid.UUID, body: FuelUpdate, actor: Writer, db: DbSession) -> FuelOut:
-    return fuel_outs(db, [fuel_service.update(db, actor=actor, tx_id=tx_id, data=body)])[0]
+    return fuel_outs(
+        db, [fuel_service.update(db, actor=actor, tx_id=tx_id, data=body)], viewer=actor
+    )[0]
 
 
 @router.post("/fuel/{tx_id}/approve", response_model=FuelOut)
 def approve_fuel(tx_id: uuid.UUID, body: ReviewAction, actor: Approver, db: DbSession) -> FuelOut:
-    return fuel_outs(db, [fuel_service.approve(db, actor=actor, tx_id=tx_id, note=body.note)])[0]
+    return fuel_outs(
+        db, [fuel_service.approve(db, actor=actor, tx_id=tx_id, note=body.note)], viewer=actor
+    )[0]
 
 
 @router.post("/fuel/{tx_id}/reject", response_model=FuelOut)
 def reject_fuel(tx_id: uuid.UUID, body: RejectAction, actor: Approver, db: DbSession) -> FuelOut:
-    return fuel_outs(db, [fuel_service.reject(db, actor=actor, tx_id=tx_id, reason=body.reason)])[0]
+    return fuel_outs(
+        db, [fuel_service.reject(db, actor=actor, tx_id=tx_id, reason=body.reason)], viewer=actor
+    )[0]
 
 
 @router.post("/fuel/{tx_id}/void", response_model=FuelOut)
 def void_fuel(tx_id: uuid.UUID, body: VoidAction, actor: Approver, db: DbSession) -> FuelOut:
-    return fuel_outs(db, [fuel_service.void(db, actor=actor, tx_id=tx_id, reason=body.reason)])[0]
+    return fuel_outs(
+        db, [fuel_service.void(db, actor=actor, tx_id=tx_id, reason=body.reason)], viewer=actor
+    )[0]
 
 
 @router.post("/fuel/{tx_id}/correct", response_model=FuelOut, status_code=status.HTTP_201_CREATED)
 def correct_fuel(tx_id: uuid.UUID, body: FuelCorrection, actor: Approver, db: DbSession) -> FuelOut:
     tx = fuel_service.correct(db, actor=actor, tx_id=tx_id, data=body, can_approve=True)
-    return fuel_outs(db, [tx])[0]
+    return fuel_outs(db, [tx], viewer=actor)[0]

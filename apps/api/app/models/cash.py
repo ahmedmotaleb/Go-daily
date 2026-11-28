@@ -81,6 +81,9 @@ class ShiftCloseout(UUIDPrimaryKeyMixin, Base):
     source: Mapped[RecordSource] = mapped_column(enum_column_type(RecordSource, "record_source"))
     end_odometer_km: Mapped[int] = mapped_column(Integer)
     collection_amount: Mapped[Decimal]
+    # Part of collection_amount earned on ride-hailing (not booked as revenue:
+    # the platform statement is the source). Null on close-outs before 0033.
+    ride_hailing_amount: Mapped[Decimal | None]
     gas_quantity: Mapped[Decimal | None] = mapped_column(Quantity)
     gas_amount: Mapped[Decimal] = mapped_column(default=Decimal("0"), server_default="0")
     gasoline_quantity: Mapped[Decimal | None] = mapped_column(Quantity)
@@ -114,6 +117,11 @@ class ShiftCloseout(UUIDPrimaryKeyMixin, Base):
             name="amounts_non_negative",
         ),
         CheckConstraint("end_odometer_km >= 0", name="odometer_non_negative"),
+        CheckConstraint(
+            "ride_hailing_amount IS NULL OR "
+            "(ride_hailing_amount >= 0 AND ride_hailing_amount <= collection_amount)",
+            name="ride_hailing_within_collection",
+        ),
         CheckConstraint(
             "gas_amount = 0 OR (gas_quantity IS NOT NULL AND gas_quantity > 0)",
             name="gas_quantity_required",

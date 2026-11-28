@@ -152,7 +152,13 @@ class SyncEngine(
         try {
             progress.endedShift = api.endShift(
                 end.shiftId,
-                EndShiftRequest(endOdometerKm = end.endOdometerKm, notes = end.notes),
+                // The phone's time of the end: a shift ended offline must not
+                // last until the sync (the server checks it is plausible).
+                EndShiftRequest(
+                    endOdometerKm = end.endOdometerKm,
+                    notes = end.notes,
+                    endedAt = end.requestedAt.toString(),
+                ),
                 end.idempotencyKey,
             )
         } catch (e: ApiError.Rejected) {

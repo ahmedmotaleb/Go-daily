@@ -8,23 +8,29 @@ import { LEDGER_TYPE_LABELS, options } from "@/lib/finance-labels";
 import type { LedgerEntryType } from "@/lib/finance-types";
 import type { FormState } from "@/lib/forms";
 
+// Only these are entered by hand. Payments go through the settlement, cash
+// handovers through «تحصيل نقدية السائقين», reimbursements through approval.
 const HINTS: Partial<Record<LedgerEntryType, string>> = {
-  CASH_HANDOVER: "السائق سلّم نقدية للشركة (يقلل ما عليه)",
   ADVANCE: "سلفة مدفوعة للسائق (عليه)",
-  PAYMENT: "صرف مستحقات للسائق (يقلل ما له)",
   BONUS: "مكافأة مستحقة للسائق (له)",
   DEDUCTION: "خصم على السائق — السبب مطلوب",
   ADJUSTMENT: "تسوية يدوية — الاتجاه والسبب مطلوبان",
 };
 
-const MANUAL_TYPES = options(LEDGER_TYPE_LABELS, ["EARNING", "REIMBURSEMENT", "CASH_COLLECTED"]);
+const MANUAL_TYPES = options(LEDGER_TYPE_LABELS, [
+  "EARNING",
+  "REIMBURSEMENT",
+  "CASH_COLLECTED",
+  "CASH_HANDOVER",
+  "PAYMENT",
+]);
 
 export function LedgerForm({
   action,
 }: {
   action: (s: FormState, f: FormData) => Promise<FormState>;
 }) {
-  const [type, setType] = useState<LedgerEntryType>("CASH_HANDOVER");
+  const [type, setType] = useState<LedgerEntryType>("ADVANCE");
   return (
     <ActionForm action={action} submitLabel="إضافة القيد" variant="accent">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

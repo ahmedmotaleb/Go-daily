@@ -74,13 +74,18 @@ def _ensure_can_manage(actor: User, role: UserRole) -> None:
 
 
 def _active_super_admin_count(db: Session) -> int:
-    return (
-        db.scalar(
-            select(func.count())
-            .select_from(User)
+    """Active super admins, with their rows locked (security audit L3).
+
+    Two super admins demoting or deactivating each other at the same moment
+    would both count two and leave none; the lock makes the second request
+    wait for the first and then count again.
+    """
+    return len(
+        db.scalars(
+            select(User.id)
             .where(User.role == UserRole.SUPER_ADMIN, User.is_active.is_(True))
-        )
-        or 0
+            .with_for_update()
+        ).all()
     )
 
 

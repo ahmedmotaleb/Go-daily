@@ -297,3 +297,34 @@ def test_cli_generate_notifications(
     make_vehicle(db, license_expiry=local_today() + timedelta(days=3))
     assert cli.main(["generate-notifications"]) == 0
     assert "1 new" in capsys.readouterr().out
+
+
+# --- Security audit L8: a lowered role no longer sees notices it cannot open ------------
+
+
+def test_inbox_follows_the_current_role(client: TestClient, db: Session) -> None:
+    from app.models.notifications import Notification, NotificationSeverity
+    from app.services import notifications as svc
+
+    user, h = login_as(client, db, UserRole.ADMIN)
+    db.add(
+        Notification(
+            user_id=user.id,
+            kind="PENDING_REVIEW",
+            severity=NotificationSeverity.WARNING,
+            title="سجلات مالية بانتظار الاعتماد",
+            dedupe_key="test:pending",
+            permission="expenses:approve",
+        )
+    )
+    db.commit()
+    assert client.get("/api/v1/notifications/unread-count", headers=h).json()["unread"] >= 1
+    user.role = UserRole.OPERATIONS  # lowered: no expenses:approve any more
+    db.commit()
+    listed = client.get("/api/v1/notifications", headers=h).json()
+    items = listed["items"] if isinstance(listed, dict) else listed
+    assert all(i["title"] != "سجلات مالية بانتظار الاعتماد" for i in items)
+    assert client.get("/api/v1/notifications/unread-count", headers=h).json()["unread"] == 0
+    # Generated notices record the permission they were sent under.
+    svc.generate(db)
+    assert all(n.permission for n in db.query(Notification).filter(Notification.kind != "x"))

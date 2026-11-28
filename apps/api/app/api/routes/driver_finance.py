@@ -92,17 +92,29 @@ def driver_statement(
     status_code=status.HTTP_201_CREATED,
 )
 def add_ledger_entry(
-    driver_id: uuid.UUID, body: LedgerEntryIn, actor: Writer, db: DbSession
+    driver_id: uuid.UUID,
+    body: LedgerEntryIn,
+    actor: Writer,
+    db: DbSession,
+    session: CurrentSession,
 ) -> LedgerEntryOut:
-    entry = driver_ledger.create_manual(db, actor=actor, driver_id=driver_id, data=body)
+    entry = driver_ledger.create_manual(
+        db, actor=actor, driver_id=driver_id, data=body, session=session
+    )
     return ledger_outs(db, [entry])[0]
 
 
 @router.post("/driver-ledger/{entry_id}/void", response_model=LedgerEntryOut)
 def void_ledger_entry(
-    entry_id: uuid.UUID, body: VoidAction, actor: Finalizer, db: DbSession
+    entry_id: uuid.UUID,
+    body: VoidAction,
+    actor: Finalizer,
+    db: DbSession,
+    session: CurrentSession,
 ) -> LedgerEntryOut:
-    entry = driver_ledger.void_manual(db, actor=actor, entry_id=entry_id, reason=body.reason)
+    entry = driver_ledger.void_manual(
+        db, actor=actor, entry_id=entry_id, reason=body.reason, session=session
+    )
     return ledger_outs(db, [entry])[0]
 
 
@@ -145,7 +157,14 @@ def finalize_settlement(
     # U35: large settlements need a recent password (and 2FA) confirmation.
     current = db.get(DriverSettlement, settlement_id)
     if current is not None:
-        amounts = [abs(current.earnings_amount), abs(current.closing_balance or Decimal(0))]
+        # Before approval the closing balance is still empty: the review's
+        # expected balance says what the driver's account will show (audit H3).
+        expected = (current.details or {}).get("expected_balance")
+        amounts = [
+            abs(current.earnings_amount),
+            abs(current.closing_balance or Decimal(0)),
+            abs(Decimal(str(expected))) if expected is not None else Decimal(0),
+        ]
         reauth.require_for_amount(session, max(amounts))
     settlement = settlements_service.finalize(db, actor=actor, settlement_id=settlement_id)
     return settlement_outs(db, [settlement])[0]
@@ -166,10 +185,19 @@ def generate_settlements(
 
 @router.post("/settlements/{settlement_id}/adjust", response_model=SettlementOut)
 def adjust_settlement(
-    settlement_id: uuid.UUID, body: SettlementAdjustIn, actor: Writer, db: DbSession
+    settlement_id: uuid.UUID,
+    body: SettlementAdjustIn,
+    actor: Writer,
+    db: DbSession,
+    session: CurrentSession,
 ) -> SettlementOut:
     settlement = settlements_service.adjust(
-        db, actor=actor, settlement_id=settlement_id, amount=body.amount, reason=body.reason
+        db,
+        actor=actor,
+        settlement_id=settlement_id,
+        amount=body.amount,
+        reason=body.reason,
+        session=session,
     )
     return settlement_outs(db, [settlement])[0]
 
@@ -198,8 +226,7 @@ def pay_settlement(
     db: DbSession,
     session: CurrentSession,
 ) -> SettlementOut:
-    """Record a payment made outside the system (U20). Large amounts need re-auth."""
-    reauth.require_for_amount(session, body.amount)
+    """Record a payment made outside the system (U20). Large totals need re-auth."""
     settlement = settlements_service.pay(
         db,
         actor=actor,
@@ -208,15 +235,20 @@ def pay_settlement(
         paid_on=body.paid_on,
         method=body.method,
         reference=body.reference,
+        session=session,
     )
     return settlement_outs(db, [settlement])[0]
 
 
 @router.post("/settlements/{settlement_id}/void", response_model=SettlementOut)
 def void_settlement(
-    settlement_id: uuid.UUID, body: VoidAction, actor: Finalizer, db: DbSession
+    settlement_id: uuid.UUID,
+    body: VoidAction,
+    actor: Finalizer,
+    db: DbSession,
+    session: CurrentSession,
 ) -> SettlementOut:
     settlement = settlements_service.void(
-        db, actor=actor, settlement_id=settlement_id, reason=body.reason
+        db, actor=actor, settlement_id=settlement_id, reason=body.reason, session=session
     )
     return settlement_outs(db, [settlement])[0]

@@ -7,12 +7,19 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, select, true
 from sqlalchemy.orm import Session
 
 from app.core.errors import NotFoundError, field_error
 from app.core.time import local_today
-from app.models.finance import FuelCategory, FuelTransaction, FuelType, RecordStatus
+from app.models.finance import (
+    Expense,
+    ExpenseGroup,
+    FuelCategory,
+    FuelTransaction,
+    FuelType,
+    RecordStatus,
+)
 from app.models.fleet import Vehicle
 from app.models.maintenance import MaintenanceRecord, MaintenanceSchedule, MaintenanceType
 from app.models.user import User
@@ -44,6 +51,7 @@ AUDITED = (
     "downtime_start",
     "downtime_end",
     "fuel_transaction_id",
+    "closeout_expense_id",
     "consumable_quantity",
     "consumable_spec",
     "next_due_km",
@@ -255,6 +263,28 @@ def get(db: Session, record_id: uuid.UUID, *, lock: bool = False) -> Maintenance
     return fc.fetch(db, MaintenanceRecord, record_id, "سجل الصيانة غير موجود", lock=lock)
 
 
+def _validate_expense_link(db: Session, r: MaintenanceRecord) -> None:
+    """The linked expense: same vehicle, a maintenance cost, not on another live record."""
+    expense = db.get(Expense, r.closeout_expense_id)
+    if expense is None or expense.vehicle_id != r.vehicle_id:
+        raise field_error("closeout_expense_id", "المصروف غير موجود أو لمركبة أخرى")
+    if expense.category.pnl_group is not ExpenseGroup.MAINTENANCE:
+        raise field_error("closeout_expense_id", "يمكن ربط مصروف صيانة أو تغيير زيت فقط")
+    taken = db.scalar(
+        select(MaintenanceRecord.id).where(
+            MaintenanceRecord.closeout_expense_id == r.closeout_expense_id,
+            MaintenanceRecord.id != r.id,
+            MaintenanceRecord.status.in_(
+                (RecordStatus.SUBMITTED, RecordStatus.APPROVED, RecordStatus.REJECTED)
+            ),
+            # A correction replaces the record it corrects.
+            MaintenanceRecord.id != r.corrects_id if r.corrects_id else true(),
+        )
+    )
+    if taken is not None:
+        raise field_error("closeout_expense_id", "هذا المصروف مربوط بسجل صيانة آخر")
+
+
 def _validate(db: Session, r: MaintenanceRecord) -> None:
     fc.check_day(r.performed_on, "performed_on")
     if r.fuel_transaction_id is not None:
@@ -272,6 +302,8 @@ def _validate(db: Session, r: MaintenanceRecord) -> None:
                 f"هذه الخدمة تستخدم {wanted.name_ar}؛ اربط شراء من هذا النوع",
                 code="consumable_mismatch",
             )
+    if r.closeout_expense_id is not None:
+        _validate_expense_link(db, r)
     if r.next_due_on is not None and r.next_due_on <= r.performed_on:
         raise field_error("next_due_on", "الموعد القادم بعد تاريخ الخدمة")
     if r.next_due_km is not None and r.odometer_km is not None and r.next_due_km <= r.odometer_km:

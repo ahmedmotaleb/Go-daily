@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closeoutSummary, lineNotDeducted, lineValue, remainingAfter } from "@/lib/cash";
+import { closeoutSummary, egp, lineNotDeducted, lineValue, remainingAfter } from "@/lib/cash";
 import type { Closeout, CloseoutLine } from "@/lib/cash-types";
 
 const base = { total_due: "0", carried_before: "0", collected: "0", remaining: "0" };
@@ -21,6 +21,14 @@ describe("cash board helpers", () => {
     expect(closeoutSummary(c({ status: "NOTHING_DUE", total_due: "-150" }))).toBe(
       "مستحق للسائق 150 ج.م",
     );
+  });
+
+  it("shows states only when the API withheld the amounts (no revenue:read)", () => {
+    const hidden = { total_due: null, carried_before: null, collected: null, remaining: null };
+    expect(closeoutSummary(c({ status: "WAITING", ...hidden }))).toBe("بانتظار التسليم");
+    expect(closeoutSummary(c({ status: "PARTIAL", ...hidden }))).toBe("اتحصّل جزء والباقي متبقي");
+    expect(egp(null)).toBe("—");
+    expect(lineValue({ ...line("0"), amount: null })).toBe("—");
   });
 
   it("shows empty lines as a dash and flags lines no longer deducted", () => {

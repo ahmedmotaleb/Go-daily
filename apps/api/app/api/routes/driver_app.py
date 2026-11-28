@@ -24,7 +24,7 @@ from app.models.attachment import Attachment, AttachmentOwner
 from app.models.driver import Driver
 from app.models.finance import FuelTransaction
 from app.models.shift import OperationSession, Shift, ShiftSource, ShiftStatus
-from app.schemas.attachment import AttachmentOut, DuplicateRef, UploadResult
+from app.schemas.attachment import AttachmentOut, UploadResult
 from app.schemas.common import PageParams
 from app.schemas.driver_app import (
     AppUpdateOut,
@@ -96,7 +96,9 @@ def _own_shift(db: DbSession, driver: Driver, shift_id: uuid.UUID) -> Shift:
 
 
 @router.get("/me", response_model=DriverMeOut)
-def me(driver: CurrentDriver, db: DbSession, app_version: AppVersion = None) -> DriverMeOut:
+def me(
+    driver: CurrentDriver, user: CurrentDriverUser, db: DbSession, app_version: AppVersion = None
+) -> DriverMeOut:
     active = shifts_service.active_shift_for_driver(db, driver.id)
     version = app_versions.parse(app_version)
     settings = get_settings()
@@ -114,6 +116,7 @@ def me(driver: CurrentDriver, db: DbSession, app_version: AppVersion = None) -> 
             recommended_version=settings.driver_app_recommended_version,
             status=app_versions.status_for(version).value,
         ),
+        must_change_password=user.must_change_password,
     )
 
 
@@ -226,7 +229,9 @@ def end_shift(
             db,
             actor=user,
             shift_id=shift_id,
-            data=ShiftEnd(end_odometer_km=body.end_odometer_km, notes=body.notes),
+            data=ShiftEnd(
+                end_odometer_km=body.end_odometer_km, notes=body.notes, ended_at=body.ended_at
+            ),
             source=ShiftSource.DRIVER_APP,
         )
         return shift_out(shift)
@@ -427,8 +432,7 @@ def _fuel_receipt_out(attachment: Attachment, duplicates: list[Attachment]) -> U
             deleted_at=None,
             delete_reason=None,
         ),
-        duplicates=[
-            DuplicateRef(attachment_id=d.id, owner_type=d.owner_type, owner_id=d.owner_id)
-            for d in duplicates
-        ],
+        # Never tell a driver about other records holding the same file (security
+        # audit M6): the office gets the DUPLICATE_FILE review case instead.
+        duplicates=[],
     )

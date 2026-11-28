@@ -54,6 +54,14 @@ data class DriverMe(
     @SerialName("active_shift") val activeShift: Shift? = null,
     /** Version policy for this build (U44); null from servers before it. */
     @SerialName("app_update") val appUpdate: AppUpdate? = null,
+    /** The office set this password: change it before recording (security audit L10). */
+    @SerialName("must_change_password") val mustChangePassword: Boolean = false,
+)
+
+@Serializable
+data class ChangePasswordRequest(
+    @SerialName("current_password") val currentPassword: String,
+    @SerialName("new_password") val newPassword: String,
 )
 
 @Serializable
@@ -214,6 +222,8 @@ data class StartShiftRequest(
 data class EndShiftRequest(
     @SerialName("end_odometer_km") val endOdometerKm: Int,
     val notes: String? = null,
+    /** When the driver ended it on the phone (sent later when offline); ISO-8601. */
+    @SerialName("ended_at") val endedAt: String? = null,
 )
 
 @Serializable
@@ -353,6 +363,8 @@ data class PhotoUpload(
 data class CloseoutRequest(
     @SerialName("end_odometer_km") val endOdometerKm: Int,
     @SerialName("collection_amount") val collectionAmount: String,
+    /** Part of the collection earned on ride-hailing; sent only for mixed shifts. */
+    @SerialName("ride_hailing_amount") val rideHailingAmount: String? = null,
     @SerialName("gas_quantity") val gasQuantity: String? = null,
     @SerialName("gas_amount") val gasAmount: String = "0",
     @SerialName("gasoline_quantity") val gasolineQuantity: String? = null,

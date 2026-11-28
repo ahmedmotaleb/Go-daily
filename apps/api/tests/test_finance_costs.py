@@ -277,7 +277,11 @@ def test_driver_fuel_entry_needs_active_shift_and_is_idempotent(
     assert tx["source"] == "DRIVER_APP"
     assert tx["driver"]["id"] == str(driver.id)
     assert tx["shift_id"] == started.json()["id"]
-    assert tx["latitude"] == 31.04
+    # The phone's position is driver location: tracking readers only (security audit M10).
+    assert tx["latitude"] is None
+    _, ops = login_as(client, db, UserRole.OPERATIONS)
+    located = client.get(f"/api/v1/fuel/{first.json()['id']}", headers=ops).json()
+    assert located["latitude"] == 31.04
     assert len(client.get("/api/v1/driver/fuel", headers=h).json()) == 1
     # Staff endpoints stay closed to drivers.
     assert client.get("/api/v1/fuel", headers=h).status_code == 403

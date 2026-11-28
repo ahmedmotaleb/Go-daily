@@ -22,6 +22,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.godaily.driver.ui.MainViewModel
 import com.godaily.driver.ui.Screen
 import com.godaily.driver.ui.screens.AccountScreen
+import com.godaily.driver.ui.screens.ChangePasswordScreen
 import com.godaily.driver.ui.screens.CloseoutScreen
 import com.godaily.driver.ui.screens.HomeScreen
 import com.godaily.driver.ui.screens.LoginScreen
@@ -61,7 +62,9 @@ class MainActivity : ComponentActivity() {
                             CircularProgressIndicator(color = Brand.Lime)
                         }
                         Screen.LOGIN -> LoginScreen(state.busy, state.loginError, vm::login)
-                        Screen.HOME -> if (state.showPermissions) {
+                        Screen.HOME -> if (state.me?.mustChangePassword == true) {
+                            ChangePasswordScreen(state.busy, state.passwordError, vm::changePassword)
+                        } else if (state.showPermissions) {
                             PermissionScreen(
                                 onAcceptDisclosure = vm::acceptDisclosure,
                                 onFinished = vm::permissionsUpdated,

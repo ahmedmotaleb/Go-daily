@@ -76,6 +76,27 @@ class Settings(BaseSettings):
     reauth_window_minutes: int = 10
     # Finalizing a settlement of at least this amount (EGP) is sensitive.
     reauth_settlement_amount: Decimal = Decimal("10000")
+    # Segregation of duties (opt-in, security audit H3): the person who reviewed
+    # a settlement cannot finalize it; the person who finalized cannot pay it.
+    settlement_require_separate_finalizer: bool = False
+    settlement_require_separate_payer: bool = False
+    # Opt-in (security audit M7): whoever entered a fuel, expense, maintenance,
+    # revenue or statement record cannot approve it (approve_now included) when
+    # its amount is at least this. Unset = no restriction.
+    finance_block_self_approval_above: Decimal | None = None
+    # What counts as a paid day for daily-wage plans (security audit L2). By
+    # default every completed shift is a day; these opt-in rules tighten it.
+    daily_wage_min_shift_minutes: int = 0
+    daily_wage_require_closeout: bool = False
+    # Close-out amounts (security audit L11): a line at or above this amount, or
+    # deductions above the collection, opens a review case (CLOSEOUT_AMOUNTS).
+    closeout_review_amount: Decimal = Decimal("5000")
+    # Opt-in hard cap: a driver close-out line or fuel entry above this is
+    # refused (amount_above_limit). Unset = no cap.
+    closeout_max_line_amount: Decimal | None = None
+    # Opt-in (security audit L10): a driver password set by staff must be
+    # changed by the driver before any driver-app write.
+    driver_force_password_change: bool = False
     twofa_enforce: bool = False
     twofa_required_roles: str = "SUPER_ADMIN,ADMIN"
     # Minutes allowed between the password step and the code step.

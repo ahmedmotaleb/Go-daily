@@ -53,6 +53,7 @@ from app.services import (
     route_events,
     tracking,
 )
+from app.services import exceptions as exception_service
 from app.services import finance_common as fc
 from app.services import revenue as revenue_service
 from app.services.exception_rules import RULE_INFO
@@ -111,6 +112,8 @@ class Filters:
     category_id: uuid.UUID | None = None
     # Grouping for period-based reports (fuel efficiency).
     period: fuel_efficiency.Period = "week"
+    # Who runs the report: rows outside their data permissions are left out.
+    viewer: User | None = None
 
     @property
     def start(self) -> datetime:
@@ -208,7 +211,9 @@ def _shifts(db: Session, f: Filters) -> list[Shift]:
 
 def daily_operations(db: Session, f: Filters) -> ReportResult:
     shifts = _shifts(db, f)
-    gps = tracking.gps_distance_km(db, [s.id for s in shifts])
+    # GPS distance is tracking data, as in gps_odometer (security audit L5).
+    located = f.viewer is None or has_permission(f.viewer.role, Permission.TRACKING_READ)
+    gps = tracking.gps_distance_km(db, [s.id for s in shifts]) if located else {}
     rows: list[dict[str, Any]] = []
     for s in shifts:
         if s.started_at is None:
@@ -230,7 +235,7 @@ def daily_operations(db: Session, f: Filters) -> ReportResult:
                 "minutes": _minutes(s.started_at, s.ended_at),
                 "operations": "، ".join(ops),
                 "odometer_km": s.odometer_distance_km,
-                "gps_km": round(gps.get(s.id, 0.0), 2),
+                **({"gps_km": round(gps.get(s.id, 0.0), 2)} if located else {}),
                 "status": SHIFT_STATUS_AR.get(s.status.value, s.status.value),
             }
         )
@@ -245,7 +250,7 @@ def daily_operations(db: Session, f: Filters) -> ReportResult:
                 Column("minutes", "المدة (دقيقة)", "minutes", total=True),
                 Column("operations", "التشغيل"),
                 Column("odometer_km", "كم العداد", "km", total=True),
-                Column("gps_km", "كم GPS", "km", total=True),
+                *([Column("gps_km", "كم GPS", "km", total=True)] if located else []),
                 Column("status", "الحالة"),
             ],
             rows,
@@ -1228,7 +1233,9 @@ def maintenance_report(db: Session, f: Filters) -> ReportResult:
 
 def exceptions_report(db: Session, f: Filters) -> ReportResult:
     stmt = select(OperationalException).where(
-        OperationalException.occurred_at >= f.start, OperationalException.occurred_at < f.end
+        OperationalException.occurred_at >= f.start,
+        OperationalException.occurred_at < f.end,
+        exception_service.visible_clause(f.viewer),
     )
     if f.vehicle_id:
         stmt = stmt.where(OperationalException.vehicle_id == f.vehicle_id)
@@ -1448,6 +1455,7 @@ def run(db: Session, user: User, code: str, filters: Filters) -> tuple[ReportDef
         raise field_error("date_to", "تاريخ النهاية قبل تاريخ البداية")
     if (filters.date_to - filters.date_from).days >= MAX_DAYS:
         raise field_error("date_to", "الفترة القصوى سنة واحدة")
+    filters.viewer = user
     return report, report.build(db, filters)
 
 

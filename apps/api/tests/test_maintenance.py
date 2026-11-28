@@ -232,3 +232,70 @@ def test_approved_maintenance_counts_in_vehicle_pnl(client: TestClient, db: Sess
     assert pnl["maintenance_cost"] == "500.00"
     codes = {w["code"]: w for w in pnl["warnings"]}
     assert codes["PENDING_RECORDS"]["count"] == 1
+
+
+# --- Security audit M11: a job recorded twice is counted once in profitability ---------
+
+
+def test_linked_closeout_expense_is_not_counted_twice(client: TestClient, db: Session) -> None:
+    from sqlalchemy import select
+
+    from app.core.time import local_today, utcnow
+    from app.models.maintenance import MaintenanceType
+    from tests.factories import expense_category_id
+
+    _, acc = login_as(client, db, UserRole.ACCOUNTANT)
+    _, ops = login_as(client, db, UserRole.OPERATIONS)
+    vehicle, other = make_vehicle(db), make_vehicle(db)
+    v = str(vehicle.id)
+
+    def expense(vehicle_id: str, code: str = "REPAIR") -> str:
+        res = client.post(
+            "/api/v1/expenses",
+            headers=acc,
+            json={
+                "vehicle_id": vehicle_id,
+                "category_id": expense_category_id(db, code),
+                "amount": "450",
+                "occurred_at": utcnow().isoformat(),
+                "approve_now": True,
+            },
+        )
+        assert res.status_code == 201, res.text
+        return str(res.json()["id"])
+
+    driver_paid = expense(v)  # the close-out's «صيانة» line, approved
+    mtype = db.scalars(select(MaintenanceType).where(MaintenanceType.is_active)).first()
+    assert mtype is not None
+    base = {"type_id": str(mtype.id), "performed_on": local_today().isoformat()}
+
+    for bad in (expense(str(other.id)), expense(v, "TOLL")):
+        res = client.post(
+            "/api/v1/maintenance/records",
+            headers=ops,
+            json={"vehicle_id": v, **base, "parts_cost": "450", "closeout_expense_id": bad},
+        )
+        assert res.status_code == 422, res.text
+        assert res.json()["error"]["details"]["fields"][0]["loc"] == ["closeout_expense_id"]
+
+    record = _record(client, ops, v, **base, parts_cost="450", closeout_expense_id=driver_paid)
+    assert record["closeout_expense_id"] == driver_paid
+    twice = client.post(
+        "/api/v1/maintenance/records",
+        headers=ops,
+        json={"vehicle_id": v, **base, "parts_cost": "450", "closeout_expense_id": driver_paid},
+    )
+    assert twice.status_code == 422
+    approved = client.post(
+        f"/api/v1/maintenance/records/{record['id']}/approve", headers=acc, json={}
+    )
+    assert approved.status_code == 200, approved.text
+
+    day = local_today().isoformat()
+    res = client.get(
+        "/api/v1/profitability/vehicles",
+        headers=acc,
+        params={"date_from": day, "date_to": day, "vehicle_id": v},
+    )
+    [row] = res.json()["vehicles"]
+    assert row["maintenance_cost"] == "450.00"  # once, from the maintenance record

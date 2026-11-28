@@ -31,6 +31,7 @@ from app.models.finance import (
 )
 from app.models.route_events import EventStatus, RouteEvent
 from app.models.shift import Shift, ShiftStatus
+from app.services.exceptions import money_cases_clause
 from app.services.reports import REVENUE_KIND_AR
 from app.services.vehicle_timeline import (
     CASE_STATUS_AR,
@@ -39,6 +40,7 @@ from app.services.vehicle_timeline import (
     Item,
     Section,
     _shifts,
+    without_cash_amounts,
 )
 
 LEDGER_AR = {
@@ -199,8 +201,15 @@ def _ledger(db: Session, did: uuid.UUID, day: date, *, skip_cash: bool) -> list[
 
 
 def timeline(
-    db: Session, driver_id: uuid.UUID, day: date, sections: set[Section], *, ledger: bool
+    db: Session,
+    driver_id: uuid.UUID,
+    day: date,
+    sections: set[Section],
+    *,
+    ledger: bool,
+    with_money: bool = True,
 ) -> list[Item]:
+    """`with_money`: cash amounts and money review cases (see vehicle_timeline)."""
     start, end = local_day_bounds_utc(day)
     items: list[Item] = []
     if Section.ASSIGNMENTS in sections:
@@ -248,6 +257,7 @@ def timeline(
                 OperationalException.driver_id == driver_id,
                 OperationalException.occurred_at >= start,
                 OperationalException.occurred_at < end,
+                money_cases_clause(with_money),
             )
         ).all():
             items.append(
@@ -259,6 +269,8 @@ def timeline(
                     link=f"/exceptions/{c.id}",
                 )
             )
+    if not with_money:
+        items = [without_cash_amounts(i) for i in items]
     return sorted(items, key=lambda i: (i.at is not None, i.at or start))
 
 

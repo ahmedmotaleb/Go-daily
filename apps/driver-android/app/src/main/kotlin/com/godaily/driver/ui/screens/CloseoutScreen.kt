@@ -50,6 +50,7 @@ import com.godaily.driver.R
 import com.godaily.driver.core.cash.CloseoutDraft
 import com.godaily.driver.core.cash.MaintenanceKind
 import com.godaily.driver.core.cash.closeoutTotals
+import com.godaily.driver.core.cash.mixesRideHailing
 import com.godaily.driver.core.cash.egp
 import com.godaily.driver.ui.MainViewModel
 import com.godaily.driver.ui.UiState
@@ -126,6 +127,17 @@ fun CloseoutScreen(state: UiState, vm: MainViewModel) {
                         onChange = { edit(draft.copy(collection = it)) },
                         error = errors["collection_amount"],
                         modifier = Modifier.weight(1f),
+                    )
+                }
+                if (mixesRideHailing(shift)) {
+                    // Ride-hailing revenue comes from the platform statement; the
+                    // office books only the rest of the cash as route revenue.
+                    Field(
+                        label = "منه من النقل الذكي (ج.م)",
+                        value = draft.rideHailing,
+                        onChange = { edit(draft.copy(rideHailing = it)) },
+                        error = errors["ride_hailing_amount"],
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }

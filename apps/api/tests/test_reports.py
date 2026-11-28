@@ -291,3 +291,26 @@ def test_profitability_report_matches_service_totals(client: TestClient, db: Ses
     assert row["other_expenses"] == "100.00"
     assert row["net_operating_profit"] == "-100.00"
     assert body["totals"]["net_operating_profit"] == "-100.00"
+
+
+# --- Security audit L5: GPS distance only for tracking readers --------------------------
+
+
+def test_daily_operations_shows_gps_km_only_with_tracking_read(
+    client: TestClient, db: Session
+) -> None:
+    from app.core.time import local_today
+
+    _, ac = login_as(client, db, UserRole.ACCOUNTANT)
+    _, op = login_as(client, db, UserRole.OPERATIONS)
+    day = local_today().isoformat()
+    params = {"date_from": day, "date_to": day}
+    assert (
+        "gps_km"
+        not in client.get("/api/v1/reports/daily_operations", headers=ac, params=params).text
+    )
+    csv = client.get("/api/v1/reports/daily_operations/csv", headers=ac, params=params).text
+    assert "GPS" not in csv
+    assert (
+        "gps_km" in client.get("/api/v1/reports/daily_operations", headers=op, params=params).text
+    )

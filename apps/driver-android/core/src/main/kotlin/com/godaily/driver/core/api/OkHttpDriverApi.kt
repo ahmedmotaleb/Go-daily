@@ -50,6 +50,11 @@ class OkHttpDriverApi(
 
     override suspend fun me(): DriverMe = get("driver/me", DriverMe.serializer())
 
+    override suspend fun changePassword(request: ChangePasswordRequest) {
+        val json = GoDailyJson.encodeToString(ChangePasswordRequest.serializer(), request).toRequestBody(JSON)
+        execute(build("auth/change-password").post(json)) { }
+    }
+
     override suspend fun catalog(): DriverCatalog = get("driver/catalog", DriverCatalog.serializer())
 
     override suspend fun activeShift(): Shift? = get("driver/shifts/active", Shift.serializer().nullable)

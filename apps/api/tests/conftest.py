@@ -47,7 +47,9 @@ os.environ["APP_ENV"] = "test"
 os.environ.setdefault("LOG_JSON", "false")
 os.environ.setdefault("LOG_LEVEL", "WARNING")
 
+import uuid  # noqa: E402
 from collections.abc import Iterator  # noqa: E402
+from typing import Any  # noqa: E402
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402
@@ -119,7 +121,22 @@ def client(db: Session) -> Iterator[TestClient]:
 
     app.dependency_overrides[get_db] = _get_db
     with TestClient(app) as c:
+        # The driver app sends an Idempotency-Key on every write and the API
+        # requires it; tests that do not exercise idempotency get a fresh key.
+        c.event_hooks["request"].append(_driver_writes_carry_a_key)
         yield c
+
+
+def _driver_writes_carry_a_key(request: Any) -> None:
+    if request.headers.pop("X-Test-No-Idempotency-Key", None) is not None:
+        return
+    if (
+        request.method == "POST"
+        and request.url.path.startswith("/api/v1/driver/")
+        and "/tracking/" not in request.url.path
+        and "Idempotency-Key" not in request.headers
+    ):
+        request.headers["Idempotency-Key"] = f"auto-{uuid.uuid4()}"
 
 
 @pytest.fixture(autouse=True)

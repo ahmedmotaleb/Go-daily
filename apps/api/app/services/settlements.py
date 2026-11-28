@@ -29,7 +29,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import ConflictError, field_error
+from app.core.config import get_settings
+from app.core.errors import ConflictError, PermissionDenied, field_error
 from app.core.time import local_day_bounds_utc, to_local_date, utcnow
 from app.models.driver import (
     CompensationMethod,
@@ -49,10 +50,10 @@ from app.models.finance import (
     SettlementStatus,
 )
 from app.models.shift import Shift, ShiftStatus
-from app.models.user import User
+from app.models.user import AuthSession, User
 from app.schemas.common import PageParams
 from app.schemas.finance import SettlementCreate
-from app.services import audit, driver_ledger
+from app.services import audit, driver_ledger, reauth
 from app.services import finance_common as fc
 from app.services.common import paginate
 
@@ -101,16 +102,50 @@ def _prorated_monthly(amount: Decimal, start: date, end: date) -> Decimal:
     return total
 
 
-def worked_days(db: Session, driver_id: uuid.UUID, start: date, end: date) -> set[date]:
-    rows = db.scalars(
-        select(Shift.started_at).where(
+def worked_days(
+    db: Session, driver_id: uuid.UUID, start: date, end: date, *, skipped: list[int] | None = None
+) -> set[date]:
+    """Days with a completed shift that counts (opt-in rules, security audit L2).
+
+    DAILY_WAGE_MIN_SHIFT_MINUTES and DAILY_WAGE_REQUIRE_CLOSEOUT tighten what
+    counts; shifts left out are counted into `skipped[0]` for a warning.
+    """
+    from app.models.cash import ShiftCloseout  # noqa: PLC0415
+
+    settings = get_settings()
+    shifts = db.scalars(
+        select(Shift).where(
             Shift.driver_id == driver_id,
             Shift.status == ShiftStatus.COMPLETED,
             Shift.started_at >= local_day_bounds_utc(start)[0],
             Shift.started_at < local_day_bounds_utc(end)[1],
         )
     ).all()
-    return {to_local_date(at) for at in rows if at is not None}
+    closed: set[uuid.UUID] = set()
+    if settings.daily_wage_require_closeout and shifts:
+        closed = set(
+            db.scalars(
+                select(ShiftCloseout.shift_id).where(
+                    ShiftCloseout.shift_id.in_([s.id for s in shifts]),
+                    ShiftCloseout.voided_at.is_(None),
+                )
+            )
+        )
+    days: set[date] = set()
+    left_out = 0
+    for s in shifts:
+        if s.started_at is None:
+            continue
+        minutes = (s.ended_at - s.started_at).total_seconds() / 60 if s.ended_at else 0
+        if minutes < settings.daily_wage_min_shift_minutes or (
+            settings.daily_wage_require_closeout and s.id not in closed
+        ):
+            left_out += 1
+            continue
+        days.add(to_local_date(s.started_at))
+    if skipped is not None:
+        skipped.append(left_out)
+    return days
 
 
 def eligible_revenue(db: Session, driver_id: uuid.UUID, start: date, end: date) -> Decimal:
@@ -212,7 +247,10 @@ def compute(db: Session, driver_id: uuid.UUID, start: date, end: date) -> Comput
         .order_by(DriverCompensationPlan.effective_from)
     ).all()
     covered = 0
-    all_days = worked_days(db, driver_id, start, end)
+    skipped: list[int] = []
+    all_days = worked_days(db, driver_id, start, end, skipped=skipped)
+    if skipped and skipped[0]:
+        comp.warnings.append(f"{skipped[0]} وردية لم تُحتسب يوم عمل (أقصر من الحد أو بدون تقفيل)")
     comp.days_worked = len(all_days)
     comp.eligible_revenue = eligible_revenue(db, driver_id, start, end)
 
@@ -283,6 +321,21 @@ def create_draft(db: Session, *, actor: User, data: SettlementCreate) -> DriverS
             "توجد تسوية نهائية تغطي جزءًا من هذه الفترة",
             code="overlapping_settlement",
         )
+    # One open draft per driver and period (runtime audit L7): a second draft
+    # over the same days would be reviewed and argued about twice.
+    if db.scalar(
+        select(DriverSettlement.id)
+        .where(
+            DriverSettlement.driver_id == data.driver_id,
+            DriverSettlement.status.in_((SettlementStatus.DRAFT, SettlementStatus.REVIEWED)),
+            DriverSettlement.period_start <= data.period_end,
+            DriverSettlement.period_end >= data.period_start,
+        )
+        .limit(1)
+    ):
+        raise ConflictError(
+            "توجد مسودة تسوية مفتوحة تغطي جزءًا من هذه الفترة", code="overlapping_draft"
+        )
     comp = compute(db, data.driver_id, data.period_start, data.period_end)
     settlement = DriverSettlement(
         driver_id=data.driver_id,
@@ -342,6 +395,12 @@ def finalize(db: Session, *, actor: User, settlement_id: uuid.UUID) -> DriverSet
     settlement = get(db, settlement_id, lock=True)
     if settlement.status is not SettlementStatus.REVIEWED:
         raise ConflictError("راجع التسوية قبل اعتمادها", code="invalid_state")
+    if get_settings().settlement_require_separate_finalizer and (
+        settlement.reviewed_by_id == actor.id
+    ):
+        raise PermissionDenied(
+            "من راجع التسوية لا يعتمدها؛ يعتمدها موظف آخر", code="separate_finalizer_required"
+        )
     if _finalized_overlap(db, settlement.driver_id, settlement.period_start, settlement.period_end):
         raise ConflictError(
             "توجد تسوية نهائية تغطي جزءًا من هذه الفترة", code="overlapping_settlement"
@@ -349,7 +408,9 @@ def finalize(db: Session, *, actor: User, settlement_id: uuid.UUID) -> DriverSet
     # The reviewed inputs are frozen: if the records changed since, the
     # settlement goes back for another review instead of silently changing.
     comp = compute(db, settlement.driver_id, settlement.period_start, settlement.period_end)
-    if fc.money(comp.total) != Decimal(str(settlement.details.get("computed_total", comp.total))):
+    frozen = (settlement.details or {}).get("computed_total")
+    # A review that froze no total cannot vouch for anything: review it again.
+    if frozen is None or fc.money(comp.total) != Decimal(str(frozen)):
         raise ConflictError(
             "تغيرت البيانات منذ المراجعة؛ أعد التسوية إلى مسودة وراجعها مرة أخرى",
             code="inputs_changed",
@@ -399,14 +460,28 @@ def finalize(db: Session, *, actor: User, settlement_id: uuid.UUID) -> DriverSet
     return settlement
 
 
-def void(db: Session, *, actor: User, settlement_id: uuid.UUID, reason: str) -> DriverSettlement:
+def void(
+    db: Session,
+    *,
+    actor: User,
+    settlement_id: uuid.UUID,
+    reason: str,
+    session: AuthSession | None = None,
+) -> DriverSettlement:
+    """Void a settlement. Its earnings leave the driver account; payments stay.
+
+    A payment recorded against the settlement is money that really left the
+    company, so it is never reversed here: after the void the driver owes it
+    back (or a corrected settlement absorbs it). Voiding posted figures is a
+    sensitive action and needs a recent confirmation (U35).
+    """
     settlement = get(db, settlement_id, lock=True)
     if settlement.status is SettlementStatus.VOIDED:
         raise ConflictError("التسوية ملغاة بالفعل", code="invalid_state")
     if settlement.status in POSTED_SETTLEMENTS:
-        # The earnings and, if recorded, the payment.
+        if session is not None:
+            reauth.require(session)
         driver_ledger.void_source(db, LedgerSource.SETTLEMENT, settlement.id, actor, reason)
-        driver_ledger.void_settlement_payments(db, settlement.id, actor, reason)
     settlement.status = SettlementStatus.VOIDED
     settlement.voided_by_id = actor.id
     settlement.voided_at = utcnow()
@@ -484,14 +559,25 @@ def _apply(db: Session, settlement: DriverSettlement, comp: Computation) -> None
 
 
 def adjust(
-    db: Session, *, actor: User, settlement_id: uuid.UUID, amount: Decimal, reason: str
+    db: Session,
+    *,
+    actor: User,
+    settlement_id: uuid.UUID,
+    amount: Decimal,
+    reason: str,
+    session: AuthSession | None = None,
 ) -> DriverSettlement:
-    """A manual change to a draft's earnings, with its reason (audited)."""
+    """A manual change to a draft's earnings, with its reason (audited).
+
+    Large changes need a recent confirmation, like large payments (audit H3).
+    """
     settlement = get(db, settlement_id, lock=True)
     if settlement.status is not SettlementStatus.DRAFT:
         raise ConflictError("التعديل على المسودات فقط", code="invalid_state")
     if amount == 0:
         raise field_error("amount", "أدخل مبلغًا")
+    if session is not None:
+        reauth.require_for_amount(session, amount)
     before = settlement.earnings_amount
     details = dict(settlement.details or {})
     details["adjustments"] = [
@@ -577,14 +663,35 @@ def pay(
     paid_on: date,
     method: PaymentMethod,
     reference: str | None,
+    session: AuthSession | None = None,
 ) -> DriverSettlement:
-    """Record a payment made outside the system. Nothing is transferred here."""
+    """Record a payment made outside the system. Nothing is transferred here.
+
+    Payments may be split, but together never exceed the settlement's earnings.
+    The re-auth threshold applies to the cumulative amount paid, so splitting
+    a large payment does not avoid the confirmation (U35).
+    """
     settlement = get(db, settlement_id, lock=True)
     if settlement.status is not SettlementStatus.FINALIZED:
         raise ConflictError("يُسجل الدفع للتسويات المعتمدة فقط", code="invalid_state")
+    if get_settings().settlement_require_separate_payer and settlement.finalized_by_id == actor.id:
+        raise PermissionDenied(
+            "من اعتمد التسوية لا يسجل صرفها؛ يسجله موظف آخر", code="separate_payer_required"
+        )
     fc.check_day(paid_on, "paid_on")
     if paid_on < settlement.period_start:
         raise field_error("paid_on", "تاريخ الدفع قبل بداية الفترة")
+    amount = fc.money(amount)
+    already = fc.money(settlement.paid_amount or Decimal(0))
+    due = fc.money(settlement.earnings_amount - already)
+    if amount > due:
+        raise field_error(
+            "amount",
+            f"المبلغ أكبر من المتبقي المستحق للسائق في هذه التسوية ({due} ج.م)",
+            code="payment_exceeds_due",
+        )
+    if session is not None:
+        reauth.require_for_amount(session, already + amount)
     driver_ledger.post(
         db,
         driver_id=settlement.driver_id,
@@ -598,8 +705,9 @@ def pay(
         # Linked by settlement_id: the settlement's own source is its earnings.
         settlement_id=settlement.id,
     )
-    settlement.status = SettlementStatus.PAID
-    settlement.paid_amount = fc.money(amount)
+    settlement.paid_amount = already + amount
+    if settlement.paid_amount == fc.money(settlement.earnings_amount):
+        settlement.status = SettlementStatus.PAID
     settlement.paid_on = paid_on
     settlement.payment_method = method
     settlement.payment_reference = reference
@@ -613,7 +721,8 @@ def pay(
         entity_id=settlement.driver_id,
         details={
             "settlement_id": settlement.id,
-            "amount": settlement.paid_amount,
+            "amount": amount,
+            "paid_total": settlement.paid_amount,
             "method": method.value,
             "paid_on": paid_on,
         },

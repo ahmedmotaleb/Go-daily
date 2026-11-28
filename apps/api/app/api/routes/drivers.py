@@ -185,5 +185,6 @@ def driver_day_timeline(
         day or local_today(),
         sections,
         ledger=has_permission(user.role, Permission.SETTLEMENTS_READ),
+        with_money=has_permission(user.role, Permission.REVENUE_READ),
     )
     return [TimelineItemOut(**i.__dict__) for i in items]

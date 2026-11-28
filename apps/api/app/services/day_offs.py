@@ -90,7 +90,15 @@ def register(
     note: str | None,
     source: RecordSource,
 ) -> DriverDayOff:
-    if db.get(Driver, driver_id) is None:
+    # The same driver-row lock a shift start takes (security audit L4): a day-off
+    # and a shift start for the driver serialise, and the second sees the first.
+    driver = db.scalar(
+        select(Driver)
+        .where(Driver.id == driver_id)
+        .with_for_update(of=Driver)
+        .execution_options(populate_existing=True)
+    )
+    if driver is None:
         raise NotFoundError("السائق غير موجود")
     existing = live(db, driver_id, day)
     if existing is not None:

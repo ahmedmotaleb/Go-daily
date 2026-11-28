@@ -16,20 +16,57 @@ from fastapi.responses import Response
 from app.api.deps import CurrentUser, DbSession
 from app.api.finance_presenters import load_users
 from app.core.config import get_settings
-from app.core.errors import PermissionDenied, field_error
+from app.core.errors import NotFoundError, PermissionDenied, field_error
 from app.core.permissions import STAFF_ROLES, Permission, has_permission
 from app.models.attachment import Attachment, AttachmentKind, AttachmentOwner
 from app.models.user import User
 from app.schemas.attachment import AttachmentDelete, AttachmentOut, DuplicateRef, UploadResult
 from app.schemas.finance import UserRef
 from app.services import attachments as attachments_service
+from app.services import two_factor
 
 router = APIRouter(prefix="/attachments", tags=["attachments"])
 
 
-def _require(user: User, permission: Permission) -> None:
-    if user.role not in STAFF_ROLES or not has_permission(user.role, permission):
-        raise PermissionDenied(details={"missing": [permission.value]})
+def _require(user: User, owner_permission: Permission, *, write: bool = False) -> None:
+    """Staff only, past the 2FA gate, holding attachments:* and the owner's permission.
+
+    These routes take a plain login (the owner type decides the permission),
+    so they repeat what require_permissions does (security audit M5).
+    """
+    if user.role not in STAFF_ROLES:
+        raise PermissionDenied(details={"missing": [owner_permission.value]})
+    if two_factor.setup_needed(user):
+        raise PermissionDenied(
+            "فعّل التحقق بخطوتين من صفحة حسابك قبل المتابعة", code="twofa_setup_required"
+        )
+    needed = (
+        Permission.ATTACHMENTS_WRITE if write else Permission.ATTACHMENTS_READ,
+        owner_permission,
+    )
+    missing = [p.value for p in needed if not has_permission(user.role, p)]
+    if missing:
+        raise PermissionDenied(details={"missing": missing})
+
+
+def _readable(db: DbSession, user: User, attachment_id: uuid.UUID) -> Attachment:
+    """The attachment, or 404 when it does not exist *or* the user may not read it.
+
+    One answer for both, so attachment ids cannot be probed (runtime audit L2).
+    """
+    # Role-level refusals (drivers, 2FA not set up) say nothing about the record.
+    if user.role not in STAFF_ROLES or two_factor.setup_needed(user):
+        _require(user, Permission.ATTACHMENTS_READ)
+    attachment = db.get(Attachment, attachment_id)
+    if attachment is None or not all(
+        has_permission(user.role, p)
+        for p in (
+            Permission.ATTACHMENTS_READ,
+            attachments_service.rule_for(attachment.owner_type).read,
+        )
+    ):
+        raise NotFoundError("المرفق غير موجود")
+    return attachment
 
 
 def _outs(db: DbSession, rows: list[Attachment]) -> list[AttachmentOut]:
@@ -76,7 +113,7 @@ async def upload_attachment(
     owner_id: Annotated[uuid.UUID, Form()],
     kind: Annotated[AttachmentKind | None, Form()] = None,
 ) -> UploadResult:
-    _require(user, attachments_service.rule_for(owner_type).write)
+    _require(user, attachments_service.rule_for(owner_type).write, write=True)
     data = await read_limited(file)
     attachment, duplicates = attachments_service.upload(
         db,
@@ -92,6 +129,8 @@ async def upload_attachment(
         duplicates=[
             DuplicateRef(attachment_id=d.id, owner_type=d.owner_type, owner_id=d.owner_id)
             for d in duplicates
+            # Only records the uploader may read are named (security audit M6).
+            if has_permission(user.role, attachments_service.rule_for(d.owner_type).read)
         ],
     )
 
@@ -110,8 +149,7 @@ def list_attachments(
 
 @router.get("/{attachment_id}/content")
 def attachment_content(attachment_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Response:
-    attachment = attachments_service.get(db, attachment_id)
-    _require(user, attachments_service.rule_for(attachment.owner_type).read)
+    attachment = _readable(db, user, attachment_id)
     data = attachments_service.read_content(attachment)
     filename = quote(attachment.original_filename)
     return Response(
@@ -130,8 +168,8 @@ def attachment_content(attachment_id: uuid.UUID, user: CurrentUser, db: DbSessio
 def delete_attachment(
     attachment_id: uuid.UUID, body: AttachmentDelete, user: CurrentUser, db: DbSession
 ) -> AttachmentOut:
-    attachment = attachments_service.get(db, attachment_id)
-    _require(user, attachments_service.rule_for(attachment.owner_type).write)
+    attachment = _readable(db, user, attachment_id)
+    _require(user, attachments_service.rule_for(attachment.owner_type).write, write=True)
     deleted = attachments_service.delete(
         db, actor=user, attachment_id=attachment_id, reason=body.reason
     )

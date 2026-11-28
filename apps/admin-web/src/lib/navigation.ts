@@ -32,6 +32,8 @@ export type NavItem = {
   label: string;
   icon: NavIcon;
   permission?: string;
+  /** Every one is required (pages whose API needs several permissions). */
+  allOf?: string[];
   soon?: boolean;
 };
 
@@ -39,7 +41,13 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "لوحة التشغيل", icon: "dashboard" },
   { href: "/tracking", label: "التتبع المباشر", icon: "map", permission: "tracking:read" },
   { href: "/control", label: "مركز التحكم", icon: "control", permission: "tracking:read" },
-  { href: "/pilot", label: "التجربة الميدانية", icon: "pilot", permission: "cash:read" },
+  // GET /api/v1/pilot needs all three (apps/api/app/api/routes/pilot.py); so does the page.
+  {
+    href: "/pilot",
+    label: "التجربة الميدانية",
+    icon: "pilot",
+    allOf: ["tracking:read", "revenue:read", "cash:read"],
+  },
   { href: "/data-quality", label: "جودة البيانات", icon: "quality", permission: "reports:read" },
   { href: "/policies", label: "سياسات المراجعة", icon: "settings", permission: "exceptions:read" },
   { href: "/security", label: "أحداث الأمان", icon: "security", permission: "settings:manage" },
@@ -114,7 +122,11 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 export function navForPermissions(permissions: string[]): NavItem[] {
-  return NAV_ITEMS.filter((item) => !item.permission || permissions.includes(item.permission));
+  return NAV_ITEMS.filter(
+    (item) =>
+      (!item.permission || permissions.includes(item.permission)) &&
+      (item.allOf ?? []).every((p) => permissions.includes(p)),
+  );
 }
 
 export function isActivePath(pathname: string, href: string): boolean {

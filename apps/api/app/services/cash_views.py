@@ -5,7 +5,9 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -30,6 +32,27 @@ from app.services import finance_common as fc
 ZERO = Decimal("0")
 STATUS_ORDER = {"WAITING": 0, "PARTIAL": 1, "COLLECTED": 2, "NOTHING_DUE": 3}
 KIND_ORDER = {"CLOSEOUT": 0, "ENDED_NOT_CLOSED": 1, "OPEN_SHIFT": 2, "DAY_OFF": 3}
+
+
+def without_amounts[M: BaseModel](model: M) -> M:
+    """The same view with every money amount blanked (quantities and states kept).
+
+    For staff without revenue:read (Operations): they follow who has closed
+    out and what is still waiting, never the cash figures (security audit M1).
+    """
+
+    def blank(value: Any, name: str) -> Any:
+        if isinstance(value, Decimal) and "quantity" not in name:
+            return None
+        if isinstance(value, BaseModel):
+            return without_amounts(value)
+        if isinstance(value, list):
+            return [blank(v, name) for v in value]
+        return value
+
+    return model.model_copy(
+        update={name: blank(getattr(model, name), name) for name in type(model).model_fields}
+    )
 
 
 def collection_out(c: CashCollection) -> CollectionOut:
@@ -94,6 +117,7 @@ def closeout_out(
         end_odometer_km=c.end_odometer_km,
         start_odometer_photo_id=shift.start_odometer_photo_id,
         collection_amount=c.collection_amount,
+        ride_hailing_amount=c.ride_hailing_amount,
         collection_booked=figures.collection_booked,
         lines=[
             CloseoutLine(
@@ -188,7 +212,7 @@ def board(db: Session, day: date) -> CashBoardOut:
     start, end = local_day_bounds_utc(day)
     return CashBoardOut(
         day=day,
-        net_due=fc.money(sum((r.closeout.net_amount for r in rows if r.closeout), ZERO)),
+        net_due=fc.money(sum((r.closeout.net_amount or ZERO for r in rows if r.closeout), ZERO)),
         closeouts=len(closeouts),
         collected=cash.collected_between(db, start, end),
         open_balance=fc.money(sum((max(v.outstanding, ZERO) for v in views.values()), ZERO)),

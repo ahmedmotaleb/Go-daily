@@ -162,6 +162,8 @@ class SyncEngineTest {
         assertEquals(SyncOutcome.COMPLETE, report.outcome)
         assertEquals(20, report.pointsAccepted)
         assertEquals(listOf("s1" to "key-1"), api.endCalls)
+        // The time the driver ended it, not the time of the sync.
+        assertEquals(T0.plusSeconds(600).toString(), api.endRequests.single().endedAt)
         assertEquals("s1", report.endedShift?.id)
         assertNull(ends.value)
     }

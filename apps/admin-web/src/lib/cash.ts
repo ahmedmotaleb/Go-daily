@@ -2,8 +2,12 @@ import type { Tone } from "@/components/ui/badge";
 import type { BoardRow, Closeout, CloseoutLine } from "@/lib/cash-types";
 import { formatNumber } from "@/lib/format";
 
-/** Whole pounds with separators («2,940»); the board shows no piastres, like the design. */
-export function egp(value: string | number): string {
+/**
+ * Whole pounds with separators («2,940»); the board shows no piastres, like the design.
+ * A null amount was withheld by the API (no revenue:read) and shows as «—».
+ */
+export function egp(value: string | number | null): string {
+  if (value === null) return "—";
   const n = Number(value);
   return formatNumber(Number.isInteger(n) ? n : Math.round(n * 100) / 100);
 }
@@ -26,8 +30,17 @@ export function rowStatus(row: BoardRow): { label: string; tone: Tone } {
   return ROW_STATUS[row.closeout ? row.closeout.status : row.kind];
 }
 
+const CLOSEOUT_STATE_ONLY: Record<Closeout["status"], string> = {
+  WAITING: "بانتظار التسليم",
+  PARTIAL: "اتحصّل جزء والباقي متبقي",
+  COLLECTED: "اتحصّل بالكامل",
+  NOTHING_DUE: "لا يوجد مبلغ للتسليم",
+};
+
 /** One line under the status, as in the design («المستحق 2,260 ج.م (منها 280 سابق)»). */
 export function closeoutSummary(c: Closeout): string {
+  // Readers without revenue:read get states only (the API withholds the amounts).
+  if (c.total_due === null) return CLOSEOUT_STATE_ONLY[c.status];
   const total = Number(c.total_due);
   const carried = Number(c.carried_before);
   switch (c.status) {
@@ -44,7 +57,7 @@ export function closeoutSummary(c: Closeout): string {
 
 /** Cell text for an expense line: «—» when none, the amount otherwise. */
 export function lineValue(line: CloseoutLine | undefined): string {
-  if (!line || Number(line.amount) === 0) return "—";
+  if (!line || line.amount === null || Number(line.amount) === 0) return "—";
   return egp(line.amount);
 }
 

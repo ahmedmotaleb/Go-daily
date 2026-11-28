@@ -10,7 +10,7 @@ export type CloseoutLine = {
   label: string;
   quantity: string | null;
   unit: string | null;
-  amount: string;
+  amount: string | null;
   record_status: "SUBMITTED" | "APPROVED" | "REJECTED" | "VOIDED" | null;
   deducted: boolean;
 };
@@ -19,7 +19,7 @@ export type CashCollection = {
   id: string;
   driver_id: string;
   closeout_id: string | null;
-  amount: string;
+  amount: string | null;
   collected_at: string;
   note: string | null;
   collected_by: PersonRef | null;
@@ -39,19 +39,21 @@ export type Closeout = {
   start_odometer_km: number | null;
   end_odometer_km: number;
   start_odometer_photo_id: string | null;
-  collection_amount: string;
+  collection_amount: string | null;
+  /** Part of the collection earned on ride-hailing (mixed shifts); not booked as revenue. */
+  ride_hailing_amount: string | null;
   collection_booked: boolean;
   lines: CloseoutLine[];
   maintenance_kind: "NONE" | "OIL_CHANGE" | "MAINTENANCE";
   maintenance_note: string | null;
   notes: string | null;
   receipt_attachment_ids: string[];
-  deductions: string;
-  net_amount: string;
-  carried_before: string;
-  total_due: string;
-  collected: string;
-  remaining: string;
+  deductions: string | null;
+  net_amount: string | null;
+  carried_before: string | null;
+  total_due: string | null;
+  collected: string | null;
+  remaining: string | null;
   status: CloseoutStatus;
   collections: CashCollection[];
   voided_at: string | null;
@@ -76,15 +78,16 @@ export type BoardRow = {
   day_off: DayOff | null;
   shift_id: string | null;
   started_at: string | null;
-  outstanding: string;
+  /** Null for readers without revenue:read (Operations): states only. */
+  outstanding: string | null;
 };
 
 export type CashBoard = {
   day: string;
-  net_due: string;
+  net_due: string | null;
   closeouts: number;
-  collected: string;
-  open_balance: string;
+  collected: string | null;
+  open_balance: string | null;
   day_offs: number;
   open_shifts: number;
   rows: BoardRow[];

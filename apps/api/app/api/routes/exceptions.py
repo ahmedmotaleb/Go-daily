@@ -39,9 +39,10 @@ Reader = Annotated[User, Depends(require_permissions(Permission.EXCEPTIONS_READ)
 Reviewer = Annotated[User, Depends(require_permissions(Permission.EXCEPTIONS_REVIEW))]
 
 
-def _out(e: OperationalException) -> ExceptionOut:
+def _out(e: OperationalException, viewer: User) -> ExceptionOut:
     info = exception_rules.RULE_INFO.get(e.rule_code)
     why = exception_rules.explain(e.rule_code, e.evidence)
+    shown = exception_service.for_reader(viewer, e.evidence)
     return ExceptionOut(
         id=e.id,
         rule_code=e.rule_code,
@@ -49,7 +50,7 @@ def _out(e: OperationalException) -> ExceptionOut:
         severity=e.severity,
         label=e.label,
         summary=e.summary,
-        evidence=e.evidence,
+        evidence=shown,
         occurred_at=e.occurred_at,
         occurred_until=e.occurred_until,
         detected_at=e.detected_at,
@@ -68,10 +69,10 @@ def _out(e: OperationalException) -> ExceptionOut:
         allowed_transitions=sorted(exception_service.TRANSITIONS[e.status]),
         updated_at=e.updated_at,
         reason=why.reason,
-        observed=why.observed,
+        observed=exception_service.for_reader(viewer, why.observed),
         thresholds=why.thresholds,
         review_action=why.action,
-        severity_basis=e.evidence.get("severity_basis") if e.evidence else None,
+        severity_basis=shown.get("severity_basis") if shown else None,
     )
 
 
@@ -90,7 +91,7 @@ def _run_out(run: ExceptionRun) -> RunOut:
 
 @router.get("", response_model=Page[ExceptionOut])
 def list_exceptions(
-    _: Reader,
+    viewer: Reader,
     db: DbSession,
     params: Annotated[PageParams, Depends(page_params)],
     status: ExceptionStatus | Literal["ACTIVE"] | None = None,
@@ -116,16 +117,20 @@ def list_exceptions(
             shift_id=shift_id,
             date_from=date_from,
             date_to=date_to,
+            viewer=viewer,
         ),
     )
     return Page(
-        items=[_out(e) for e in rows], total=total, page=params.page, page_size=params.page_size
+        items=[_out(e, viewer) for e in rows],
+        total=total,
+        page=params.page,
+        page_size=params.page_size,
     )
 
 
 @router.get("/summary", response_model=SummaryOut)
-def summary(_: Reader, db: DbSession) -> SummaryOut:
-    return SummaryOut(**exception_service.summary(db))
+def summary(viewer: Reader, db: DbSession) -> SummaryOut:
+    return SummaryOut(**exception_service.summary(db, viewer=viewer))
 
 
 @router.get("/rules", response_model=RulesOut)
@@ -159,14 +164,14 @@ def run(body: RunIn, actor: Reviewer, db: DbSession) -> RunOut:
 
 
 @router.get("/{exception_id}", response_model=ExceptionOut)
-def get_exception(exception_id: uuid.UUID, _: Reader, db: DbSession) -> ExceptionOut:
-    return _out(exception_service.get(db, exception_id))
+def get_exception(exception_id: uuid.UUID, viewer: Reader, db: DbSession) -> ExceptionOut:
+    return _out(exception_service.get(db, exception_id, viewer=viewer), viewer)
 
 
 @router.get("/{exception_id}/related", response_model=list[ExceptionOut])
-def related(exception_id: uuid.UUID, _: Reader, db: DbSession) -> list[ExceptionOut]:
-    exc = exception_service.get(db, exception_id)
-    return [_out(e) for e in exception_service.related(db, exc)]
+def related(exception_id: uuid.UUID, viewer: Reader, db: DbSession) -> list[ExceptionOut]:
+    exc = exception_service.get(db, exception_id, viewer=viewer)
+    return [_out(e, viewer) for e in exception_service.related(db, exc, viewer=viewer)]
 
 
 @router.post("/{exception_id}/review", response_model=ExceptionOut)
@@ -179,5 +184,6 @@ def review(exception_id: uuid.UUID, body: ReviewIn, actor: Reviewer, db: DbSessi
             status=body.status,
             notes=body.notes,
             resolution=body.resolution,
-        )
+        ),
+        actor,
     )

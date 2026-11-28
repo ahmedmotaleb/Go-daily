@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -188,3 +190,32 @@ def test_role_permission_matrix_least_privilege() -> None:
     assert Permission.VEHICLES_WRITE not in acc
     assert Permission.TRACKING_READ not in acc  # location data is not needed for finance
     assert ROLE_PERMISSIONS[UserRole.DRIVER] == frozenset()
+
+
+# --- Security audit L3: the last-super-admin guard locks the rows it counts ------------
+
+
+def test_last_super_admin_guard_locks_the_super_admin_rows(client: TestClient, db: Session) -> None:
+    """Two super admins demoting each other at once must not leave none: the count
+    takes row locks, so the second request waits and then sees the first change."""
+    from sqlalchemy import event
+
+    from app.core.db import engine
+    from tests.factories import make_user
+
+    _, sa = login_as(client, db, UserRole.SUPER_ADMIN)
+    other = make_user(db, role=UserRole.SUPER_ADMIN)
+    seen: list[str] = []
+
+    def capture(conn: Any, cursor: Any, statement: str, *args: Any) -> None:
+        seen.append(statement)
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        res = client.patch(f"/api/v1/users/{other.id}", headers=sa, json={"is_active": False})
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert res.status_code == 200, res.text
+    assert any("FROM users" in s and "FOR UPDATE" in s and "role" in s for s in seen), (
+        "the super-admin count must lock the rows it counts"
+    )

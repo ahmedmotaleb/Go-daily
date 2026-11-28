@@ -545,8 +545,6 @@ class LedgerEntryIn(BaseModel):
 
     @model_validator(mode="after")
     def _rules(self) -> LedgerEntryIn:
-        if self.entry_type is LedgerEntryType.EARNING:
-            raise ValueError("المستحقات تُسجل من التسويات فقط")
         if self.entry_type is LedgerEntryType.ADJUSTMENT:
             if self.direction is None:
                 raise ValueError("حدد اتجاه التسوية (له أو عليه)")

@@ -44,6 +44,22 @@ class CloseoutTest {
     }
 
     @Test
+    fun `a mixed shift asks for the ride-hailing part and sends it`() {
+        val missing = checkCloseout(full, startOdometerKm = 184_326, mixedRideHailing = true)
+        assertTrue(missing is CloseoutCheck.Invalid)
+        assertTrue("ride_hailing_amount" in (missing as CloseoutCheck.Invalid).errors)
+
+        val above = checkCloseout(full.copy(rideHailing = "3000"), 184_326, mixedRideHailing = true)
+        assertTrue("ride_hailing_amount" in (above as CloseoutCheck.Invalid).errors)
+
+        val ok = checkCloseout(full.copy(rideHailing = "٩٤٠"), 184_326, mixedRideHailing = true)
+        assertEquals("940", (ok as CloseoutCheck.Valid).request.rideHailingAmount)
+        // Not mixed: the field is not sent even if something was typed.
+        val plain = checkCloseout(full.copy(rideHailing = "940"), 184_326) as CloseoutCheck.Valid
+        assertNull(plain.request.rideHailingAmount)
+    }
+
+    @Test
     fun `arabic digits and blanks for optional fuel are accepted`() {
         val draft = CloseoutDraft(endOdometer = "١٨٤٤١٤", collection = "١٤٠٠", toll = "٠")
         val request = (checkCloseout(draft, 184_326) as CloseoutCheck.Valid).request

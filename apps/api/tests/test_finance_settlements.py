@@ -116,17 +116,13 @@ def test_daily_wage_counts_distinct_worked_days_and_finalize_posts_earning(
     assert statement["earned"] == "750.00"
     assert statement["closing_balance"] == "450.00"
 
+    # Payments go through the settlement (never a manual ledger entry).
     payment = client.post(
-        f"/api/v1/drivers/{driver.id}/ledger",
-        json={
-            "entry_type": "PAYMENT",
-            "amount": "450",
-            "occurred_on": _day(0).isoformat(),
-            "description": "صرف المستحقات",
-        },
+        f"/api/v1/settlements/{draft['id']}/pay",
+        json={"amount": "450", "paid_on": _day(0).isoformat(), "method": "CASH"},
         headers=h,
     )
-    assert payment.status_code == 201
+    assert payment.status_code == 200, payment.text
     statement = client.get(
         f"/api/v1/drivers/{driver.id}/statement",
         params={"date_from": _day(30).isoformat()},
@@ -216,7 +212,21 @@ def test_finalized_settlements_cannot_overlap_until_voided(client: TestClient, d
     )
     make_completed_shift(db, driver, make_vehicle(db), day=_day(5))
     first = _settle(client, h, str(driver.id), _day(10), _day(1))
-    second = _settle(client, h, str(driver.id), _day(5), _day(0))  # drafts may overlap
+    # The API refuses overlapping open drafts (runtime audit L7); one made before
+    # that rule (or concurrently) must still be stopped at approval.
+    from app.models.finance import DriverSettlement, SettlementStatus
+
+    legacy = DriverSettlement(
+        driver_id=driver.id,
+        period_start=_day(5),
+        period_end=_day(0),
+        status=SettlementStatus.DRAFT,
+        earnings_amount=D("0"),
+        details={},
+    )
+    db.add(legacy)
+    db.commit()
+    second = {"id": str(legacy.id)}
     client.post(f"/api/v1/settlements/{first['id']}/review", headers=h)
     client.post(f"/api/v1/settlements/{first['id']}/finalize", headers=h)
     client.post(f"/api/v1/settlements/{second['id']}/review", headers=h)
@@ -472,3 +482,148 @@ def test_pnl_range_is_validated(client: TestClient, db: Session) -> None:
         headers=h,
     )
     assert res.status_code == 422
+
+
+# --- Security audit (security H2, runtime M3): manual ledger entries -------------------
+
+
+def test_manual_ledger_refuses_types_that_have_their_own_flow(
+    client: TestClient, db: Session
+) -> None:
+    _, h = login_as(client, db, UserRole.ACCOUNTANT)
+    driver = make_driver(db)
+    for entry_type in ("PAYMENT", "CASH_HANDOVER", "REIMBURSEMENT", "CASH_COLLECTED", "EARNING"):
+        res = client.post(
+            f"/api/v1/drivers/{driver.id}/ledger",
+            json={
+                "entry_type": entry_type,
+                "amount": "100",
+                "occurred_on": _day(0).isoformat(),
+                "description": "قيد يدوي",
+            },
+            headers=h,
+        )
+        assert res.status_code == 422, (entry_type, res.text)
+        assert res.json()["error"]["code"] == "ledger_type_not_manual", entry_type
+
+
+def test_large_manual_ledger_entries_need_reauth(client: TestClient, db: Session) -> None:
+    from tests.factories import DEFAULT_PASSWORD
+    from tests.test_reauth import _age
+
+    _, h = login_as(client, db, UserRole.ACCOUNTANT)
+    driver = make_driver(db)
+    url = f"/api/v1/drivers/{driver.id}/ledger"
+    base = {"occurred_on": _day(0).isoformat(), "description": "قيد يدوي"}
+    _age(db, h)
+    small = client.post(url, json={**base, "entry_type": "BONUS", "amount": "9999.99"}, headers=h)
+    assert small.status_code == 201, small.text
+    for body in (
+        {"entry_type": "BONUS", "amount": "10000"},
+        {"entry_type": "ADVANCE", "amount": "25000"},
+        {"entry_type": "ADJUSTMENT", "direction": "CREDIT", "amount": "9999999", "reason": "خطأ"},
+    ):
+        res = client.post(url, json={**base, **body}, headers=h)
+        assert res.status_code == 403, (body, res.text)
+        assert res.json()["error"]["code"] == "reauth_required"
+    confirm = client.post("/api/v1/auth/reauth", headers=h, json={"password": DEFAULT_PASSWORD})
+    assert confirm.status_code == 200
+    big = client.post(url, json={**base, "entry_type": "BONUS", "amount": "10000"}, headers=h)
+    assert big.status_code == 201, big.text
+    _age(db, h)
+    void = client.post(
+        f"/api/v1/driver-ledger/{big.json()['id']}/void", json={"reason": "خطأ"}, headers=h
+    )
+    assert void.status_code == 403
+    assert void.json()["error"]["code"] == "reauth_required"
+
+
+# --- Security audit L1: a new plan never rewrites settled or closed history ------------
+
+
+def test_backdated_plan_cannot_reach_into_settled_or_closed_history(
+    client: TestClient, db: Session
+) -> None:
+    _, h = login_as(client, db, UserRole.ACCOUNTANT)
+    driver, vehicle = make_driver(db), make_vehicle(db)
+    make_plan(
+        db, driver, CompensationMethod.DAILY_WAGE, effective_from=_day(60), daily_wage_amount="300"
+    )
+    make_completed_shift(db, driver, vehicle, day=_day(10))
+    sid = _settle(client, h, str(driver.id), _day(14), _day(7))["id"]
+    client.post(f"/api/v1/settlements/{sid}/review", headers=h)
+    assert client.post(f"/api/v1/settlements/{sid}/finalize", headers=h).status_code == 200
+    url = f"/api/v1/drivers/{driver.id}/compensation-plans"
+    plan = {"method": "DAILY_WAGE", "daily_wage_amount": "350"}
+    into_settled = client.post(url, headers=h, json={**plan, "effective_from": _day(9).isoformat()})
+    assert into_settled.status_code == 409, into_settled.text
+    assert into_settled.json()["error"]["code"] == "plan_in_settled_period"
+    after = client.post(url, headers=h, json={**plan, "effective_from": _day(5).isoformat()})
+    assert after.status_code == 201, after.text
+
+    # A closed plan with a set end date is not shortened by a later backdated one.
+    other = make_driver(db)
+    make_plan(
+        db,
+        other,
+        CompensationMethod.DAILY_WAGE,
+        effective_from=_day(60),
+        effective_to=_day(10),
+        daily_wage_amount="300",
+    )
+    cut = client.post(
+        f"/api/v1/drivers/{other.id}/compensation-plans",
+        headers=h,
+        json={**plan, "effective_from": _day(20).isoformat()},
+    )
+    assert cut.status_code == 409
+    assert cut.json()["error"]["code"] == "plan_effective_date_conflict"
+
+
+# --- Security audit L2: what counts as a paid day (two opt-in settings) -----------------
+
+
+def test_daily_wage_day_rules_are_opt_in(client: TestClient, db: Session, monkeypatch: Any) -> None:
+    from app.core.config import get_settings
+    from app.models.cash import ShiftCloseout
+
+    _, h = login_as(client, db, UserRole.ACCOUNTANT)
+    driver, vehicle = make_driver(db), make_vehicle(db)
+    make_plan(
+        db, driver, CompensationMethod.DAILY_WAGE, effective_from=_day(60), daily_wage_amount="300"
+    )
+    make_completed_shift(db, driver, vehicle, day=_day(10), minutes=480)
+    short = make_completed_shift(db, driver, vehicle, day=_day(9), minutes=20)
+    unclosed = make_completed_shift(db, driver, vehicle, day=_day(8), minutes=480)
+    assert unclosed and short
+    # Days 10 and 9 have a close-out; day 8 has none.
+    from app.models.finance import RecordSource
+
+    for shift in db.query(type(short)).filter(type(short).driver_id == driver.id):
+        if shift.id != unclosed.id:
+            db.add(
+                ShiftCloseout(
+                    shift_id=shift.id,
+                    driver_id=driver.id,
+                    vehicle_id=vehicle.id,
+                    service_date=_day(10) if shift.id != short.id else _day(9),
+                    submitted_at=shift.ended_at,
+                    source=RecordSource.ADMIN,
+                    end_odometer_km=1_100,
+                    collection_amount=0,
+                )
+            )
+    db.commit()
+
+    def earnings() -> str:
+        draft = _settle(client, h, str(driver.id), _day(14), _day(1))
+        client.post(f"/api/v1/settlements/{draft['id']}/void", headers=h, json={"reason": "تجربة"})
+        return str(draft["earnings_amount"])
+
+    assert earnings() == "900.00"  # default: every completed shift is a day
+    monkeypatch.setattr(get_settings(), "daily_wage_min_shift_minutes", 60)
+    assert earnings() == "600.00"  # the 20-minute shift is not a paid day
+    monkeypatch.setattr(get_settings(), "daily_wage_require_closeout", True)
+    draft = _settle(client, h, str(driver.id), _day(14), _day(1))
+    assert draft["earnings_amount"] == "300.00"  # only day 10 is long and closed out
+    assert any("لم تُحتسب" in w for w in draft["details"]["warnings"])

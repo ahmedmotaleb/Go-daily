@@ -26,6 +26,7 @@ from app.models.route_events import SchoolRun, SchoolRunStatus
 from app.models.shift import Shift
 from app.services import finance_common as fc
 from app.services import route_events, tracking
+from app.services.exceptions import money_cases_clause
 
 ZERO = Decimal("0")
 LIVE = (RecordStatus.SUBMITTED, RecordStatus.APPROVED)
@@ -90,6 +91,7 @@ def _money_by_vehicle(
 
 
 def rows(db: Session, *, with_money: bool, with_fuel: bool, with_cases: bool) -> list[ControlRow]:
+    """`with_money` also decides whether review cases about money are listed."""
     live = tracking.live_positions(db)
     today = local_today()
     vehicle_ids = [p.vehicle_id for p in live]
@@ -111,6 +113,7 @@ def rows(db: Session, *, with_money: bool, with_fuel: bool, with_cases: bool) ->
             .where(
                 OperationalException.vehicle_id.in_(vehicle_ids),
                 OperationalException.status.in_(OPEN_CASES),
+                money_cases_clause(with_money),
             )
             .order_by(OperationalException.occurred_at.desc())
         ).all():

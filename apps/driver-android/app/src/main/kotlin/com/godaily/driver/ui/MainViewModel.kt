@@ -19,7 +19,10 @@ import com.godaily.driver.core.api.StartSessionRequest
 import com.godaily.driver.core.api.StartShiftRequest
 import com.godaily.driver.core.cash.CloseoutCheck
 import com.godaily.driver.core.cash.CloseoutDraft
+import com.godaily.driver.core.account.PasswordCheck
+import com.godaily.driver.core.account.checkPasswordChange
 import com.godaily.driver.core.cash.checkCloseout
+import com.godaily.driver.core.cash.mixesRideHailing
 import com.godaily.driver.core.sync.EntryState
 import com.godaily.driver.core.sync.PendingShiftEnd
 import com.godaily.driver.core.sync.QueuedEntry
@@ -86,6 +89,8 @@ data class UiState(
     val message: String? = null,
     val dialogError: String? = null,
     val loginError: String? = null,
+    /** Error on «غيّر كلمة المرور» (office-set password, security audit L10). */
+    val passwordError: String? = null,
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -173,6 +178,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun consumeMessage() = _state.update { it.copy(message = null) }
+
+    /** Replace the office-set password; recording is blocked until this succeeds. */
+    fun changePassword(current: String, new: String, confirm: String) {
+        val request = when (val check = checkPasswordChange(current, new, confirm)) {
+            is PasswordCheck.Invalid -> {
+                _state.update { it.copy(passwordError = check.errors.values.first()) }
+                return
+            }
+            is PasswordCheck.Valid -> check.request
+        }
+        busy {
+            try {
+                c.api.changePassword(request)
+                _state.update { it.copy(passwordError = null, me = it.me?.copy(mustChangePassword = false)) }
+                refresh()
+            } catch (e: ApiError) {
+                _state.update { it.copy(passwordError = e.message) }
+            }
+        }
+    }
 
     fun login(phone: String, password: String) {
         if (phone.isBlank() || password.isEmpty()) {
@@ -332,7 +357,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val st = _state.value
         val shift = st.closeoutShift ?: return
         val fixedEnd = if (shift.isActive) null else shift.endOdometerKm
-        val checked = when (val check = checkCloseout(st.closeoutDraft, shift.startOdometerKm, fixedEnd)) {
+        val checked = when (val check = checkCloseout(
+            st.closeoutDraft,
+            shift.startOdometerKm,
+            fixedEnd,
+            mixedRideHailing = mixesRideHailing(shift),
+        )) {
             is CloseoutCheck.Invalid -> {
                 _state.update { it.copy(closeoutErrors = check.errors) }
                 return

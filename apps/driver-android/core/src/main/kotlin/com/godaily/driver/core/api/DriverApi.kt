@@ -16,6 +16,9 @@ interface DriverApi {
 
     suspend fun me(): DriverMe
 
+    /** Replaces the password; the current session stays signed in. */
+    suspend fun changePassword(request: ChangePasswordRequest)
+
     suspend fun catalog(): DriverCatalog
 
     suspend fun activeShift(): Shift?

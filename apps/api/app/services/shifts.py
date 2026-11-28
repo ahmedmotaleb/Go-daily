@@ -19,7 +19,7 @@ import uuid
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -204,6 +204,31 @@ def _resolve_time(value: datetime | None, *, source: ShiftSource, label: str) ->
     if value < now - MAX_BACKFILL:
         raise ValidationFailed(f"{label} أقدم من المسموح (7 أيام)", code="time_too_old")
     return value
+
+
+def _device_end_time(db: Session, shift: Shift, value: datetime | None) -> datetime:
+    """The phone's end time when plausible, else the server's clock (audit M4).
+
+    A shift ended offline is sent when the phone is back online, possibly the
+    next morning; using the arrival time would stretch it over the night. The
+    phone's time is kept only if it is after the shift start, the last session
+    start and the last GPS point received for the shift, not in the future, and
+    within the backfill window; anything else falls back to now.
+    """
+    now = utcnow()
+    if value is None:
+        return now
+    from app.models.tracking import GpsPoint  # noqa: PLC0415 - tracking imports shifts
+
+    last_point = db.scalar(
+        select(func.max(GpsPoint.recorded_at)).where(GpsPoint.shift_id == shift.id)
+    )
+    floor = max(
+        [t for t in (shift.started_at, last_point, *(s.started_at for s in shift.sessions)) if t]
+    )
+    if floor <= value <= now + CLOCK_SKEW and value >= now - MAX_BACKFILL:
+        return min(value, now)
+    return now
 
 
 def _ensure_no_active_conflict(db: Session, *, driver_id: uuid.UUID, vehicle_id: uuid.UUID) -> None:
@@ -480,7 +505,11 @@ def end_shift(
     if shift.status is not ShiftStatus.ACTIVE:
         raise ConflictError("الوردية ليست نشطة", code="invalid_shift_state")
     assert shift.started_at is not None and shift.start_odometer_km is not None  # noqa: S101
-    ended_at = _resolve_time(data.ended_at, source=source, label="وقت الانتهاء")
+    ended_at = (
+        _device_end_time(db, shift, data.ended_at)
+        if source is ShiftSource.DRIVER_APP
+        else _resolve_time(data.ended_at, source=source, label="وقت الانتهاء")
+    )
     if ended_at < shift.started_at:
         raise ValidationFailed("وقت الانتهاء قبل وقت البدء", code="invalid_range")
     if data.end_odometer_km < shift.start_odometer_km:

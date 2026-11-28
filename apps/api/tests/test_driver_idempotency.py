@@ -138,3 +138,47 @@ def test_a_key_is_never_replayed_for_another_driver(client: TestClient, db: Sess
     theirs = client.post(f"{DA}/odometer-photo", headers={**other_h, **shared}, files=_png())
     assert mine.status_code == theirs.status_code == 201
     assert mine.json()["attachment_id"] != theirs.json()["attachment_id"]
+
+
+# --- Security audit M9 (runtime L5): the key is required and claimed atomically ---------
+
+NO_KEY = {"X-Test-No-Idempotency-Key": "1"}  # conftest: do not add a key to this request
+
+
+def test_driver_writes_require_an_idempotency_key(client: TestClient, db: Session) -> None:
+    _, _, h, _ = make_driver_account(client, db)
+    res = client.post(f"{DA}/day-off", headers={**h, **NO_KEY}, json={})
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "idempotency_key_required"
+    photo = client.post(f"{DA}/odometer-photo", headers={**h, **NO_KEY}, files=_png())
+    assert photo.json()["error"]["code"] == "idempotency_key_required"
+
+
+def test_a_crash_after_the_action_never_lets_a_retry_run_it_twice(
+    client: TestClient, db: Session, monkeypatch: Any
+) -> None:
+    import pytest
+    from fastapi.encoders import jsonable_encoder as real
+
+    from app.schemas.driver_app import DriverFuelOut
+
+    _, _, h, vehicle = make_driver_account(client, db)
+    _start(client, h, vehicle)
+    body = {"fuel_type_id": fuel_type_id(db, "CNG"), "quantity": "5", "total_amount": "35"}
+    key = _key()
+
+    def crash_on_result(obj: Any, *args: Any, **kwargs: Any) -> Any:
+        if isinstance(obj, DriverFuelOut):
+            raise RuntimeError("process died before the response was stored")
+        return real(obj, *args, **kwargs)
+
+    monkeypatch.setattr("app.services.idempotency.jsonable_encoder", crash_on_result)
+    with pytest.raises(RuntimeError):
+        client.post(f"{DA}/fuel", headers={**h, **key}, json=body)
+    monkeypatch.undo()
+
+    retry = client.post(f"{DA}/fuel", headers={**h, **key}, json=body)
+    assert retry.status_code == 409, retry.text
+    assert retry.json()["error"]["code"] == "request_in_progress"
+    mine = client.get(f"{DA}/fuel", headers=h).json()
+    assert len([f for f in mine if f["total_amount"] in ("35", "35.00")]) == 1
