@@ -211,7 +211,9 @@ def _shifts(db: Session, f: Filters) -> list[Shift]:
 
 def daily_operations(db: Session, f: Filters) -> ReportResult:
     shifts = _shifts(db, f)
-    gps = tracking.gps_distance_km(db, [s.id for s in shifts])
+    # GPS distance is tracking data, as in gps_odometer (security audit L5).
+    located = f.viewer is None or has_permission(f.viewer.role, Permission.TRACKING_READ)
+    gps = tracking.gps_distance_km(db, [s.id for s in shifts]) if located else {}
     rows: list[dict[str, Any]] = []
     for s in shifts:
         if s.started_at is None:
@@ -233,7 +235,7 @@ def daily_operations(db: Session, f: Filters) -> ReportResult:
                 "minutes": _minutes(s.started_at, s.ended_at),
                 "operations": "، ".join(ops),
                 "odometer_km": s.odometer_distance_km,
-                "gps_km": round(gps.get(s.id, 0.0), 2),
+                **({"gps_km": round(gps.get(s.id, 0.0), 2)} if located else {}),
                 "status": SHIFT_STATUS_AR.get(s.status.value, s.status.value),
             }
         )
@@ -248,7 +250,7 @@ def daily_operations(db: Session, f: Filters) -> ReportResult:
                 Column("minutes", "المدة (دقيقة)", "minutes", total=True),
                 Column("operations", "التشغيل"),
                 Column("odometer_km", "كم العداد", "km", total=True),
-                Column("gps_km", "كم GPS", "km", total=True),
+                *([Column("gps_km", "كم GPS", "km", total=True)] if located else []),
                 Column("status", "الحالة"),
             ],
             rows,
