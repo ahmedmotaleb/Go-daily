@@ -100,7 +100,9 @@ def test_unreviewed_high_cases_remind_reviewers(db: Session) -> None:
     drafts = notifications.escalations(db)
     keys = {d.dedupe_key for d in drafts}
     assert f"ESCALATION:{old.id}" in keys and f"ESCALATION:{fresh.id}" not in keys
-    assert all(d.permission.value == "exceptions:review" for d in drafts)
+    # CASH_NOT_HANDED_OVER is a money rule: its reminders reach revenue readers
+    # only (security audit H1); every revenue reader also holds exceptions:review.
+    assert all(d.permission.value == "revenue:read" for d in drafts)
     # Once a reviewer starts, the reminder stops.
     old.status = ExceptionStatus.UNDER_REVIEW
     db.commit()
