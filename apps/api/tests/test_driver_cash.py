@@ -750,3 +750,30 @@ def test_closeout_in_a_settled_period_cannot_be_voided(client: TestClient, db: S
     )
     assert res.status_code == 409, res.text
     assert res.json()["error"]["code"] == "period_settled"
+
+
+# --- Security audit L4: a day-off and a shift start cannot race --------------------------
+
+
+def test_day_off_takes_the_driver_lock_that_shift_start_takes(
+    client: TestClient, db: Session
+) -> None:
+    """Shift start locks the driver row; registering a day-off must lock it too,
+    so the two serialise and the second sees the first (no shift on a day off)."""
+    from sqlalchemy import event
+
+    from app.core.db import engine
+
+    _, _, h, _ = make_driver_account(client, db)
+    seen: list[str] = []
+
+    def capture(conn: Any, cursor: Any, statement: str, *args: Any) -> None:
+        seen.append(statement)
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        res = client.post(f"{DA}/day-off", headers=h, json={})
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert res.status_code == 201, res.text
+    assert any("FROM drivers" in s and "FOR UPDATE" in s for s in seen)
