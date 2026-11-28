@@ -1886,6 +1886,62 @@ def cash_not_handed_over(ctx: Context) -> RuleResult:
     return result
 
 
+def closeout_amounts(ctx: Context) -> RuleResult:
+    """Close-outs whose deductions exceed the collection, or with a very large line (L11).
+
+    Nothing is refused (unless the opt-in cap is set): the office reviews them.
+    """
+    limit = ctx.settings.closeout_review_amount
+    result = RuleResult()
+    result.scopes |= ctx.active_keys("CLOSEOUT_AMOUNTS")
+    for c in ctx.db.scalars(
+        select(ShiftCloseout).where(
+            ShiftCloseout.voided_at.is_(None),
+            ShiftCloseout.submitted_at >= ctx.start,
+            ShiftCloseout.submitted_at < ctx.end,
+        )
+    ).all():
+        key = f"CLOSEOUT_AMOUNTS:{c.id}"
+        result.scopes.add(key)
+        lines = {
+            "gas": c.gas_amount,
+            "gasoline": c.gasoline_amount,
+            "toll": c.toll_amount,
+            "maintenance": c.maintenance_amount,
+        }
+        deductions = sum(lines.values(), Decimal("0"))
+        large = {
+            k: v for k, v in {**lines, "collection": c.collection_amount}.items() if v >= limit
+        }
+        if deductions <= c.collection_amount and not large:
+            continue
+        result.candidates.append(
+            Candidate(
+                rule_code="CLOSEOUT_AMOUNTS",
+                severity=MEDIUM,
+                summary=(
+                    f"تقفيل بمبالغ غير معتادة: خصومات {deductions:,.2f} مقابل تحصيل "
+                    f"{c.collection_amount:,.2f} ج.م — مراجعة مطلوبة"
+                ),
+                evidence={
+                    "collection": c.collection_amount,
+                    "deductions": deductions,
+                    "lines": lines,
+                    "large_lines": sorted(large),
+                    "threshold_amount": limit,
+                },
+                occurred_at=c.submitted_at,
+                dedupe_key=key,
+                vehicle_id=c.vehicle_id,
+                driver_id=c.driver_id,
+                shift_id=c.shift_id,
+                subject_type="shift_closeout",
+                subject_id=c.id,
+            )
+        )
+    return result
+
+
 _SCHOOL_ATTENTION = {
     SchoolRunStatus.INCOMPLETE: (MEDIUM, "دورة مدرسة غير مكتملة"),
     SchoolRunStatus.MISSED: (HIGH, "دورة مدرسة فائتة"),
@@ -2204,6 +2260,15 @@ RULES: list[tuple[RuleInfo, Rule]] = [
     ),
     (
         RuleInfo(
+            "CLOSEOUT_AMOUNTS",
+            "تقفيل بمبالغ غير معتادة",
+            "خصومات التقفيل أكبر من التحصيل، أو بند واحد يتجاوز الحد المحدد للمراجعة.",
+            R,
+        ),
+        closeout_amounts,
+    ),
+    (
+        RuleInfo(
             "SCHOOL_RUN",
             "دورة مدرسة تحتاج مراجعة",
             "دورة مدرسة غير مكتملة أو فائتة، أو لا يكفي GPS للتحقق منها.",
@@ -2261,6 +2326,7 @@ __all__ = [
 # What the reviewer should check for each rule. Neutral wording: a case is a
 # reason to look, never a finding.
 REVIEW_ACTIONS: dict[str, str] = {
+    "CLOSEOUT_AMOUNTS": "راجع إيصالات التقفيل مع السائق قبل اعتماد بنوده.",
     "GPS_DISABLED": "راجع مع السائق سبب إيقاف الموقع أو سحب الإذن، وتأكد من إعدادات الهاتف.",
     "GPS_GAP": "قارن الانقطاع بالمسافة والعداد والخط الزمني للوردية قبل أي استنتاج.",
     "MOCK_LOCATION": "تحقق من تطبيقات الموقع على هاتف السائق ومن مصدر النقاط المعلّمة.",

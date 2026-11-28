@@ -88,6 +88,12 @@ class Settings(BaseSettings):
     # default every completed shift is a day; these opt-in rules tighten it.
     daily_wage_min_shift_minutes: int = 0
     daily_wage_require_closeout: bool = False
+    # Close-out amounts (security audit L11): a line at or above this amount, or
+    # deductions above the collection, opens a review case (CLOSEOUT_AMOUNTS).
+    closeout_review_amount: Decimal = Decimal("5000")
+    # Opt-in hard cap: a driver close-out line or fuel entry above this is
+    # refused (amount_above_limit). Unset = no cap.
+    closeout_max_line_amount: Decimal | None = None
     twofa_enforce: bool = False
     twofa_required_roles: str = "SUPER_ADMIN,ADMIN"
     # Minutes allowed between the password step and the code step.

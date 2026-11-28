@@ -213,7 +213,13 @@ def last_run(db: Session) -> ExceptionRun | None:
 # cash custody, so only revenue readers see them (Operations is barred from
 # revenue) and only they can close them.
 FINANCIAL_RULES = frozenset(
-    {"COLLECTION_GAP", "REVENUE_INCONSISTENT", "RIDE_HAILING_MISMATCH", "CASH_NOT_HANDED_OVER"}
+    {
+        "COLLECTION_GAP",
+        "REVENUE_INCONSISTENT",
+        "RIDE_HAILING_MISMATCH",
+        "CASH_NOT_HANDED_OVER",
+        "CLOSEOUT_AMOUNTS",
+    }
 )
 
 

@@ -777,3 +777,48 @@ def test_day_off_takes_the_driver_lock_that_shift_start_takes(
         event.remove(engine, "before_cursor_execute", capture)
     assert res.status_code == 201, res.text
     assert any("FROM drivers" in s and "FOR UPDATE" in s for s in seen)
+
+
+# --- Security audit L11 / runtime L6: close-out amounts (review case + opt-in cap) -------
+
+
+def test_unusual_closeout_amounts_open_a_review_case(client: TestClient, db: Session) -> None:
+    from app.models.exceptions import OperationalException
+
+    _, _, h, vehicle = make_driver_account(client, db)
+    shift = _start(client, h, vehicle)
+    # Deductions far above the collection: accepted, but reviewed.
+    _close(client, h, shift["id"], collection_amount="100", maintenance_amount="9000")
+    _, admin = login_as(client, db, UserRole.ADMIN)
+    assert client.post(f"{API}/exceptions/run", headers=admin, json={}).status_code in (200, 201)
+    case = db.scalar(
+        select(OperationalException).where(OperationalException.rule_code == "CLOSEOUT_AMOUNTS")
+    )
+    assert case is not None and "مراجعة مطلوبة" in case.summary
+    _, op = login_as(client, db, UserRole.OPERATIONS)
+    assert client.get(f"/api/v1/exceptions/{case.id}", headers=op).status_code == 404  # money
+
+
+def test_closeout_and_fuel_lines_above_the_opt_in_cap_are_refused(
+    client: TestClient, db: Session, monkeypatch: Any
+) -> None:
+    from app.core.config import get_settings
+    from tests.factories import fuel_type_id
+
+    _, _, h, vehicle = make_driver_account(client, db)
+    shift = _start(client, h, vehicle)
+    monkeypatch.setattr(get_settings(), "closeout_max_line_amount", Decimal("5000"))
+    res = client.post(
+        f"{DA}/shifts/{shift['id']}/closeout",
+        headers=h,
+        json={**CLOSE, "maintenance_amount": "99999"},
+    )
+    assert res.status_code == 422, res.text
+    assert res.json()["error"]["code"] == "amount_above_limit"
+    fuel = client.post(
+        f"{DA}/fuel",
+        headers=h,
+        json={"fuel_type_id": fuel_type_id(db, "CNG"), "quantity": "10", "total_amount": "1000000"},
+    )
+    assert fuel.status_code == 422
+    assert fuel.json()["error"]["code"] == "amount_above_limit"

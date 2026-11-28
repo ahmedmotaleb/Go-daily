@@ -27,6 +27,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.errors import (
     ConflictError,
     NotFoundError,
@@ -429,7 +430,29 @@ class _Refs:
     maintenance: ExpenseCategory | None
 
 
+CLOSEOUT_LINES = (
+    ("collection_amount", "التحصيل"),
+    ("gas_amount", "الغاز"),
+    ("gasoline_amount", "البنزين"),
+    ("toll_amount", "الكارتة"),
+    ("maintenance_amount", "الصيانة"),
+)
+
+
+def check_line_cap(amount: Decimal, field: str, label: str) -> None:
+    """Opt-in hard cap on one driver-entered amount (security audit L11)."""
+    cap = get_settings().closeout_max_line_amount
+    if cap is not None and amount > cap:
+        raise field_error(
+            field,
+            f"مبلغ {label} أكبر من الحد المسموح ({cap} ج.م)؛ راجعه مع الإدارة",
+            code="amount_above_limit",
+        )
+
+
 def _validate(data: CloseoutIn) -> None:
+    for name, label in CLOSEOUT_LINES:
+        check_line_cap(getattr(data, name), name, label)
     for prefix, label in (("gas", "الغاز"), ("gasoline", "البنزين")):
         amount: Decimal = getattr(data, f"{prefix}_amount")
         qty: Decimal | None = getattr(data, f"{prefix}_quantity")

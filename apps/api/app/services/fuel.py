@@ -287,6 +287,9 @@ def create_from_driver(
         existing = _by_client_id(db, driver, data.client_entry_id)
         if existing is not None:
             return existing
+    from app.services.cash import check_line_cap  # noqa: PLC0415 - cash imports fuel
+
+    check_line_cap(data.total_amount, "total_amount", "الوقود")
     shift = _driver_shift(db, driver, data.shift_id)
     received = utcnow()
     when = clock.entry_time(
