@@ -354,3 +354,22 @@ def test_drivers_are_not_told_about_other_records(client: TestClient, db: Sessio
     assert res.status_code == 201, res.text
     # The office still gets the DUPLICATE_FILE review case; the driver learns nothing.
     assert res.json()["duplicates"] == []
+
+
+# --- Security audit L7: a failed upload leaves no orphaned file in storage --------------
+
+
+def test_a_failed_upload_removes_the_stored_file(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    _, accountant = login_as(client, db, UserRole.ACCOUNTANT)
+    tx = _fuel(client, accountant, db)
+
+    def fail(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("database write failed after the file was stored")
+
+    monkeypatch.setattr("app.services.attachments.audit.record", fail)
+    with pytest.raises(RuntimeError):
+        _upload(client, accountant, tx["id"], JPEG)
+    stored = [p for p in (tmp_path / "attachments").rglob("*") if p.is_file()]
+    assert stored == []

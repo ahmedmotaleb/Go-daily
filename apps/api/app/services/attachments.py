@@ -168,41 +168,53 @@ def upload(
         monitoring.capture_exception(exc, component="storage", operation="put")
         raise ValidationFailed("تعذر حفظ الملف", code="storage_error") from exc
 
-    duplicates = list(
-        db.scalars(
-            select(Attachment).where(Attachment.sha256 == digest, Attachment.deleted_at.is_(None))
-        ).all()
-    )
-    attachment = Attachment(
-        owner_type=owner_type,
-        owner_id=owner_id,
-        kind=kind or rule_for(owner_type).default_kind,
-        storage_backend=store.name,
-        storage_key=key,
-        original_filename=safe_filename(filename, extension),
-        content_type=content_type,
-        size_bytes=len(data),
-        sha256=digest,
-        uploaded_by_id=actor.id,
-    )
-    db.add(attachment)
-    db.flush()
-    audit.record(
-        db,
-        action="attachment.uploaded",
-        actor=actor,
-        entity_type=owner_type.value,
-        entity_id=owner_id,
-        details={
-            "attachment_id": attachment.id,
-            "kind": attachment.kind.value,
-            "content_type": content_type,
-            "size_bytes": len(data),
-            "duplicate_of": [str(d.id) for d in duplicates],
-        },
-    )
-    db.commit()
-    return attachment, duplicates
+    # The file is stored before the database write; if that write fails, the
+    # file must not stay behind as an orphan (security audit L7).
+    try:
+        duplicates = list(
+            db.scalars(
+                select(Attachment).where(
+                    Attachment.sha256 == digest, Attachment.deleted_at.is_(None)
+                )
+            ).all()
+        )
+        attachment = Attachment(
+            owner_type=owner_type,
+            owner_id=owner_id,
+            kind=kind or rule_for(owner_type).default_kind,
+            storage_backend=store.name,
+            storage_key=key,
+            original_filename=safe_filename(filename, extension),
+            content_type=content_type,
+            size_bytes=len(data),
+            sha256=digest,
+            uploaded_by_id=actor.id,
+        )
+        db.add(attachment)
+        db.flush()
+        audit.record(
+            db,
+            action="attachment.uploaded",
+            actor=actor,
+            entity_type=owner_type.value,
+            entity_id=owner_id,
+            details={
+                "attachment_id": attachment.id,
+                "kind": attachment.kind.value,
+                "content_type": content_type,
+                "size_bytes": len(data),
+                "duplicate_of": [str(d.id) for d in duplicates],
+            },
+        )
+        db.commit()
+        return attachment, duplicates
+    except BaseException:
+        db.rollback()
+        try:
+            store.delete(key)
+        except StorageError as exc:  # pragma: no cover - best effort
+            monitoring.capture_exception(exc, component="storage", operation="delete")
+        raise
 
 
 def list_for(
