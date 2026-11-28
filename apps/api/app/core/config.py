@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     # revenue or statement record cannot approve it (approve_now included) when
     # its amount is at least this. Unset = no restriction.
     finance_block_self_approval_above: Decimal | None = None
+    # What counts as a paid day for daily-wage plans (security audit L2). By
+    # default every completed shift is a day; these opt-in rules tighten it.
+    daily_wage_min_shift_minutes: int = 0
+    daily_wage_require_closeout: bool = False
     twofa_enforce: bool = False
     twofa_required_roles: str = "SUPER_ADMIN,ADMIN"
     # Minutes allowed between the password step and the code step.

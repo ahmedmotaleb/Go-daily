@@ -564,3 +564,52 @@ def test_backdated_plan_cannot_reach_into_settled_or_closed_history(
     )
     assert cut.status_code == 409
     assert cut.json()["error"]["code"] == "plan_effective_date_conflict"
+
+
+# --- Security audit L2: what counts as a paid day (two opt-in settings) -----------------
+
+
+def test_daily_wage_day_rules_are_opt_in(client: TestClient, db: Session, monkeypatch: Any) -> None:
+    from app.core.config import get_settings
+    from app.models.cash import ShiftCloseout
+
+    _, h = login_as(client, db, UserRole.ACCOUNTANT)
+    driver, vehicle = make_driver(db), make_vehicle(db)
+    make_plan(
+        db, driver, CompensationMethod.DAILY_WAGE, effective_from=_day(60), daily_wage_amount="300"
+    )
+    make_completed_shift(db, driver, vehicle, day=_day(10), minutes=480)
+    short = make_completed_shift(db, driver, vehicle, day=_day(9), minutes=20)
+    unclosed = make_completed_shift(db, driver, vehicle, day=_day(8), minutes=480)
+    assert unclosed and short
+    # Days 10 and 9 have a close-out; day 8 has none.
+    from app.models.finance import RecordSource
+
+    for shift in db.query(type(short)).filter(type(short).driver_id == driver.id):
+        if shift.id != unclosed.id:
+            db.add(
+                ShiftCloseout(
+                    shift_id=shift.id,
+                    driver_id=driver.id,
+                    vehicle_id=vehicle.id,
+                    service_date=_day(10) if shift.id != short.id else _day(9),
+                    submitted_at=shift.ended_at,
+                    source=RecordSource.ADMIN,
+                    end_odometer_km=1_100,
+                    collection_amount=0,
+                )
+            )
+    db.commit()
+
+    def earnings() -> str:
+        draft = _settle(client, h, str(driver.id), _day(14), _day(1))
+        client.post(f"/api/v1/settlements/{draft['id']}/void", headers=h, json={"reason": "تجربة"})
+        return str(draft["earnings_amount"])
+
+    assert earnings() == "900.00"  # default: every completed shift is a day
+    monkeypatch.setattr(get_settings(), "daily_wage_min_shift_minutes", 60)
+    assert earnings() == "600.00"  # the 20-minute shift is not a paid day
+    monkeypatch.setattr(get_settings(), "daily_wage_require_closeout", True)
+    draft = _settle(client, h, str(driver.id), _day(14), _day(1))
+    assert draft["earnings_amount"] == "300.00"  # only day 10 is long and closed out
+    assert any("لم تُحتسب" in w for w in draft["details"]["warnings"])

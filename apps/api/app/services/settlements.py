@@ -102,16 +102,50 @@ def _prorated_monthly(amount: Decimal, start: date, end: date) -> Decimal:
     return total
 
 
-def worked_days(db: Session, driver_id: uuid.UUID, start: date, end: date) -> set[date]:
-    rows = db.scalars(
-        select(Shift.started_at).where(
+def worked_days(
+    db: Session, driver_id: uuid.UUID, start: date, end: date, *, skipped: list[int] | None = None
+) -> set[date]:
+    """Days with a completed shift that counts (opt-in rules, security audit L2).
+
+    DAILY_WAGE_MIN_SHIFT_MINUTES and DAILY_WAGE_REQUIRE_CLOSEOUT tighten what
+    counts; shifts left out are counted into `skipped[0]` for a warning.
+    """
+    from app.models.cash import ShiftCloseout  # noqa: PLC0415
+
+    settings = get_settings()
+    shifts = db.scalars(
+        select(Shift).where(
             Shift.driver_id == driver_id,
             Shift.status == ShiftStatus.COMPLETED,
             Shift.started_at >= local_day_bounds_utc(start)[0],
             Shift.started_at < local_day_bounds_utc(end)[1],
         )
     ).all()
-    return {to_local_date(at) for at in rows if at is not None}
+    closed: set[uuid.UUID] = set()
+    if settings.daily_wage_require_closeout and shifts:
+        closed = set(
+            db.scalars(
+                select(ShiftCloseout.shift_id).where(
+                    ShiftCloseout.shift_id.in_([s.id for s in shifts]),
+                    ShiftCloseout.voided_at.is_(None),
+                )
+            )
+        )
+    days: set[date] = set()
+    left_out = 0
+    for s in shifts:
+        if s.started_at is None:
+            continue
+        minutes = (s.ended_at - s.started_at).total_seconds() / 60 if s.ended_at else 0
+        if minutes < settings.daily_wage_min_shift_minutes or (
+            settings.daily_wage_require_closeout and s.id not in closed
+        ):
+            left_out += 1
+            continue
+        days.add(to_local_date(s.started_at))
+    if skipped is not None:
+        skipped.append(left_out)
+    return days
 
 
 def eligible_revenue(db: Session, driver_id: uuid.UUID, start: date, end: date) -> Decimal:
@@ -213,7 +247,10 @@ def compute(db: Session, driver_id: uuid.UUID, start: date, end: date) -> Comput
         .order_by(DriverCompensationPlan.effective_from)
     ).all()
     covered = 0
-    all_days = worked_days(db, driver_id, start, end)
+    skipped: list[int] = []
+    all_days = worked_days(db, driver_id, start, end, skipped=skipped)
+    if skipped and skipped[0]:
+        comp.warnings.append(f"{skipped[0]} وردية لم تُحتسب يوم عمل (أقصر من الحد أو بدون تقفيل)")
     comp.days_worked = len(all_days)
     comp.eligible_revenue = eligible_revenue(db, driver_id, start, end)
 
