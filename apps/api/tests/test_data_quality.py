@@ -66,3 +66,32 @@ def test_needs_reports_permission(client: TestClient, db: Session) -> None:
     _, driver_h = login_as(client, db, UserRole.DRIVER)
     assert client.get(URL, headers=driver_h).status_code == 403
     assert client.get(URL).status_code == 401
+
+
+# --- Security audit L6: no revenue on the data-quality page for Operations --------------
+
+
+def test_operations_data_quality_page_has_no_revenue(client: TestClient, db: Session) -> None:
+    from datetime import timedelta
+
+    from app.core.time import local_today
+    from tests.factories import make_vehicle
+
+    _, ac = login_as(client, db, UserRole.ACCOUNTANT)
+    _, op = login_as(client, db, UserRole.OPERATIONS)
+    entry = client.post(
+        "/api/v1/revenue",
+        headers=ac,
+        json={
+            "kind": "PRIVATE_TRIP",
+            "vehicle_id": str(make_vehicle(db).id),
+            "occurred_on": (local_today() - timedelta(days=5)).isoformat(),
+            "amount": "700",
+        },
+    )
+    assert entry.status_code == 201, entry.text
+    ops_view = client.get("/api/v1/data-quality", headers=op)
+    assert ops_view.status_code == 200
+    assert "REVENUE_UNRECONCILED" not in ops_view.text
+    assert "/finance/revenue/" not in ops_view.text
+    assert "REVENUE_UNRECONCILED" in client.get("/api/v1/data-quality", headers=ac).text

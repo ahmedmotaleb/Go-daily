@@ -16,6 +16,7 @@ from typing import Any
 from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
+from app.core.permissions import Permission, has_permission
 from app.core.time import local_today, to_local_date, utcnow
 from app.models.assignment import DriverVehicleAssignment
 from app.models.attachment import Attachment, AttachmentKind, AttachmentOwner
@@ -27,8 +28,10 @@ from app.models.fleet import Vehicle
 from app.models.operations import RouteDefinition, RouteStop
 from app.models.shift import Shift, ShiftStatus
 from app.models.tracking import GpsPoint, GpsUploadBatch
+from app.models.user import User
 from app.services.exception_rules import RULE_INFO
 from app.services.exceptions import ACTIVE as ACTIVE_CASES
+from app.services.exceptions import money_cases_clause
 
 SAMPLE = 10
 LOOKBACK = timedelta(days=30)
@@ -242,7 +245,7 @@ def _gps_unsynced(db: Session, now: datetime) -> Check:
     return c
 
 
-def _corrections_unresolved(db: Session, now: datetime) -> Check:
+def _corrections_unresolved(db: Session, now: datetime, *, money: bool = True) -> Check:
     c = Check(
         "CORRECTION_UNRESOLVED",
         "قيود أُعيدت للتعديل ولم تُصحح",
@@ -254,7 +257,7 @@ def _corrections_unresolved(db: Session, now: datetime) -> Check:
     models: tuple[tuple[Any, str, str], ...] = (
         (FuelTransaction, "/finance/fuel", "وقود"),
         (Expense, "/finance/expenses", "مصروف"),
-        (RevenueEntry, "/finance/revenue", "إيراد"),
+        *(((RevenueEntry, "/finance/revenue", "إيراد"),) if money else ()),
     )
     for model, path, label in models:
         newer = aliased(model)
@@ -273,10 +276,10 @@ def _corrections_unresolved(db: Session, now: datetime) -> Check:
     return c
 
 
-def _review_counts(db: Session) -> list[ReviewCount]:
+def _review_counts(db: Session, *, money: bool = True) -> list[ReviewCount]:
     rows = db.execute(
         select(OperationalException.rule_code, func.count())
-        .where(OperationalException.status.in_(ACTIVE_CASES))
+        .where(OperationalException.status.in_(ACTIVE_CASES), money_cases_clause(money))
         .group_by(OperationalException.rule_code)
         .order_by(func.count().desc())
     ).all()
@@ -286,19 +289,22 @@ def _review_counts(db: Session) -> list[ReviewCount]:
     ]
 
 
-def report(db: Session) -> Report:
+def report(db: Session, *, viewer: User | None = None) -> Report:
+    """`viewer` without revenue:read (Operations) gets no revenue entries and no
+    money review cases (security audit L6)."""
     now = utcnow()
+    money = viewer is None or has_permission(viewer.role, Permission.REVENUE_READ)
     checks = [
         _closeouts_missing(db, now),
         _gps_unsynced(db, now),
         _fuel_without_odometer(db, now),
-        _revenue_unreviewed(db, now),
-        _corrections_unresolved(db, now),
+        *([_revenue_unreviewed(db, now)] if money else []),
+        _corrections_unresolved(db, now, money=money),
         _stale_assignments(db, local_today()),
         _routes_without_geofences(db),
         _vehicle_documents(db),
     ]
-    return Report(missing=checks, review=_review_counts(db), generated_at=now)
+    return Report(missing=checks, review=_review_counts(db, money=money), generated_at=now)
 
 
 __all__ = ["Check", "Example", "Report", "ReviewCount", "report"]

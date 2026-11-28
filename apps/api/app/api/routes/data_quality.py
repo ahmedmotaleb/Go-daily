@@ -44,8 +44,8 @@ class DataQualityOut(BaseModel):
 
 
 @router.get("", response_model=DataQualityOut)
-def get_data_quality(_: Reader, db: DbSession) -> DataQualityOut:
-    r = data_quality.report(db)
+def get_data_quality(viewer: Reader, db: DbSession) -> DataQualityOut:
+    r = data_quality.report(db, viewer=viewer)
     return DataQualityOut(
         missing=[
             CheckOut(
