@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import Select, func, select, true, update
+from sqlalchemy import ColumnElement, Select, func, or_, select, true, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -383,6 +383,7 @@ def generate(db: Session) -> dict[str, Any]:
                                 entity_type=d.entity_type,
                                 entity_id=d.entity_id,
                                 dedupe_key=d.dedupe_key,
+                                permission=d.permission.value,
                                 created_at=now,
                             )
                             .on_conflict_do_nothing(constraint="uq_notifications_user_dedupe")
@@ -458,8 +459,14 @@ def _deliver(db: Session, ids: list[uuid.UUID], channel_names: str, min_severity
 # --- Inbox --------------------------------------------------------------------
 
 
+def _still_allowed(user: User) -> ColumnElement[bool]:
+    """Notices the user's current role may still see (security audit L8)."""
+    held = [p.value for p in ROLE_PERMISSIONS.get(user.role, frozenset())]
+    return or_(Notification.permission.is_(None), Notification.permission.in_(held))
+
+
 def _inbox(user: User, *, unread_only: bool, include_cleared: bool) -> Select[Notification]:
-    stmt = select(Notification).where(Notification.user_id == user.id)
+    stmt = select(Notification).where(Notification.user_id == user.id, _still_allowed(user))
     if unread_only:
         stmt = stmt.where(Notification.read_at.is_(None))
     if not include_cleared:
@@ -483,6 +490,7 @@ def unread_counts(db: Session, user: User) -> dict[str, int]:
             Notification.user_id == user.id,
             Notification.read_at.is_(None),
             Notification.cleared_at.is_(None),
+            _still_allowed(user),
         )
         .group_by(Notification.severity)
     ).all()

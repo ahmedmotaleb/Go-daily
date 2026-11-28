@@ -41,6 +41,9 @@ class Notification(UUIDPrimaryKeyMixin, Base):
     entity_type: Mapped[str | None] = mapped_column(String(40))
     entity_id: Mapped[uuid.UUID | None]
     dedupe_key: Mapped[str] = mapped_column(String(200))
+    # The permission it was sent under: the inbox hides it once the user's
+    # role no longer holds it (security audit L8). Null: shown (older rows).
+    permission: Mapped[str | None] = mapped_column(String(40))
     created_at: Mapped[datetime] = mapped_column(default=utcnow, server_default=func.now())
     read_at: Mapped[datetime | None]
     # The condition is no longer true (renewed, serviced, tracking back...).
