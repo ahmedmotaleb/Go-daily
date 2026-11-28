@@ -375,3 +375,26 @@ def test_finalize_reauth_counts_the_expected_balance(client: TestClient, db: Ses
     res = client.post(f"{S}/{sid}/finalize", headers=h)
     assert res.status_code == 403
     assert res.json()["error"]["code"] == "reauth_required"
+
+
+# --- Runtime audit L7: no overlapping open drafts for one driver -----------------------
+
+
+def test_overlapping_drafts_are_refused(client: TestClient, db: Session) -> None:
+    _, h = login_as(client, db, UserRole.ACCOUNTANT)
+    driver = make_driver(db)
+    first = _settle(client, h, str(driver.id), _day(14), _day(1))
+    same = client.post(
+        S,
+        headers=h,
+        json={
+            "driver_id": str(driver.id),
+            "period_start": _day(10).isoformat(),
+            "period_end": _day(3).isoformat(),
+        },
+    )
+    assert same.status_code == 409, same.text
+    assert same.json()["error"]["code"] == "overlapping_draft"
+    voided = client.post(f"{S}/{first['id']}/void", headers=h, json={"reason": "مكرر"})
+    assert voided.status_code == 200
+    assert _settle(client, h, str(driver.id), _day(14), _day(1))["status"] == "DRAFT"

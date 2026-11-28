@@ -321,6 +321,21 @@ def create_draft(db: Session, *, actor: User, data: SettlementCreate) -> DriverS
             "توجد تسوية نهائية تغطي جزءًا من هذه الفترة",
             code="overlapping_settlement",
         )
+    # One open draft per driver and period (runtime audit L7): a second draft
+    # over the same days would be reviewed and argued about twice.
+    if db.scalar(
+        select(DriverSettlement.id)
+        .where(
+            DriverSettlement.driver_id == data.driver_id,
+            DriverSettlement.status.in_((SettlementStatus.DRAFT, SettlementStatus.REVIEWED)),
+            DriverSettlement.period_start <= data.period_end,
+            DriverSettlement.period_end >= data.period_start,
+        )
+        .limit(1)
+    ):
+        raise ConflictError(
+            "توجد مسودة تسوية مفتوحة تغطي جزءًا من هذه الفترة", code="overlapping_draft"
+        )
     comp = compute(db, data.driver_id, data.period_start, data.period_end)
     settlement = DriverSettlement(
         driver_id=data.driver_id,

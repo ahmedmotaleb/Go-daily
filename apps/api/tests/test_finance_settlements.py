@@ -212,7 +212,21 @@ def test_finalized_settlements_cannot_overlap_until_voided(client: TestClient, d
     )
     make_completed_shift(db, driver, make_vehicle(db), day=_day(5))
     first = _settle(client, h, str(driver.id), _day(10), _day(1))
-    second = _settle(client, h, str(driver.id), _day(5), _day(0))  # drafts may overlap
+    # The API refuses overlapping open drafts (runtime audit L7); one made before
+    # that rule (or concurrently) must still be stopped at approval.
+    from app.models.finance import DriverSettlement, SettlementStatus
+
+    legacy = DriverSettlement(
+        driver_id=driver.id,
+        period_start=_day(5),
+        period_end=_day(0),
+        status=SettlementStatus.DRAFT,
+        earnings_amount=D("0"),
+        details={},
+    )
+    db.add(legacy)
+    db.commit()
+    second = {"id": str(legacy.id)}
     client.post(f"/api/v1/settlements/{first['id']}/review", headers=h)
     client.post(f"/api/v1/settlements/{first['id']}/finalize", headers=h)
     client.post(f"/api/v1/settlements/{second['id']}/review", headers=h)
