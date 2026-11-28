@@ -522,3 +522,45 @@ def test_large_manual_ledger_entries_need_reauth(client: TestClient, db: Session
     )
     assert void.status_code == 403
     assert void.json()["error"]["code"] == "reauth_required"
+
+
+# --- Security audit L1: a new plan never rewrites settled or closed history ------------
+
+
+def test_backdated_plan_cannot_reach_into_settled_or_closed_history(
+    client: TestClient, db: Session
+) -> None:
+    _, h = login_as(client, db, UserRole.ACCOUNTANT)
+    driver, vehicle = make_driver(db), make_vehicle(db)
+    make_plan(
+        db, driver, CompensationMethod.DAILY_WAGE, effective_from=_day(60), daily_wage_amount="300"
+    )
+    make_completed_shift(db, driver, vehicle, day=_day(10))
+    sid = _settle(client, h, str(driver.id), _day(14), _day(7))["id"]
+    client.post(f"/api/v1/settlements/{sid}/review", headers=h)
+    assert client.post(f"/api/v1/settlements/{sid}/finalize", headers=h).status_code == 200
+    url = f"/api/v1/drivers/{driver.id}/compensation-plans"
+    plan = {"method": "DAILY_WAGE", "daily_wage_amount": "350"}
+    into_settled = client.post(url, headers=h, json={**plan, "effective_from": _day(9).isoformat()})
+    assert into_settled.status_code == 409, into_settled.text
+    assert into_settled.json()["error"]["code"] == "plan_in_settled_period"
+    after = client.post(url, headers=h, json={**plan, "effective_from": _day(5).isoformat()})
+    assert after.status_code == 201, after.text
+
+    # A closed plan with a set end date is not shortened by a later backdated one.
+    other = make_driver(db)
+    make_plan(
+        db,
+        other,
+        CompensationMethod.DAILY_WAGE,
+        effective_from=_day(60),
+        effective_to=_day(10),
+        daily_wage_amount="300",
+    )
+    cut = client.post(
+        f"/api/v1/drivers/{other.id}/compensation-plans",
+        headers=h,
+        json={**plan, "effective_from": _day(20).isoformat()},
+    )
+    assert cut.status_code == 409
+    assert cut.json()["error"]["code"] == "plan_effective_date_conflict"
