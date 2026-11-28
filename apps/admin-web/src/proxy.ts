@@ -12,7 +12,26 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 const PUBLIC_PATHS = ["/login", "/auth/clear", "/healthz"];
 
-export function contentSecurityPolicy(nonce: string, dev: boolean): string {
+const DEFAULT_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+
+/** The tile server's origin for img-src; a `{s}` subdomain becomes a wildcard. */
+export function tileOrigin(tileUrl: string): string | null {
+  try {
+    const url = new URL(tileUrl.replace(/\{s\}\./, "s-placeholder.").replace(/\{[a-z]\}/g, "0"));
+    if (url.protocol !== "https:") return null;
+    return url.origin.replace("s-placeholder.", "*.");
+  } catch {
+    return null;
+  }
+}
+
+export function contentSecurityPolicy(
+  nonce: string,
+  dev: boolean,
+  tileUrl: string = process.env.MAP_TILE_URL || DEFAULT_TILE_URL,
+): string {
+  // Images only from the app and the configured map tiles (security audit L9).
+  const tiles = tileOrigin(tileUrl);
   return [
     "default-src 'self'",
     // 'strict-dynamic': scripts loaded by a trusted (nonced) script are trusted.
@@ -20,7 +39,7 @@ export function contentSecurityPolicy(nonce: string, dev: boolean): string {
     // Style elements need the nonce; dev mode injects unnonced <style> tags for hot reload.
     `style-src 'self' ${dev ? "'unsafe-inline'" : `'nonce-${nonce}'`}`,
     "style-src-attr 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
+    `img-src 'self' data: blob:${tiles ? ` ${tiles}` : ""}`,
     "font-src 'self' data:",
     "connect-src 'self'",
     "object-src 'none'",

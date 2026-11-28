@@ -30,6 +30,17 @@ describe("content security policy (U34)", () => {
     }
   });
 
+  it("allows images only from the app and the configured map tile host (audit L9)", () => {
+    expect(directive("img-src")).toBe("'self' data: blob: https://tile.openstreetmap.org");
+    const custom = contentSecurityPolicy(
+      "n",
+      false,
+      "https://{s}.tiles.example.com/{z}/{x}/{y}.png",
+    );
+    expect(custom).toContain("img-src 'self' data: blob: https://*.tiles.example.com;");
+    expect(contentSecurityPolicy("n", false, "not a url")).toContain("img-src 'self' data: blob:;");
+  });
+
   it("relaxes only for the development server", () => {
     const dev = contentSecurityPolicy("n", true);
     expect(dev).toContain("'unsafe-eval'");
