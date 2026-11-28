@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
 import { can, requirePermission } from "@/lib/auth";
 import { fleetOptions } from "@/lib/finance-refs";
-import type { FuelTx } from "@/lib/finance-types";
+import type { Expense, FuelTx } from "@/lib/finance-types";
 import type { MaintenanceRecord, MaintenanceType } from "@/lib/maintenance-types";
 import { formatDate, formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import type { Page } from "@/lib/types";
@@ -31,7 +31,7 @@ export default async function MaintenanceRecordPage({
   const canReview = can(me, "expenses:approve");
   const canCorrect = canReview && r.status === "APPROVED";
   const needsForm = canEdit || canCorrect;
-  const [types, fleet, purchases] = needsForm
+  const [types, fleet, purchases, costs] = needsForm
     ? await Promise.all([
         api.get<MaintenanceType[]>("/maintenance/types"),
         fleetOptions(),
@@ -42,14 +42,24 @@ export default async function MaintenanceRecordPage({
               page_size: 30,
             })
           : Promise.resolve(null),
+        can(me, "expenses:read")
+          ? api.get<Page<Expense>>("/expenses", { vehicle_id: r.vehicle.id, page_size: 30 })
+          : Promise.resolve(null),
       ])
-    : [[], { vehicles: [], drivers: [] }, null];
+    : [[], { vehicles: [], drivers: [] }, null, null];
   const typeOptions = types.map((t) => ({ value: t.id, label: t.name_ar }));
   const oilOptions = (purchases?.items ?? [])
     .filter((p) => p.status !== "VOIDED")
     .map((p) => ({
       value: p.id,
       label: `${p.fuel_type.name_ar} · ${formatDateTime(p.occurred_at)} · ${formatMoney(p.total_amount)}`,
+    }));
+
+  const expenseOptions = (costs?.items ?? [])
+    .filter((e) => e.status !== "VOIDED" && e.category.pnl_group === "MAINTENANCE")
+    .map((e) => ({
+      value: e.id,
+      label: `${e.category.name_ar} · ${formatDateTime(e.occurred_at)} · ${formatMoney(e.amount)}`,
     }));
 
   return (
@@ -146,6 +156,7 @@ export default async function MaintenanceRecordPage({
               vehicles={fleet.vehicles}
               types={typeOptions}
               oilPurchases={oilOptions}
+              closeoutExpenses={expenseOptions}
               record={r}
               canApprove={false}
             />
@@ -165,6 +176,7 @@ export default async function MaintenanceRecordPage({
               vehicles={fleet.vehicles}
               types={typeOptions}
               oilPurchases={oilOptions}
+              closeoutExpenses={expenseOptions}
               record={r}
               canApprove
             />

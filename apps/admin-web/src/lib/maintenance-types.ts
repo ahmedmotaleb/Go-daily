@@ -45,6 +45,8 @@ export type MaintenanceRecord = Reviewable & {
   downtime_end: string | null;
   downtime_hours: number | null;
   fuel_transaction_id: string | null;
+  /** The close-out maintenance expense for the same job (counted once). */
+  closeout_expense_id: string | null;
   consumable_quantity?: string | null;
   consumable_spec?: string | null;
   next_due_km?: number | null;

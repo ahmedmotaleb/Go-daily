@@ -542,6 +542,7 @@ export async function saveMaintenanceAction(
       downtime_start: datetime(formData, "downtime_start"),
       downtime_end: datetime(formData, "downtime_end"),
       fuel_transaction_id: text(formData, "fuel_transaction_id"),
+      closeout_expense_id: text(formData, "closeout_expense_id"),
       consumable_quantity: decimal(formData, "consumable_quantity"),
       consumable_spec: text(formData, "consumable_spec"),
       next_due_km: int(formData, "next_due_km"),

@@ -15,6 +15,7 @@ export function MaintenanceForm({
   vehicles,
   types,
   oilPurchases = [],
+  closeoutExpenses = [],
   record,
   canApprove,
   defaultVehicleId,
@@ -25,6 +26,8 @@ export function MaintenanceForm({
   types: Option[];
   /** Consumable purchases of this vehicle that can be linked (edit/correct). */
   oilPurchases?: Option[];
+  /** Maintenance expenses of this vehicle (e.g. from a close-out) that can be linked. */
+  closeoutExpenses?: Option[];
   record?: MaintenanceRecord;
   canApprove: boolean;
   defaultVehicleId?: string;
@@ -116,6 +119,16 @@ export function MaintenanceForm({
             placeholder="بدون ربط"
             defaultValue={record?.fuel_transaction_id}
             hint="شراء الزيت سجل وقود؛ التغيير سجل صيانة"
+          />
+        ) : null}
+        {closeoutExpenses.length ? (
+          <SelectField
+            name="closeout_expense_id"
+            label="نفس الشغلة المسجلة في تقفيل السائق"
+            options={closeoutExpenses}
+            placeholder="بدون ربط"
+            defaultValue={record?.closeout_expense_id}
+            hint="الربط يمنع حساب تكلفة نفس الصيانة مرتين في الربحية"
           />
         ) : null}
         <TextField
